@@ -1,97 +1,105 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# BASE Mobile App
 
-# Getting Started
+**BASE** - Brighway After-School Management System
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+![Expo](https://img.shields.io/badge/Expo-000020?style=for-the-badge&logo=expo&logoColor=white)
+![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
 
-## Step 1: Start Metro
+## 📱 Giới thiệu
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+BASE Mobile là ứng dụng quản lý trung tâm đào tạo Brighway, được xây dựng bằng React Native và Expo. Ứng dụng giúp phụ huynh quản lý lịch học, ví tiền, và thông tin cá nhân của con em.
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+## ✨ Tính năng chính
 
-```sh
-# Using npm
+- 🔐 **Hệ thống đăng nhập** - Xác thực người dùng an toàn
+- 🏠 **Dashboard** - Tổng quan thông tin và thao tác nhanh
+- 📅 **Quản lý lịch học** - Xem và đăng ký lớp học
+- 💰 **Ví tiền** - Quản lý tài chính và giao dịch
+- 👤 **Hồ sơ cá nhân** - Thông tin phụ huynh và con em
+- 🎨 **Giao diện đẹp** - Theme màu xanh lá chuyên nghiệp
+
+## 🚀 Cài đặt và chạy
+
+### Yêu cầu hệ thống
+- Node.js >= 20
+- npm hoặc yarn
+- Expo CLI
+- Expo Go app (cho mobile testing)
+
+### Cài đặt dependencies
+```bash
+npm install
+```
+
+### Chạy ứng dụng
+```bash
+# Khởi động development server
 npm start
 
-# OR using Yarn
-yarn start
-```
-
-## Step 2: Build and run your app
-
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
+# Chạy trên Android
 npm run android
 
-# OR using Yarn
-yarn android
-```
-
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
+# Chạy trên iOS
 npm run ios
 
-# OR using Yarn
-yarn ios
+# Chạy trên Web
+npm run web
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+### Sử dụng Expo Go
+1. Cài đặt Expo Go từ App Store/Play Store
+2. Quét QR code hiển thị trong terminal
+3. Ứng dụng sẽ tự động load trên điện thoại
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+## 📁 Cấu trúc project
 
-## Step 3: Modify your app
+```
+src/
+├── components/          # Components tái sử dụng
+├── constants/           # Hằng số và cấu hình
+├── context/            # React Context (Auth, etc.)
+├── hooks/              # Custom hooks
+├── navigation/         # Navigation configuration
+├── screens/            # Màn hình ứng dụng
+│   ├── auth/          # Đăng nhập, đăng ký
+│   └── main/          # Dashboard, Schedule, Wallet, Profile
+├── services/           # API services
+├── types/              # TypeScript type definitions
+└── utils/              # Utility functions
+```
 
-Now that you have successfully run the app, let's make changes!
+## 🛠️ Công nghệ sử dụng
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+- **React Native** - Framework mobile
+- **Expo** - Development platform
+- **TypeScript** - Type safety
+- **React Navigation** - Navigation system
+- **Expo Vector Icons** - Icon library
+- **React Context** - State management
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+## 📱 Screenshots
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+*Screenshots sẽ được thêm sau*
 
-## Congratulations! :tada:
+## 🤝 Đóng góp
 
-You've successfully run and modified your React Native App. :partying_face:
+1. Fork repository
+2. Tạo feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Mở Pull Request
 
-### Now what?
+## 📄 License
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+Distributed under the MIT License. See `LICENSE` for more information.
 
-# Troubleshooting
+## 📞 Liên hệ
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+**Brighway Education**
+- Website: [brighway.edu.vn](https://brighway.edu.vn)
+- Email: support@brighway.edu.vn
 
-# Learn More
+---
 
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+Made with ❤️ by Brighway Team
