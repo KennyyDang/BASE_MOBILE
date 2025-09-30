@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { COLORS, FONTS, SPACING } from '../../constants';
-import { LoginForm } from '../../types';
+import { LoginForm, Parent } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 
 const LoginScreen: React.FC = () => {
@@ -36,8 +36,51 @@ const LoginScreen: React.FC = () => {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000));
       
+      // Mock user data for development
+      const mockUser: Parent = {
+        id: '1',
+        email: formData.email,
+        firstName: 'Nguyễn',
+        lastName: 'Văn A',
+        phone: '0123456789',
+        role: 'PARENT',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        children: [
+          {
+            id: '1',
+            parentId: '1',
+            firstName: 'Nguyễn',
+            lastName: 'Thị B',
+            dateOfBirth: '2015-03-15',
+            grade: '3',
+            school: 'Trường Tiểu học ABC',
+            emergencyContact: '0123456789',
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            nfcCardId: 'NFC001',
+          },
+          {
+            id: '2',
+            parentId: '1',
+            firstName: 'Nguyễn',
+            lastName: 'Văn C',
+            dateOfBirth: '2018-07-20',
+            grade: '1',
+            school: 'Trường Tiểu học XYZ',
+            emergencyContact: '0123456789',
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        wallets: [],
+      };
+      
       // Login successful - navigate to main app
-      login();
+      login(mockUser);
     } catch (error) {
       Alert.alert('Lỗi', 'Đăng nhập thất bại. Vui lòng thử lại.');
     } finally {
