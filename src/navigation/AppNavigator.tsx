@@ -4,10 +4,31 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Provider as PaperProvider } from 'react-native-paper';
+import { DefaultTheme } from 'react-native-paper';
 
 import { SCREEN_NAMES, COLORS } from '../constants';
 import { RootStackParamList, MainTabParamList } from '../types';
 import { useAuth } from '../context/AuthContext';
+
+// Custom theme for React Native Paper
+const theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: COLORS.PRIMARY,
+    secondary: COLORS.SECONDARY,
+    accent: COLORS.ACCENT,
+    background: COLORS.BACKGROUND,
+    surface: COLORS.SURFACE,
+    error: COLORS.ERROR,
+    text: COLORS.TEXT_PRIMARY,
+    onSurface: COLORS.TEXT_SECONDARY,
+    disabled: COLORS.TEXT_SECONDARY,
+    placeholder: COLORS.TEXT_SECONDARY,
+    backdrop: 'rgba(0, 0, 0, 0.5)',
+  },
+};
 
 // Import screens (will be created later)
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -53,13 +74,24 @@ const MainTabNavigator = () => {
           backgroundColor: COLORS.SURFACE,
           borderTopColor: COLORS.BORDER,
         },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
         headerStyle: {
           backgroundColor: COLORS.PRIMARY,
+          elevation: 4,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
         },
         headerTintColor: COLORS.SURFACE,
         headerTitleStyle: {
           fontWeight: 'bold',
+          fontSize: 18,
         },
+        headerTitleAlign: 'center',
       })}
     >
       <Tab.Screen 
@@ -103,18 +135,44 @@ const AppNavigator = () => {
   const { isAuthenticated } = useAuth();
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerStyle: {
-            backgroundColor: COLORS.PRIMARY,
-          },
-          headerTintColor: COLORS.SURFACE,
-          headerTitleStyle: {
-            fontWeight: 'bold',
-          },
-        }}
-      >
+    <PaperProvider theme={theme}>
+      <NavigationContainer>
+        <Stack.Navigator
+          screenOptions={{
+            headerStyle: {
+              backgroundColor: COLORS.PRIMARY,
+              elevation: 4,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.1,
+              shadowRadius: 4,
+            },
+            headerTintColor: COLORS.SURFACE,
+            headerTitleStyle: {
+              fontWeight: 'bold',
+              fontSize: 18,
+            },
+            headerTitleAlign: 'center',
+            cardStyle: {
+              backgroundColor: COLORS.BACKGROUND,
+            },
+            // Smooth transitions
+            cardStyleInterpolator: ({ current, layouts }) => {
+              return {
+                cardStyle: {
+                  transform: [
+                    {
+                      translateX: current.progress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [layouts.screen.width, 0],
+                      }),
+                    },
+                  ],
+                },
+              };
+            },
+          }}
+        >
         {!isAuthenticated ? (
           // Auth Stack
           <>
@@ -146,6 +204,7 @@ const AppNavigator = () => {
         )}
       </Stack.Navigator>
     </NavigationContainer>
+    </PaperProvider>
   );
 };
 
