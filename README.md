@@ -22,35 +22,97 @@ BASE Mobile là ứng dụng quản lý trung tâm đào tạo Brighway, đượ
 ## 🚀 Cài đặt và chạy
 
 ### Yêu cầu hệ thống
-- Node.js >= 20
-- npm hoặc yarn
-- Expo CLI
-- Expo Go app (cho mobile testing)
+- **Node.js**: Version 20.18.0 (sử dụng file `.nvmrc`)
+- **npm**: Version mới nhất
+- **Expo CLI**: `npm install -g @expo/cli`
+- **Expo Go app**: Cài đặt từ App Store/Play Store
 
-### Cài đặt dependencies
+### 🛠️ Setup cho Developer mới
+
+#### Bước 1: Clone repository
 ```bash
+git clone <repository-url>
+cd BASE_MOBILE
+```
+
+#### Bước 2: Cài đặt Node.js đúng version
+```bash
+# Nếu có nvm (Node Version Manager)
+nvm use
+
+# Hoặc cài đặt Node.js 20.18.0 trực tiếp
+# Download từ: https://nodejs.org/
+```
+
+#### Bước 3: Cài đặt dependencies
+```bash
+# Xóa cache cũ (nếu có)
+rm -rf node_modules package-lock.json
+
+# Cài đặt dependencies
 npm install
 ```
 
-### Chạy ứng dụng
+#### Bước 4: Khởi động ứng dụng
 ```bash
 # Khởi động development server
 npm start
 
-# Chạy trên Android
-npm run android
-
-# Chạy trên iOS
-npm run ios
-
-# Chạy trên Web
-npm run web
+# Hoặc chạy trên port cụ thể
+npx expo start --port 8083
 ```
 
-### Sử dụng Expo Go
-1. Cài đặt Expo Go từ App Store/Play Store
+### 📱 Chạy ứng dụng
+
+#### Trên điện thoại (Expo Go)
+1. Cài đặt **Expo Go** từ App Store/Play Store
 2. Quét QR code hiển thị trong terminal
-3. Ứng dụng sẽ tự động load trên điện thoại
+3. Ứng dụng sẽ tự động load
+
+#### Trên máy tính
+```bash
+# Chạy trên Web
+npm run web
+
+# Chạy trên Android (cần Android Studio)
+npm run android
+
+# Chạy trên iOS (cần macOS + Xcode)
+npm run ios
+```
+
+### ⚠️ Troubleshooting
+
+#### Lỗi dependencies conflicts
+```bash
+# Nếu gặp lỗi ERESOLVE
+npm install --legacy-peer-deps
+
+# Hoặc xóa cache và cài lại
+rm -rf node_modules package-lock.json
+npm install --legacy-peer-deps
+```
+
+#### Lỗi PlatformConstants
+```bash
+# Đảm bảo đúng Node.js version
+node --version  # Phải là 20.18.0
+
+# Reset Expo cache
+npx expo start --clear
+```
+
+#### Port đã được sử dụng
+```bash
+# Sử dụng port khác
+npx expo start --port 8084
+```
+
+### 🔧 Cấu hình tự động
+Project đã được cấu hình với:
+- **`.nvmrc`**: Đảm bảo Node.js version đúng
+- **`.npmrc`**: Cấu hình npm để tránh peer dependency conflicts
+- **`package.json`**: Tất cả dependencies đã được test và hoạt động ổn định
 
 ## 📁 Cấu trúc project
 
