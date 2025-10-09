@@ -234,9 +234,7 @@ export interface PaginatedResponse<T> {
 // Navigation Types
 export type RootStackParamList = {
   Login: undefined;
-  Register: undefined;
   Main: undefined;
-  ForgotPassword: undefined;
 };
 
 export type MainTabParamList = {
@@ -274,15 +272,6 @@ export type ProfileStackParamList = {
 export interface LoginForm {
   email: string;
   password: string;
-}
-
-export interface RegisterForm {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  password: string;
-  confirmPassword: string;
 }
 
 export interface ChildForm {

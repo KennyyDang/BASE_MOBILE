@@ -8,15 +8,48 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING } from '../../constants';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../contexts/AuthContext';
+
+// Inline constants
+const COLORS = {
+  PRIMARY: '#2E7D32',
+  PRIMARY_LIGHT: '#4CAF50',
+  SECONDARY: '#FF6F00',
+  BACKGROUND: '#F5F5F5',
+  SURFACE: '#FFFFFF',
+  TEXT_PRIMARY: '#212121',
+  TEXT_SECONDARY: '#757575',
+  BORDER: '#E0E0E0',
+  SUCCESS: '#4CAF50',
+  WARNING: '#FF9800',
+  ERROR: '#F44336',
+  ACCENT: '#2196F3',
+  SHADOW: '#000000',
+};
+
+const SPACING = {
+  XS: 4,
+  SM: 8,
+  MD: 16,
+  LG: 24,
+  XL: 32,
+};
+
+const FONTS = {
+  SIZES: {
+    XS: 12,
+    SM: 14,
+    MD: 16,
+    LG: 18,
+    XL: 20,
+    XXL: 24,
+  },
+};
 
 const DashboardScreen: React.FC = () => {
   const { logout } = useAuth();
   
-  const handleQuickAction = (action: string) => {
-    console.log('Quick action:', action);
-    // TODO: Implement navigation to respective screens
+  const handleQuickAction = (action: string) => {// TODO: Implement navigation to respective screens
   };
 
   const handleLogout = () => {

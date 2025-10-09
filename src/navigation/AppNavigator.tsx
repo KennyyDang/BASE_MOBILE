@@ -7,9 +7,22 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { DefaultTheme } from 'react-native-paper';
 
-import { SCREEN_NAMES, COLORS } from '../constants';
 import { RootStackParamList, MainTabParamList } from '../types';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
+
+// Inline constants
+const COLORS = {
+  PRIMARY: '#2E7D32',
+  SECONDARY: '#FF6F00',
+  ACCENT: '#2196F3',
+  BACKGROUND: '#F5F5F5',
+  SURFACE: '#FFFFFF',
+  ERROR: '#F44336',
+  TEXT_PRIMARY: '#212121',
+  TEXT_SECONDARY: '#757575',
+  BORDER: '#E0E0E0',
+};
+
 
 // Custom theme for React Native Paper
 const theme = {
@@ -30,9 +43,8 @@ const theme = {
   },
 };
 
-// Import screens (will be created later)
+// Import screens
 import LoginScreen from '../screens/auth/LoginScreen';
-import RegisterScreen from '../screens/auth/RegisterScreen';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ScheduleScreen from '../screens/main/ScheduleScreen';
 import WalletScreen from '../screens/main/WalletScreen';
@@ -50,16 +62,16 @@ const MainTabNavigator = () => {
           let iconName: string;
 
           switch (route.name) {
-            case SCREEN_NAMES.DASHBOARD:
+            case 'Dashboard':
               iconName = 'dashboard';
               break;
-            case SCREEN_NAMES.SCHEDULE:
+            case 'Schedule':
               iconName = 'schedule';
               break;
-            case SCREEN_NAMES.WALLET:
+            case 'Wallet':
               iconName = 'account-balance-wallet';
               break;
-            case SCREEN_NAMES.PROFILE:
+            case 'Profile':
               iconName = 'person';
               break;
             default:
@@ -95,7 +107,7 @@ const MainTabNavigator = () => {
       })}
     >
       <Tab.Screen 
-        name={SCREEN_NAMES.DASHBOARD} 
+        name="Dashboard" 
         component={DashboardScreen}
         options={{
           title: 'Trang chủ',
@@ -103,7 +115,7 @@ const MainTabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name={SCREEN_NAMES.SCHEDULE} 
+        name="Schedule" 
         component={ScheduleScreen}
         options={{
           title: 'Lịch học',
@@ -111,7 +123,7 @@ const MainTabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name={SCREEN_NAMES.WALLET} 
+        name="Wallet" 
         component={WalletScreen}
         options={{
           title: 'Ví tiền',
@@ -119,7 +131,7 @@ const MainTabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name={SCREEN_NAMES.PROFILE} 
+        name="Profile" 
         component={ProfileScreen}
         options={{
           title: 'Hồ sơ',
@@ -175,23 +187,14 @@ const AppNavigator = () => {
         >
         {!isAuthenticated ? (
           // Auth Stack
-          <>
-            <Stack.Screen 
-              name="Login"
-              component={LoginScreen}
-              options={{
-                title: 'Đăng nhập',
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen 
-              name="Register" 
-              component={RegisterScreen}
-              options={{
-                title: 'Đăng ký',
-              }}
-            />
-          </>
+          <Stack.Screen 
+            name="Login"
+            component={LoginScreen}
+            options={{
+              title: 'Đăng nhập',
+              headerShown: false,
+            }}
+          />
         ) : (
           // Main App Stack
           <Stack.Screen 
