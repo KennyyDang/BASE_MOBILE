@@ -121,6 +121,8 @@ export const API_ENDPOINTS = {
   REGISTER: '/auth/register',
   REFRESH_TOKEN: '/auth/refresh',
   LOGOUT: '/auth/logout',
+  FORGOT_PASSWORD: '/auth/forgot-password',
+  RESET_PASSWORD: '/auth/reset-password',
   
   // User Management
   PROFILE: '/users/profile',
