@@ -8,21 +8,57 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING, WALLET_TYPES } from '../../constants';
+
+// Inline constants
+const COLORS = {
+  PRIMARY: '#2E7D32',
+  SECONDARY: '#FF6F00',
+  BACKGROUND: '#F5F5F5',
+  SURFACE: '#FFFFFF',
+  TEXT_PRIMARY: '#212121',
+  TEXT_SECONDARY: '#757575',
+  BORDER: '#E0E0E0',
+  SUCCESS: '#4CAF50',
+  WARNING: '#FF9800',
+  ACCENT: '#2196F3',
+  SHADOW: '#000000',
+};
+
+const SPACING = {
+  XS: 4,
+  SM: 8,
+  MD: 16,
+  LG: 24,
+  XL: 32,
+};
+
+const FONTS = {
+  SIZES: {
+    XS: 12,
+    SM: 14,
+    MD: 16,
+    LG: 18,
+    XL: 20,
+    XXL: 24,
+    XXXL: 32,
+  },
+};
+
+const WALLET_TYPES = {
+  MAIN: 'MAIN',
+  ALLOWANCE: 'ALLOWANCE',
+};
 
 const WalletScreen: React.FC = () => {
   const handleWalletPress = (walletType: string) => {
-    console.log('Navigate to wallet details:', walletType);
     // TODO: Navigate to specific wallet screen
   };
 
   const handleTopUp = (walletType: string) => {
-    console.log('Navigate to top up:', walletType);
     // TODO: Navigate to top up screen
   };
 
   const handleTransactionHistory = () => {
-    console.log('Navigate to transaction history');
     // TODO: Navigate to transaction history screen
   };
 
@@ -127,7 +163,9 @@ const WalletScreen: React.FC = () => {
             
             <TouchableOpacity 
               style={styles.quickActionCard}
-              onPress={() => console.log('Payment methods')}
+              onPress={() => {
+                // TODO: Navigate to payment methods
+              }}
             >
               <MaterialIcons name="payment" size={24} color={COLORS.ACCENT} />
               <Text style={styles.quickActionText}>Phương thức thanh toán</Text>
@@ -135,7 +173,9 @@ const WalletScreen: React.FC = () => {
             
             <TouchableOpacity 
               style={styles.quickActionCard}
-              onPress={() => console.log('Wallet settings')}
+              onPress={() => {
+                // TODO: Navigate to wallet settings
+              }}
             >
               <MaterialIcons name="settings" size={24} color={COLORS.WARNING} />
               <Text style={styles.quickActionText}>Cài đặt ví</Text>

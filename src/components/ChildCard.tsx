@@ -1,8 +1,29 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING } from '../constants';
 import { Child } from '../types';
+
+// Inline constants
+const COLORS = {
+  SURFACE: '#FFFFFF',
+  PRIMARY: '#2E7D32',
+  TEXT_PRIMARY: '#212121',
+  TEXT_SECONDARY: '#757575',
+  BORDER: '#E0E0E0',
+};
+
+const SPACING = {
+  MD: 16,
+  LG: 24,
+};
+
+const FONTS = {
+  SIZES: {
+    SM: 14,
+    MD: 16,
+    LG: 18,
+  },
+};
 
 interface ChildCardProps {
   child: Child;

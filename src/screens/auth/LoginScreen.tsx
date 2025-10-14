@@ -16,9 +16,24 @@ import {
   Surface,
   useTheme,
 } from 'react-native-paper';
-import { COLORS, FONTS, SPACING } from '../../constants';
-import { LoginForm, Parent } from '../../types';
-import { useAuth } from '../../context/AuthContext';
+import { LoginForm } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
+
+// Inline constants
+const COLORS = {
+  PRIMARY: '#2E7D32',
+  BACKGROUND: '#F5F5F5',
+  TEXT_PRIMARY: '#212121',
+  TEXT_SECONDARY: '#757575',
+};
+
+const SPACING = {
+  SM: 8,
+  MD: 16,
+  LG: 24,
+  XL: 32,
+  XXL: 48,
+};
 
 const LoginScreen: React.FC = () => {
   const { login } = useAuth();
@@ -38,59 +53,24 @@ const LoginScreen: React.FC = () => {
 
     setLoading(true);
     try {
-      // TODO: Implement actual login logic
-      console.log('Login attempt:', formData);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock user data for development
-      const mockUser: Parent = {
-        id: '1',
+      // Call actual login API
+      await login({
         email: formData.email,
-        firstName: 'Nguyễn',
-        lastName: 'Văn A',
-        phone: '0123456789',
-        role: 'PARENT',
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        children: [
-          {
-            id: '1',
-            parentId: '1',
-            firstName: 'Nguyễn',
-            lastName: 'Thị B',
-            dateOfBirth: '2015-03-15',
-            grade: '3',
-            school: 'Trường Tiểu học ABC',
-            emergencyContact: '0123456789',
-            isActive: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            nfcCardId: 'NFC001',
-          },
-          {
-            id: '2',
-            parentId: '1',
-            firstName: 'Nguyễn',
-            lastName: 'Văn C',
-            dateOfBirth: '2018-07-20',
-            grade: '1',
-            school: 'Trường Tiểu học XYZ',
-            emergencyContact: '0123456789',
-            isActive: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        ],
-        wallets: [],
-      };
+        password: formData.password,
+      });
+      // Navigation will happen automatically via AuthContext
+    } catch (error: any) {
+      let errorMessage = 'Đăng nhập thất bại. Vui lòng thử lại.';
       
-      // Login successful - navigate to main app
-      login(mockUser);
-    } catch (error) {
-      Alert.alert('Lỗi', 'Đăng nhập thất bại. Vui lòng thử lại.');
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      Alert.alert('Lỗi đăng nhập', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -98,12 +78,10 @@ const LoginScreen: React.FC = () => {
 
   const handleRegister = () => {
     // TODO: Navigate to register screen
-    console.log('Navigate to register');
   };
 
   const handleForgotPassword = () => {
     // TODO: Navigate to forgot password screen
-    console.log('Navigate to forgot password');
   };
 
   return (

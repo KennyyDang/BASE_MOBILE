@@ -8,17 +8,43 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING } from '../../constants';
+
+// Inline constants
+const COLORS = {
+  PRIMARY: '#2E7D32',
+  BACKGROUND: '#F5F5F5',
+  SURFACE: '#FFFFFF',
+  TEXT_PRIMARY: '#212121',
+  TEXT_SECONDARY: '#757575',
+  BORDER: '#E0E0E0',
+  ACCENT: '#2196F3',
+  SHADOW: '#000000',
+};
+
+const SPACING = {
+  XS: 4,
+  SM: 8,
+  MD: 16,
+  LG: 24,
+  XL: 32,
+};
+
+const FONTS = {
+  SIZES: {
+    XS: 12,
+    SM: 14,
+    MD: 16,
+    LG: 18,
+    XL: 20,
+    XXL: 24,
+  },
+};
 
 const ScheduleScreen: React.FC = () => {
-  const handleClassPress = (classId: string) => {
-    console.log('Navigate to class details:', classId);
-    // TODO: Navigate to class details screen
+  const handleClassPress = (classId: string) => {// TODO: Navigate to class details screen
   };
 
-  const handleRegisterClass = () => {
-    console.log('Navigate to register class');
-    // TODO: Navigate to register class screen
+  const handleRegisterClass = () => {// TODO: Navigate to register class screen
   };
 
   return (
