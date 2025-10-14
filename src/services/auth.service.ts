@@ -21,7 +21,8 @@ const authService = {
    */
   login: async (credentials: LoginRequest): Promise<{ token: string; user: UserInfo }> => {
     try {
-      const response = await axiosInstance.post<LoginResponse>('/Auth/login', credentials);
+      // Endpoint from Swagger: POST /api/auth/login
+      const response = await axiosInstance.post<LoginResponse>('/api/auth/login', credentials);
       
       if (response.data.token) {
         const token = response.data.token;
@@ -30,14 +31,38 @@ const authService = {
         await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
         
         // Decode JWT to extract user info
-        const decoded = jwtDecode<DecodedJWT>(token);
-        
+        const decoded = jwtDecode<DecodedJWT & Record<string, any>>(token);
+
+        // Try to read role from multiple common claim keys
+        const rawRole = (
+          decoded[JWT_CLAIMS.ROLE] ||
+          decoded['role'] ||
+          decoded['roles'] ||
+          decoded['Role'] ||
+          decoded['Roles'] ||
+          null
+        );
+
+        const normalizeRole = (val: any): string | null => {
+          if (!val) return null;
+          if (Array.isArray(val)) {
+            const first = val[0];
+            return typeof first === 'string' ? first.toUpperCase().trim() : String(first).toUpperCase().trim();
+          }
+          return typeof val === 'string' ? val.toUpperCase().trim() : String(val).toUpperCase().trim();
+        };
+
+        const normalizedRole = normalizeRole(rawRole);
+
         // Extract user info from JWT claims
         const userInfo: UserInfo = {
-          id: decoded[JWT_CLAIMS.USER_ID],
-          email: decoded[JWT_CLAIMS.EMAIL],
-          role: decoded[JWT_CLAIMS.ROLE] || 'User',
+          id: decoded[JWT_CLAIMS.USER_ID] || decoded['sub'] || decoded['userId'] || '',
+          email: decoded[JWT_CLAIMS.EMAIL] || decoded['email'] || '',
+          role: normalizedRole || 'USER',
         };
+
+        // Temporarily allow all roles to sign in (manager, admin, etc.)
+        // NOTE: Add role enforcement later when backend issues roles for parents.
         
         // Save user info to AsyncStorage
         await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userInfo));

@@ -8,68 +8,45 @@ export const STORAGE_KEYS = {
   USER: '@base_user',
 } as const;
 
-/**
- * Create axios instance with base configuration
- */
+// Prefer env; fallback to local dev IP. Do NOT append /api here; endpoints should include their full path.
+const DEV_BASE_URL = 'http://192.168.2.7:5160';
+
+// Create axios instance with base configuration
 const axiosInstance: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL || 'http://localhost:5000/api',
-  timeout: 30000, // 30 seconds
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: (API_BASE_URL && API_BASE_URL.trim()) || DEV_BASE_URL,
+  timeout: 30000,
+  headers: { 'Content-Type': 'application/json' },
 });
 
-/**
- * Request interceptor - Add token to requests
- */
+// Request interceptor - attach Bearer token
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     try {
-      // Get token from AsyncStorage
       const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-      
       if (token && config.headers) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }return config;
-    } catch (error) {return config;
+        (config.headers as any).Authorization = `Bearer ${token}`;
+      }
+      return config;
+    } catch {
+      return config;
     }
   },
-  (error: AxiosError) => {return Promise.reject(error);
-  }
+  (error: AxiosError) => Promise.reject(error)
 );
 
-/**
- * Response interceptor - Handle errors globally
- */
+// Response interceptor - handle 401 globally
 axiosInstance.interceptors.response.use(
-  (response: AxiosResponse) => {return response;
-  },
+  (response: AxiosResponse) => response,
   async (error: AxiosError) => {
     if (error.response) {
-      const { status, data } = error.response;// Handle different error status codes
-      switch (status) {
-        case 401:
-          // Unauthorized - clear token and user dataawait AsyncStorage.multiRemove([
-            STORAGE_KEYS.ACCESS_TOKEN,
-            STORAGE_KEYS.USER,
-          ]);
-          // Note: Navigation to login screen should be handled in the component/context
-          break;
-        
-        case 403:
-          // Forbiddenbreak;
-        
-        case 404:
-          // Not foundbreak;
-        
-        case 500:
-          // Server errorbreak;
-        
-        default:}
-    } else if (error.request) {
-      // Request was made but no response received} else {
-      // Something else happened}
-    
+      const { status } = error.response;
+      if (status === 401) {
+        await AsyncStorage.multiRemove([
+          STORAGE_KEYS.ACCESS_TOKEN,
+          STORAGE_KEYS.USER,
+        ]);
+      }
+    }
     return Promise.reject(error);
   }
 );
