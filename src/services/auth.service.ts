@@ -21,14 +21,18 @@ const authService = {
    */
   login: async (credentials: LoginRequest): Promise<{ token: string; user: UserInfo }> => {
     try {
-      // Endpoint from Swagger: POST /api/auth/login
-      const response = await axiosInstance.post<LoginResponse>('/api/auth/login', credentials);
+      // Endpoint from Swagger: POST /api/Auth/login
+      const response = await axiosInstance.post<LoginResponse>('/api/Auth/login', credentials);
       
-      if (response.data.token) {
-        const token = response.data.token;
+      if (response.data.access_token) {
+        const token = response.data.access_token;
+        const refreshToken = response.data.refresh_token;
         
-        // Save token to AsyncStorage
+        // Save tokens to AsyncStorage
         await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+        if (refreshToken) {
+          await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+        }
         
         // Decode JWT to extract user info
         const decoded = jwtDecode<DecodedJWT & Record<string, any>>(token);
@@ -61,8 +65,14 @@ const authService = {
           role: normalizedRole || 'USER',
         };
 
-        // Temporarily allow all roles to sign in (manager, admin, etc.)
-        // NOTE: Add role enforcement later when backend issues roles for parents.
+        // Only allow parents to sign in
+        // Note: In this system, parents have role "User"
+        const roleStr = (userInfo.role || '').toUpperCase();
+        const isParent = roleStr === 'USER' || roleStr === 'PARENT' || roleStr.includes('PARENT');
+        if (!isParent) {
+          await AsyncStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+          throw new Error('Chỉ phụ huynh mới được phép đăng nhập vào ứng dụng này.');
+        }
         
         // Save user info to AsyncStorage
         await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userInfo));
@@ -72,7 +82,47 @@ const authService = {
       
       throw new Error('No token received from server');
     } catch (error: any) {
+      
       throw error.response?.data || error.message || 'Login failed';
+    }
+  },
+
+  /**
+   * Refresh access token using refresh token
+   * @returns New access token
+   */
+  refreshToken: async (): Promise<string> => {
+    try {
+      const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+      if (!refreshToken) {
+        throw new Error('No refresh token available');
+      }
+
+      const response = await axiosInstance.post('/api/Auth/refresh', {
+        refreshToken: refreshToken
+      });
+
+      if (response.data.access_token) {
+        const newToken = response.data.access_token;
+        await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newToken);
+        
+        // Update refresh token if provided
+        if (response.data.refresh_token) {
+          await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.data.refresh_token);
+        }
+        
+        return newToken;
+      }
+      
+      throw new Error('No token received from refresh endpoint');
+    } catch (error: any) {
+      // If refresh fails, clear all tokens
+      await AsyncStorage.multiRemove([
+        STORAGE_KEYS.ACCESS_TOKEN,
+        STORAGE_KEYS.REFRESH_TOKEN,
+        STORAGE_KEYS.USER,
+      ]);
+      throw error;
     }
   },
 
@@ -85,6 +135,7 @@ const authService = {
       // Clear all auth data from AsyncStorage
       await AsyncStorage.multiRemove([
         STORAGE_KEYS.ACCESS_TOKEN,
+        STORAGE_KEYS.REFRESH_TOKEN,
         STORAGE_KEYS.USER,
       ]);
     } catch (error) {

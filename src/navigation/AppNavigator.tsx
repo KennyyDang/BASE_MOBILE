@@ -144,7 +144,7 @@ const MainTabNavigator = () => {
 
 // Root Navigator
 const AppNavigator = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   return (
     <PaperProvider theme={theme}>
