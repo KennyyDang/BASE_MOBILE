@@ -13,15 +13,21 @@ const COLORS = {
   TEXT_SECONDARY: '#757575',
   BORDER: '#E0E0E0',
   ERROR: '#F44336',
+  BACKGROUND: '#F5F5F5',
+  SHADOW: '#000000',
 };
 
 const SPACING = {
+  XS: 4,
+  SM: 8,
   MD: 16,
   LG: 24,
+  XL: 32,
 };
 
 const FONTS = {
   SIZES: {
+    SM: 14,
     MD: 16,
     LG: 18,
   },

@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, Alert, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Alert, ScrollView, SafeAreaView, TouchableOpacity, RefreshControl } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { useParentProfile } from '../../hooks/useParentProfile';
 
 // Inline constants
 const COLORS = {
@@ -32,6 +33,7 @@ const FONTS = {
 
 const ProfileScreen: React.FC = () => {
   const { user, logout } = useAuth();
+  const { parents, loading, error, refetch } = useParentProfile();
 
   const handleEditProfile = () => {
     Alert.alert('Chỉnh sửa hồ sơ', 'Tính năng đang được phát triển');
@@ -75,7 +77,12 @@ const ProfileScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={refetch} />
+        }
+      >
         {/* User Info Card */}
         <View style={styles.userCard}>
           <View style={styles.avatarContainer}>
@@ -84,6 +91,65 @@ const ProfileScreen: React.FC = () => {
           <Text style={styles.userName}>{user.email}</Text>
           <Text style={styles.userRole}>{user.role}</Text>
           <Text style={styles.userId}>ID: {user.id}</Text>
+        </View>
+
+        {/* Parent Profile Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Thông tin phụ huynh</Text>
+          
+          {error && (
+            <View style={styles.errorContainer}>
+              <MaterialIcons name="error" size={20} color={COLORS.ERROR} />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+          
+          {parents.length > 0 ? (
+            parents.map((parent, index) => (
+              <View key={parent.id} style={styles.parentCard}>
+                <View style={styles.parentHeader}>
+                  <MaterialIcons name="person" size={24} color={COLORS.PRIMARY} />
+                  <Text style={styles.parentName}>{parent.parentName}</Text>
+                </View>
+                
+                <View style={styles.parentInfo}>
+                  <View style={styles.infoRow}>
+                    <MaterialIcons name="email" size={16} color={COLORS.TEXT_SECONDARY} />
+                    <Text style={styles.infoText}>{parent.email}</Text>
+                  </View>
+                  
+                  <View style={styles.infoRow}>
+                    <MaterialIcons name="phone" size={16} color={COLORS.TEXT_SECONDARY} />
+                    <Text style={styles.infoText}>{parent.phone}</Text>
+                  </View>
+                  
+                  <View style={styles.infoRow}>
+                    <MaterialIcons name="location-on" size={16} color={COLORS.TEXT_SECONDARY} />
+                    <Text style={styles.infoText}>{parent.address}</Text>
+                  </View>
+                  
+                  <View style={styles.infoRow}>
+                    <MaterialIcons name="family-restroom" size={16} color={COLORS.TEXT_SECONDARY} />
+                    <Text style={styles.infoText}>{parent.relationshipToStudent}</Text>
+                  </View>
+                  
+                  {parent.note && (
+                    <View style={styles.infoRow}>
+                      <MaterialIcons name="note" size={16} color={COLORS.TEXT_SECONDARY} />
+                      <Text style={styles.infoText}>{parent.note}</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            ))
+          ) : (
+            !loading && (
+              <View style={styles.emptyContainer}>
+                <MaterialIcons name="person-off" size={48} color={COLORS.TEXT_SECONDARY} />
+                <Text style={styles.emptyText}>Chưa có thông tin phụ huynh</Text>
+              </View>
+            )
+          )}
         </View>
 
         {/* Menu Items */}
@@ -173,6 +239,72 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     color: COLORS.TEXT_PRIMARY,
     marginLeft: SPACING.MD,
+  },
+  section: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 16,
+    padding: SPACING.MD,
+    marginBottom: SPACING.LG,
+  },
+  sectionTitle: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.MD,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    padding: SPACING.SM,
+    borderRadius: 8,
+    marginBottom: SPACING.MD,
+  },
+  errorText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.ERROR,
+    marginLeft: SPACING.SM,
+    flex: 1,
+  },
+  parentCard: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    marginBottom: SPACING.MD,
+  },
+  parentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  parentName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    marginLeft: SPACING.SM,
+  },
+  parentInfo: {
+    paddingLeft: 32,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  infoText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginLeft: SPACING.SM,
+    flex: 1,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    padding: SPACING.LG,
+  },
+  emptyText: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.SM,
   },
 });
 

@@ -6,9 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
+  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 // Inline constants
 const COLORS = {
@@ -48,8 +50,39 @@ const FONTS = {
 
 const DashboardScreen: React.FC = () => {
   const { logout } = useAuth();
+  const navigation = useNavigation();
   
-  const handleQuickAction = (action: string) => {// TODO: Implement navigation to respective screens
+  const handleQuickAction = (action: string) => {
+    switch (action) {
+      case 'schedule':
+        navigation.navigate('Schedule' as never);
+        break;
+      case 'wallet':
+        navigation.navigate('Wallet' as never);
+        break;
+      case 'children':
+        navigation.navigate('Children' as never);
+        break;
+      case 'notifications':
+        Alert.alert(
+          'Thông báo',
+          'Tính năng đang được phát triển.\nSẽ có sớm trong phiên bản tiếp theo.',
+          [{ text: 'Đóng', style: 'default' }]
+        );
+        break;
+      case 'profile':
+        navigation.navigate('Profile' as never);
+        break;
+      case 'help':
+        Alert.alert(
+          'Hỗ trợ',
+          'Liên hệ hỗ trợ:\n\n📧 Email: support@brighway.edu.vn\n📞 Hotline: 1900-xxxx\n\nHoặc đến trực tiếp trung tâm để được hỗ trợ.',
+          [{ text: 'Đóng', style: 'default' }]
+        );
+        break;
+      default:
+        console.log('Unknown action:', action);
+    }
   };
 
   const handleLogout = () => {
@@ -118,9 +151,17 @@ const DashboardScreen: React.FC = () => {
             
             <TouchableOpacity 
               style={styles.quickActionCard}
+              onPress={() => handleQuickAction('profile')}
+            >
+              <MaterialIcons name="person" size={32} color={COLORS.ACCENT} />
+              <Text style={styles.quickActionText}>Hồ sơ cá nhân</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.quickActionCard}
               onPress={() => handleQuickAction('children')}
             >
-              <MaterialIcons name="child-care" size={32} color={COLORS.ACCENT} />
+              <MaterialIcons name="child-care" size={32} color={COLORS.WARNING} />
               <Text style={styles.quickActionText}>Quản lý con</Text>
             </TouchableOpacity>
             
@@ -128,8 +169,16 @@ const DashboardScreen: React.FC = () => {
               style={styles.quickActionCard}
               onPress={() => handleQuickAction('notifications')}
             >
-              <MaterialIcons name="notifications" size={32} color={COLORS.WARNING} />
+              <MaterialIcons name="notifications" size={32} color={COLORS.ERROR} />
               <Text style={styles.quickActionText}>Thông báo</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.quickActionCard}
+              onPress={() => handleQuickAction('help')}
+            >
+              <MaterialIcons name="help" size={32} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.quickActionText}>Hỗ trợ</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -138,7 +187,10 @@ const DashboardScreen: React.FC = () => {
         <View style={styles.upcomingClassesContainer}>
           <Text style={styles.sectionTitle}>Lớp học sắp tới</Text>
           
-          <View style={styles.classCard}>
+          <TouchableOpacity 
+            style={styles.classCard}
+            onPress={() => handleQuickAction('schedule')}
+          >
             <View style={styles.classInfo}>
               <Text style={styles.className}>Toán học - Lớp 5</Text>
               <Text style={styles.classTime}>14:00 - 15:30</Text>
@@ -147,9 +199,12 @@ const DashboardScreen: React.FC = () => {
             <View style={styles.classStatus}>
               <Text style={styles.classStatusText}>Sắp bắt đầu</Text>
             </View>
-          </View>
+          </TouchableOpacity>
           
-          <View style={styles.classCard}>
+          <TouchableOpacity 
+            style={styles.classCard}
+            onPress={() => handleQuickAction('schedule')}
+          >
             <View style={styles.classInfo}>
               <Text style={styles.className}>Tiếng Anh - Giao tiếp</Text>
               <Text style={styles.classTime}>16:00 - 17:00</Text>
@@ -158,30 +213,36 @@ const DashboardScreen: React.FC = () => {
             <View style={styles.classStatus}>
               <Text style={styles.classStatusText}>Đã đăng ký</Text>
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Recent Transactions */}
         <View style={styles.recentTransactionsContainer}>
           <Text style={styles.sectionTitle}>Giao dịch gần đây</Text>
           
-          <View style={styles.transactionCard}>
+          <TouchableOpacity 
+            style={styles.transactionCard}
+            onPress={() => handleQuickAction('wallet')}
+          >
             <MaterialIcons name="add-circle" size={24} color={COLORS.SUCCESS} />
             <View style={styles.transactionInfo}>
               <Text style={styles.transactionDescription}>Nạp tiền vào ví chính</Text>
               <Text style={styles.transactionTime}>2 giờ trước</Text>
             </View>
             <Text style={styles.transactionAmount}>+500,000 VNĐ</Text>
-          </View>
+          </TouchableOpacity>
           
-          <View style={styles.transactionCard}>
+          <TouchableOpacity 
+            style={styles.transactionCard}
+            onPress={() => handleQuickAction('wallet')}
+          >
             <MaterialIcons name="remove-circle" size={24} color={COLORS.SECONDARY} />
             <View style={styles.transactionInfo}>
               <Text style={styles.transactionDescription}>Mua đồ ăn vặt</Text>
               <Text style={styles.transactionTime}>1 ngày trước</Text>
             </View>
             <Text style={styles.transactionAmount}>-25,000 VNĐ</Text>
-          </View>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -284,7 +345,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: SPACING.MD,
     alignItems: 'center',
-    width: '48%',
+    width: '31%',
     marginBottom: SPACING.MD,
     shadowColor: COLORS.SHADOW,
     shadowOffset: {

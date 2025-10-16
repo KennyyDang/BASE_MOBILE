@@ -235,12 +235,14 @@ export interface PaginatedResponse<T> {
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
+  TopUp: undefined;
 };
 
 export type MainTabParamList = {
   Dashboard: undefined;
   Schedule: undefined;
   Wallet: undefined;
+  Children: undefined;
   Profile: undefined;
 };
 

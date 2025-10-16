@@ -9,15 +9,19 @@ const COLORS = {
   PRIMARY: '#2E7D32',
   TEXT_PRIMARY: '#212121',
   TEXT_SECONDARY: '#757575',
+  BACKGROUND: '#F5F5F5',
+  SHADOW: '#000000',
 };
 
 const SPACING = {
+  SM: 8,
   MD: 16,
   LG: 24,
 };
 
 const FONTS = {
   SIZES: {
+    SM: 14,
     LG: 18,
     XL: 20,
     XXL: 24,

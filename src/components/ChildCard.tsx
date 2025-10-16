@@ -10,15 +10,20 @@ const COLORS = {
   TEXT_PRIMARY: '#212121',
   TEXT_SECONDARY: '#757575',
   BORDER: '#E0E0E0',
+  ACCENT: '#2196F3',
+  BACKGROUND: '#F5F5F5',
+  SHADOW: '#000000',
 };
 
 const SPACING = {
+  SM: 8,
   MD: 16,
   LG: 24,
 };
 
 const FONTS = {
   SIZES: {
+    XS: 12,
     SM: 14,
     MD: 16,
     LG: 18,

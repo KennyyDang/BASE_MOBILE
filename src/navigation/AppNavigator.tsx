@@ -49,6 +49,8 @@ import DashboardScreen from '../screens/main/DashboardScreen';
 import ScheduleScreen from '../screens/main/ScheduleScreen';
 import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
+import ChildrenManagementScreen from '../screens/main/ChildrenManagementScreen';
+import TopUpScreen from '../screens/main/TopUpScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -70,6 +72,9 @@ const MainTabNavigator = () => {
               break;
             case 'Wallet':
               iconName = 'account-balance-wallet';
+              break;
+            case 'Children':
+              iconName = 'child-care';
               break;
             case 'Profile':
               iconName = 'person';
@@ -128,6 +133,14 @@ const MainTabNavigator = () => {
         options={{
           title: 'Ví tiền',
           headerTitle: 'Ví tiền',
+        }}
+      />
+      <Tab.Screen 
+        name="Children" 
+        component={ChildrenManagementScreen}
+        options={{
+          title: 'Quản lý con',
+          headerTitle: 'Quản lý con',
         }}
       />
       <Tab.Screen 
@@ -196,14 +209,24 @@ const AppNavigator = () => {
             }}
           />
         ) : (
-          // Main App Stack
-          <Stack.Screen 
-            name="Main" 
-            component={MainTabNavigator}
-            options={{
-              headerShown: false,
-            }}
-          />
+          <>
+            {/* Main App Stack */}
+            <Stack.Screen 
+              name="Main" 
+              component={MainTabNavigator}
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="TopUp" 
+              component={TopUpScreen}
+              options={{
+                title: 'Nạp tiền',
+                headerTitle: 'Nạp tiền',
+              }}
+            />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>

@@ -8,6 +8,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 
 // Inline constants
 const COLORS = {
@@ -50,12 +51,15 @@ const WALLET_TYPES = {
 };
 
 const WalletScreen: React.FC = () => {
+  const navigation = useNavigation();
+
   const handleWalletPress = (walletType: string) => {
     // TODO: Navigate to specific wallet screen
   };
 
   const handleTopUp = (walletType: string) => {
-    // TODO: Navigate to top up screen
+    // Navigate to TopUp screen
+    navigation.navigate('TopUp' as never);
   };
 
   const handleTransactionHistory = () => {
