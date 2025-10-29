@@ -50,3 +50,84 @@ export interface ApiResponse<T = any> {
   success: boolean;
 }
 
+// Wallet API Response
+export interface CurrentUserWalletResponse {
+  id: string;
+  type: string; // "Main" | "Allowance"
+  balance: number;
+  userId: string;
+  userEmail: string;
+  studentId: string;
+  studentName: string | null;
+  createdTime: string;
+}
+
+// Paginated Response
+export interface PaginatedResponse<T> {
+  items: T[];
+  pageIndex: number;
+  totalPages: number;
+  totalCount: number;
+  pageSize: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
+// Student API Response
+export interface StudentResponse {
+  id: string;
+  name: string;
+  age: number;
+  dateOfBirth: string;
+  image: string;
+  note: string;
+  status: boolean;
+  userId: string;
+  userName: string;
+  branchId: string;
+  branchName: string | null;
+  schoolId: string;
+  schoolName: string;
+  studentLevelId: string;
+  studentLevelName: string;
+  createdTime: string;
+}
+
+// Student Wallet Response
+export interface StudentWalletResponse {
+  id: string;
+  type: string;
+  balance: number;
+  userId: string;
+  userEmail: string | null;
+  studentId: string;
+  studentName: string | null;
+  createdTime: string;
+}
+
+// Deposit API Response
+export interface DepositCreateRequest {
+  amount: number;
+}
+
+export interface DepositCreateResponse {
+  depositId: string;
+  checkoutUrl: string;
+  qrCodeUrl: string;
+  status: string;
+  orderCode: number;
+  amount: number;
+}
+
+// Transfer Smart API
+export interface TransferSmartRequest {
+  toStudentId: string;
+  amount: number;
+  note?: string;
+}
+
+export interface TransferSmartResponse {
+  success: boolean;
+  message: string;
+}
+

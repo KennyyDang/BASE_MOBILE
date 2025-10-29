@@ -1,5 +1,6 @@
 // Hooks Index - Export all custom hooks
 export { useApi, usePaginatedApi } from './useApi';
-export { useWalletBalance, useTransactionHistory, useWalletStats, useTopUpWallet } from './useWalletApi';
+export { useCurrentUserWallet, useWalletBalance, useTransactionHistory, useWalletStats, useTopUpWallet, useStudentWallets } from './useWalletApi';
 export { usePayOSPayment, usePaymentHistory } from './usePayOSPayment';
 export { useParentProfile } from './useParentProfile';
+export { useCurrentUserStudents } from './useChildrenApi';

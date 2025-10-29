@@ -9,10 +9,7 @@ import {
   JWT_CLAIMS 
 } from '../types/api';
 
-/**
- * Authentication Service
- * Handles all authentication-related API calls
- */
+
 const authService = {
   /**
    * Login user
@@ -24,66 +21,133 @@ const authService = {
       // Endpoint from Swagger: POST /api/Auth/login
       const response = await axiosInstance.post<LoginResponse>('/api/Auth/login', credentials);
       
-      if (response.data.access_token) {
-        const token = response.data.access_token;
-        const refreshToken = response.data.refresh_token;
-        
-        // Save tokens to AsyncStorage
-        await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
-        if (refreshToken) {
-          await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-        }
-        
-        // Decode JWT to extract user info
-        const decoded = jwtDecode<DecodedJWT & Record<string, any>>(token);
-
-        // Try to read role from multiple common claim keys
-        const rawRole = (
-          decoded[JWT_CLAIMS.ROLE] ||
-          decoded['role'] ||
-          decoded['roles'] ||
-          decoded['Role'] ||
-          decoded['Roles'] ||
-          null
-        );
-
-        const normalizeRole = (val: any): string | null => {
-          if (!val) return null;
-          if (Array.isArray(val)) {
-            const first = val[0];
-            return typeof first === 'string' ? first.toUpperCase().trim() : String(first).toUpperCase().trim();
-          }
-          return typeof val === 'string' ? val.toUpperCase().trim() : String(val).toUpperCase().trim();
-        };
-
-        const normalizedRole = normalizeRole(rawRole);
-
-        // Extract user info from JWT claims
-        const userInfo: UserInfo = {
-          id: decoded[JWT_CLAIMS.USER_ID] || decoded['sub'] || decoded['userId'] || '',
-          email: decoded[JWT_CLAIMS.EMAIL] || decoded['email'] || '',
-          role: normalizedRole || 'USER',
-        };
-
-        // Only allow parents to sign in
-        // Note: In this system, parents have role "User"
-        const roleStr = (userInfo.role || '').toUpperCase();
-        const isParent = roleStr === 'USER' || roleStr === 'PARENT' || roleStr.includes('PARENT');
-        if (!isParent) {
-          await AsyncStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-          throw new Error('Chỉ phụ huynh mới được phép đăng nhập vào ứng dụng này.');
-        }
-        
-        // Save user info to AsyncStorage
-        await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userInfo));
-        
-        return { token, user: userInfo };
+      // Check if response has the expected structure
+      if (!response.data) {
+        throw new Error('Server không trả về dữ liệu. Vui lòng thử lại.');
       }
       
-      throw new Error('No token received from server');
-    } catch (error: any) {
+      if (!response.data.access_token) {
+        throw new Error('Không nhận được token từ server. Vui lòng kiểm tra lại.');
+      }
       
-      throw error.response?.data || error.message || 'Login failed';
+      const token = response.data.access_token;
+      const refreshToken = response.data.refresh_token;
+      
+      // Save tokens to AsyncStorage
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+      if (refreshToken) {
+        await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+      }
+      
+      // Decode JWT to extract user info
+      let decoded: any;
+      try {
+        decoded = jwtDecode<DecodedJWT & Record<string, any>>(token);
+      } catch (decodeError) {
+        // Clear tokens if JWT is invalid
+        await AsyncStorage.multiRemove([
+          STORAGE_KEYS.ACCESS_TOKEN,
+          STORAGE_KEYS.REFRESH_TOKEN,
+        ]);
+        throw new Error('Token không hợp lệ. Vui lòng thử lại.');
+      }
+
+      // Try to read role from multiple common claim keys
+      const rawRole = (
+        decoded[JWT_CLAIMS.ROLE] ||
+        decoded['role'] ||
+        decoded['roles'] ||
+        decoded['Role'] ||
+        decoded['Roles'] ||
+        null
+      );
+
+      const normalizeRole = (val: any): string | null => {
+        if (!val) return null;
+        if (Array.isArray(val)) {
+          const first = val[0];
+          return typeof first === 'string' ? first.toUpperCase().trim() : String(first).toUpperCase().trim();
+        }
+        return typeof val === 'string' ? val.toUpperCase().trim() : String(val).toUpperCase().trim();
+      };
+
+      const normalizedRole = normalizeRole(rawRole);
+
+      // Extract user info from JWT claims
+      // Backend API requires "sub" claim = userId (Guid) according to Swagger docs
+      const userId = decoded[JWT_CLAIMS.USER_ID] || decoded['sub'] || decoded['userId'] || '';
+      
+      if (!userId) {
+        await AsyncStorage.multiRemove([
+          STORAGE_KEYS.ACCESS_TOKEN,
+          STORAGE_KEYS.REFRESH_TOKEN,
+        ]);
+        throw new Error('Token không chứa thông tin người dùng. Vui lòng thử lại.');
+      }
+      
+      const userInfo: UserInfo = {
+        id: userId,
+        email: decoded[JWT_CLAIMS.EMAIL] || decoded['email'] || '',
+        role: normalizedRole || 'USER',
+      };
+
+      // Only allow parents to sign in
+      // Note: In this system, parents have role "User"
+      const roleStr = (userInfo.role || '').toUpperCase();
+      const isParent = roleStr === 'USER' || roleStr === 'PARENT' || roleStr.includes('PARENT');
+      if (!isParent) {
+        await AsyncStorage.multiRemove([
+          STORAGE_KEYS.ACCESS_TOKEN,
+          STORAGE_KEYS.REFRESH_TOKEN,
+        ]);
+        throw new Error('Chỉ phụ huynh mới được phép đăng nhập vào ứng dụng này.');
+      }
+      
+      // Save user info to AsyncStorage
+      await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userInfo));
+      
+      return { token, user: userInfo };
+    } catch (error: any) {
+      // Extract error message from different possible structures
+      let errorMessage = 'Đăng nhập thất bại. Vui lòng thử lại.';
+      
+      if (error.response) {
+        // Server responded with error status
+        const errorData = error.response.data;
+        
+        if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData?.message) {
+          errorMessage = errorData.message;
+        } else if (errorData?.error) {
+          errorMessage = errorData.error;
+        } else if (errorData?.title) {
+          errorMessage = errorData.title;
+        } else if (Array.isArray(errorData?.errors)) {
+          // Handle validation errors array
+          const errors = errorData.errors.map((e: any) => {
+            if (typeof e === 'string') return e;
+            return Object.values(e).join(', ');
+          }).join('\n');
+          errorMessage = errors || errorMessage;
+        }
+        
+        // Add status code context
+        if (error.response.status === 401) {
+          errorMessage = 'Email hoặc mật khẩu không đúng.';
+        } else if (error.response.status === 400) {
+          errorMessage = errorMessage || 'Thông tin đăng nhập không hợp lệ.';
+        } else if (error.response.status >= 500) {
+          errorMessage = 'Lỗi server. Vui lòng thử lại sau.';
+        }
+      } else if (error.request) {
+        // Request was made but no response received
+        errorMessage = 'Không thể kết nối đến server. Vui lòng kiểm tra:\n- Kết nối mạng\n- Backend đang chạy\n- Địa chỉ IP đúng';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
     }
   },
 

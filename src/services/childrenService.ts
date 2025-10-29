@@ -1,7 +1,7 @@
 // Children Management Service
-import { apiClient } from './apiClient';
+import axiosInstance from '../config/axios.config';
 import { API_ENDPOINTS } from '../constants';
-import { Child, ChildForm, ApiResponse } from '../types';
+import { PaginatedResponse, StudentResponse } from '../types/api';
 
 class ChildrenService {
   // Get all children
@@ -44,7 +44,7 @@ class ChildrenService {
     childId: string,
     startDate?: string,
     endDate?: string
-  ): Promise<ApiResponse<any[]>> {
+  ): Promise<any> {
     const params = new URLSearchParams();
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
@@ -52,7 +52,36 @@ class ChildrenService {
     const queryString = params.toString();
     const url = `${API_ENDPOINTS.CHILDREN}/${childId}/attendance${queryString ? `?${queryString}` : ''}`;
     
-    return await apiClient.get(url);
+    const response = await axiosInstance.get(url);
+    return response.data;
+  }
+
+  // Get current user's students (paginated)
+  /**
+   * Get paginated list of students for current user
+   * Endpoint: GET /api/Student/paged/current-user?pageIndex={pageIndex}&pageSize={pageSize}
+   * @param pageIndex Page number (1-based)
+   * @param pageSize Number of items per page
+   * @returns Paginated response with student items
+   */
+  async getCurrentUserStudents(
+    pageIndex: number = 1,
+    pageSize: number = 10
+  ): Promise<PaginatedResponse<StudentResponse>> {
+    try {
+      const response = await axiosInstance.get<PaginatedResponse<StudentResponse>>(
+        API_ENDPOINTS.STUDENT_PAGED_CURRENT_USER,
+        {
+          params: {
+            pageIndex,
+            pageSize,
+          },
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch students';
+    }
   }
 }
 

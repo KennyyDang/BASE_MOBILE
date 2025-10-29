@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
+import { useCurrentUserWallet, useStudentWallets } from '../../hooks/useWalletApi';
 
 // Inline constants
 const COLORS = {
@@ -51,6 +53,16 @@ const FONTS = {
 const DashboardScreen: React.FC = () => {
   const { logout } = useAuth();
   const navigation = useNavigation();
+  const { data: walletData, loading: walletLoading } = useCurrentUserWallet();
+  const { data: studentWallets, loading: studentWalletsLoading } = useStudentWallets();
+  
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+    }).format(amount);
+  };
   
   const handleQuickAction = (action: string) => {
     switch (action) {
@@ -81,7 +93,7 @@ const DashboardScreen: React.FC = () => {
         );
         break;
       default:
-        console.log('Unknown action:', action);
+        break;
     }
   };
 
@@ -116,15 +128,43 @@ const DashboardScreen: React.FC = () => {
           </View>
           
           <View style={styles.statCard}>
-            <MaterialIcons name="account-balance-wallet" size={24} color={COLORS.SECONDARY} />
-            <Text style={styles.statNumber}>250,000</Text>
-            <Text style={styles.statLabel}>VNĐ trong ví chính</Text>
+            <MaterialIcons 
+              name={walletData?.type?.toLowerCase() === 'main' ? "account-balance-wallet" : "child-care"} 
+              size={24} 
+              color={walletData?.type?.toLowerCase() === 'main' ? COLORS.SECONDARY : COLORS.ACCENT} 
+            />
+            {walletLoading ? (
+              <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
+            ) : (
+              <Text style={styles.statNumber}>
+                {walletData ? walletData.balance.toLocaleString('vi-VN') : '0'}
+              </Text>
+            )}
+            <Text style={styles.statLabel}>
+              {walletData?.type?.toLowerCase() === 'main' 
+                ? 'VNĐ trong ví chính'
+                : walletData?.type?.toLowerCase() === 'allowance'
+                ? 'VNĐ ví tiêu vặt'
+                : 'VNĐ'}
+            </Text>
           </View>
           
           <View style={styles.statCard}>
-            <MaterialIcons name="child-care" size={24} color={COLORS.ACCENT} />
-            <Text style={styles.statNumber}>50,000</Text>
-            <Text style={styles.statLabel}>VNĐ ví tiêu vặt</Text>
+            <MaterialIcons name="child-care" size={24} color={COLORS.SECONDARY} />
+            {studentWalletsLoading ? (
+              <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
+            ) : (
+              <Text style={styles.statNumber}>
+                {studentWallets && studentWallets.length > 0 
+                  ? studentWallets.reduce((total, wallet) => total + wallet.balance, 0).toLocaleString('vi-VN')
+                  : '0'}
+              </Text>
+            )}
+            <Text style={styles.statLabel}>
+              {studentWallets && studentWallets.length > 0 
+                ? 'VNĐ ví của con'
+                : 'Chưa có ví con'}
+            </Text>
           </View>
         </View>
 

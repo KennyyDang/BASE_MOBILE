@@ -9,7 +9,7 @@ export const STORAGE_KEYS = {
 } as const;
 
 // Development configuration
-const DEV_BASE_URL = 'http://192.168.2.7:5160'; // Use your machine's IP for mobile testing
+const DEV_BASE_URL = 'http://192.168.2.5:5160'; // Use your machine's IP for mobile testing
 // Alternative: 'http://localhost:5160' for web testing
 
 // Create axios instance with base configuration

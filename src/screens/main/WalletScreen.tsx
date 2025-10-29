@@ -6,9 +6,15 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useCurrentUserWallet, useStudentWallets } from '../../hooks/useWalletApi';
+import { walletService } from '../../services/walletService';
+import { TransferSmartRequest } from '../../types/api';
 
 // Inline constants
 const COLORS = {
@@ -21,6 +27,7 @@ const COLORS = {
   BORDER: '#E0E0E0',
   SUCCESS: '#4CAF50',
   WARNING: '#FF9800',
+  ERROR: '#F44336',
   ACCENT: '#2196F3',
   SHADOW: '#000000',
 };
@@ -52,58 +59,195 @@ const WALLET_TYPES = {
 
 const WalletScreen: React.FC = () => {
   const navigation = useNavigation();
+  const { data: walletData, loading, error, refetch } = useCurrentUserWallet();
+  const { data: studentWallets, loading: studentWalletsLoading, error: studentWalletsError, refetch: refetchStudentWallets } = useStudentWallets();
+
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+    }).format(amount);
+  };
+
+  // Get wallet type display text
+  const getWalletTypeText = (type: string) => {
+    if (type?.toLowerCase() === 'main') return 'Ví chính';
+    if (type?.toLowerCase() === 'allowance') return 'Ví tiêu vặt';
+    return type || 'Ví';
+  };
 
   const handleWalletPress = (walletType: string) => {
     // TODO: Navigate to specific wallet screen
   };
 
   const handleTopUp = (walletType: string) => {
-    // Navigate to TopUp screen
-    navigation.navigate('TopUp' as never);
+    // If it's main wallet or allowance wallet, navigate to TopUp screen
+    if (walletType.toUpperCase() === 'MAIN' || walletType.toUpperCase() === 'ALLOWANCE') {
+      navigation.navigate('TopUp' as never);
+    }
+  };
+
+  const handleTopUpStudent = (studentWallet: any) => {
+    // Show alert to input amount
+    Alert.prompt(
+      'Nạp tiền cho con',
+      `Nhập số tiền muốn nạp cho ${studentWallet.studentName || 'con'}\n\nSố dư ví chính: ${formatCurrency(walletData?.balance || 0)}`,
+      [
+        {
+          text: 'Hủy',
+          style: 'cancel',
+        },
+        {
+          text: 'Nạp tiền',
+          onPress: async (amountText: string | undefined) => {
+            if (!amountText || !amountText.trim()) {
+              Alert.alert('Lỗi', 'Vui lòng nhập số tiền');
+              return;
+            }
+
+            const amount = parseInt(amountText.replace(/[^\d]/g, ''));
+            
+            if (isNaN(amount) || amount <= 0) {
+              Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+              return;
+            }
+
+            if (amount < 10000) {
+              Alert.alert('Lỗi', 'Số tiền nạp tối thiểu là 10,000 VNĐ');
+              return;
+            }
+
+            if (walletData && walletData.balance < amount) {
+              Alert.alert('Lỗi', 'Số dư ví chính không đủ để chuyển');
+              return;
+            }
+
+            try {
+              // Call transfer-smart API
+              const transferData: TransferSmartRequest = {
+                toStudentId: studentWallet.studentId,
+                amount: amount,
+                note: `Nạp tiền cho ${studentWallet.studentName || 'con'}`,
+              };
+
+              await walletService.transferSmartToStudent(transferData);
+              
+              // Refresh wallets
+              refetch();
+              refetchStudentWallets();
+
+              Alert.alert(
+                'Thành công',
+                `Đã nạp ${formatCurrency(amount)} vào ví của ${studentWallet.studentName || 'con'} thành công!`,
+                [{ text: 'OK' }]
+              );
+            } catch (err: any) {
+              const errorMessage = err.response?.data?.message || err.message || 'Không thể nạp tiền cho con';
+              Alert.alert('Lỗi', errorMessage);
+            }
+          },
+        },
+      ],
+      'plain-text',
+      ''
+    );
   };
 
   const handleTransactionHistory = () => {
     // TODO: Navigate to transaction history screen
   };
 
+  // Show error alert
+  React.useEffect(() => {
+    if (error) {
+      Alert.alert('Lỗi', error, [
+        { text: 'Thử lại', onPress: () => refetch() },
+        { text: 'Đóng', style: 'cancel' },
+      ]);
+    }
+  }, [error]);
+
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={loading || studentWalletsLoading} onRefresh={() => {
+            refetch();
+            refetchStudentWallets();
+          }} />
+        }
+      >
         {/* Wallet Overview */}
         <View style={styles.walletOverview}>
           <Text style={styles.sectionTitle}>Tổng quan ví tiền</Text>
           
           <View style={styles.totalBalanceCard}>
             <Text style={styles.totalBalanceLabel}>Tổng số dư</Text>
-            <Text style={styles.totalBalanceAmount}>300,000 VNĐ</Text>
+            {loading && !walletData ? (
+              <ActivityIndicator size="large" color={COLORS.SURFACE} style={{ marginTop: SPACING.MD }} />
+            ) : (
+              <Text style={styles.totalBalanceAmount}>
+                {walletData ? formatCurrency(walletData.balance) : '0 VNĐ'}
+              </Text>
+            )}
           </View>
         </View>
 
         {/* Main Wallet */}
         <View style={styles.walletSection}>
-          <TouchableOpacity 
+            <TouchableOpacity 
             style={styles.walletCard}
-            onPress={() => handleWalletPress(WALLET_TYPES.MAIN)}
+            onPress={() => handleWalletPress(walletData?.type || WALLET_TYPES.MAIN)}
           >
             <View style={styles.walletHeader}>
-              <View style={styles.walletIcon}>
-                <MaterialIcons name="account-balance-wallet" size={32} color={COLORS.SURFACE} />
+              <View style={[
+                styles.walletIcon,
+                walletData?.type?.toLowerCase() === 'allowance' && { backgroundColor: COLORS.SECONDARY }
+              ]}>
+                <MaterialIcons 
+                  name={walletData?.type?.toLowerCase() === 'allowance' ? "child-care" : "account-balance-wallet"} 
+                  size={32} 
+                  color={COLORS.SURFACE} 
+                />
               </View>
               <View style={styles.walletInfo}>
-                <Text style={styles.walletTitle}>Ví chính</Text>
-                <Text style={styles.walletDescription}>Thanh toán học phí và phí thành viên</Text>
+                <Text style={styles.walletTitle}>
+                  {walletData ? getWalletTypeText(walletData.type) : 'Ví chính'}
+                </Text>
+                <Text style={styles.walletDescription}>
+                  {walletData?.type?.toLowerCase() === 'main' 
+                    ? 'Thanh toán học phí và phí thành viên'
+                    : walletData?.type?.toLowerCase() === 'allowance'
+                    ? 'Chi tiêu hàng ngày cho trẻ'
+                    : 'Thanh toán học phí và phí thành viên'}
+                </Text>
+                {walletData?.studentName && (
+                  <Text style={styles.studentNameText}>
+                    Học sinh: {walletData.studentName}
+                  </Text>
+                )}
               </View>
               <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
             </View>
             
             <View style={styles.walletBalance}>
               <Text style={styles.walletBalanceLabel}>Số dư hiện tại</Text>
-              <Text style={styles.walletBalanceAmount}>250,000 VNĐ</Text>
+              {loading && !walletData ? (
+                <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+              ) : walletData ? (
+                <Text style={styles.walletBalanceAmount}>
+                  {formatCurrency(walletData.balance)}
+                </Text>
+              ) : (
+                <Text style={styles.walletBalanceAmount}>0 VNĐ</Text>
+              )}
             </View>
             
             <TouchableOpacity 
               style={styles.topUpButton}
-              onPress={() => handleTopUp(WALLET_TYPES.MAIN)}
+              onPress={() => handleTopUp(walletData?.type || WALLET_TYPES.MAIN)}
             >
               <MaterialIcons name="add" size={20} color={COLORS.SURFACE} />
               <Text style={styles.topUpButtonText}>Nạp tiền</Text>
@@ -111,28 +255,9 @@ const WalletScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Allowance Wallet */}
-        <View style={styles.walletSection}>
-          <TouchableOpacity 
-            style={styles.walletCard}
-            onPress={() => handleWalletPress(WALLET_TYPES.ALLOWANCE)}
-          >
-            <View style={styles.walletHeader}>
-              <View style={[styles.walletIcon, { backgroundColor: COLORS.SECONDARY }]}>
-                <MaterialIcons name="child-care" size={32} color={COLORS.SURFACE} />
-              </View>
-              <View style={styles.walletInfo}>
-                <Text style={styles.walletTitle}>Ví tiêu vặt</Text>
-                <Text style={styles.walletDescription}>Chi tiêu hàng ngày cho trẻ</Text>
-              </View>
-              <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
-            </View>
-            
-            <View style={styles.walletBalance}>
-              <Text style={styles.walletBalanceLabel}>Số dư hiện tại</Text>
-              <Text style={styles.walletBalanceAmount}>50,000 VNĐ</Text>
-            </View>
-            
+        {/* Allowance Info (only for Allowance wallet) */}
+        {walletData?.type?.toLowerCase() === 'allowance' && (
+          <View style={styles.walletSection}>
             <View style={styles.allowanceInfo}>
               <Text style={styles.allowanceInfoText}>
                 Tự động nạp 100,000 VNĐ vào đầu mỗi tháng
@@ -141,8 +266,74 @@ const WalletScreen: React.FC = () => {
                 Lần nạp tiếp theo: 1/10/2024
               </Text>
             </View>
-          </TouchableOpacity>
-        </View>
+          </View>
+        )}
+
+        {/* Student Wallets Section */}
+        {studentWallets && studentWallets.length > 0 && (
+          <View style={styles.walletSection}>
+            <Text style={styles.sectionTitle}>Ví của con</Text>
+            
+            {studentWalletsLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                <Text style={styles.loadingText}>Đang tải ví của con...</Text>
+              </View>
+            ) : (
+              studentWallets.map((studentWallet) => (
+                <TouchableOpacity
+                  key={studentWallet.id}
+                  style={styles.studentWalletCard}
+                  onPress={() => handleWalletPress(studentWallet.type)}
+                >
+                  <View style={styles.walletHeader}>
+                    <View style={[styles.walletIcon, { backgroundColor: COLORS.SECONDARY }]}>
+                      <MaterialIcons 
+                        name="child-care" 
+                        size={32} 
+                        color={COLORS.SURFACE} 
+                      />
+                    </View>
+                    <View style={styles.walletInfo}>
+                      <Text style={styles.walletTitle}>
+                        {studentWallet.studentName || 'Chưa có tên'}
+                      </Text>
+                      <Text style={styles.walletDescription}>
+                        Ví tiêu vặt của con
+                      </Text>
+                    </View>
+                    <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
+                  </View>
+                  
+                  <View style={styles.walletBalance}>
+                    <Text style={styles.walletBalanceLabel}>Số dư hiện tại</Text>
+                    <Text style={styles.walletBalanceAmount}>
+                      {formatCurrency(studentWallet.balance)}
+                    </Text>
+                  </View>
+                  
+                  <TouchableOpacity 
+                    style={styles.topUpButton}
+                    onPress={() => handleTopUpStudent(studentWallet)}
+                  >
+                    <MaterialIcons name="add" size={20} color={COLORS.SURFACE} />
+                    <Text style={styles.topUpButtonText}>Nạp tiền</Text>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              ))
+            )}
+            
+            {studentWalletsError && (
+              <View style={styles.errorContainer}>
+                <MaterialIcons name="error" size={20} color={COLORS.ERROR} />
+                <Text style={styles.errorText}>{studentWalletsError}</Text>
+                <TouchableOpacity onPress={refetchStudentWallets} style={styles.retryButton}>
+                  <Text style={styles.retryButtonText}>Thử lại</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Quick Actions */}
         <View style={styles.quickActionsSection}>
@@ -159,10 +350,10 @@ const WalletScreen: React.FC = () => {
             
             <TouchableOpacity 
               style={styles.quickActionCard}
-              onPress={() => handleTopUp(WALLET_TYPES.MAIN)}
+              onPress={() => handleTopUp(walletData?.type || WALLET_TYPES.MAIN)}
             >
               <MaterialIcons name="account-balance" size={24} color={COLORS.SECONDARY} />
-              <Text style={styles.quickActionText}>Nạp ví chính</Text>
+              <Text style={styles.quickActionText}>Nạp ví</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -488,6 +679,61 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
     lineHeight: 20,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.XL,
+  },
+  loadingText: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.MD,
+  },
+  studentNameText: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.PRIMARY,
+    marginTop: SPACING.XS,
+    fontWeight: '500',
+  },
+  studentWalletCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 16,
+    padding: SPACING.LG,
+    marginBottom: SPACING.MD,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    padding: SPACING.MD,
+    borderRadius: 8,
+    marginTop: SPACING.MD,
+  },
+  errorText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.ERROR,
+    marginLeft: SPACING.SM,
+    flex: 1,
+  },
+  retryButton: {
+    marginLeft: SPACING.SM,
+    padding: SPACING.SM,
+    backgroundColor: COLORS.ERROR,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.SURFACE,
+    fontWeight: '600',
   },
 });
 

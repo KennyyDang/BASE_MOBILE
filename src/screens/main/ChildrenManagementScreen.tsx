@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,12 @@ import {
   RefreshControl,
   Alert,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCurrentUserStudents } from '../../hooks/useChildrenApi';
+import { StudentResponse } from '../../types/api';
 
 // Inline constants
 const COLORS = {
@@ -49,45 +52,42 @@ const FONTS = {
   },
 };
 
-// Mock data for demo
-const MOCK_CHILDREN = [
-  {
-    id: '1',
-    name: 'Nguyễn Minh Anh',
-    age: 8,
-    grade: 'Lớp 3',
-    avatar: '👦',
-    status: 'active',
-    classes: ['Toán học', 'Tiếng Anh'],
-    attendance: 95,
-    lastActivity: '2 giờ trước',
-  },
-  {
-    id: '2',
-    name: 'Nguyễn Thị Lan',
-    age: 10,
-    grade: 'Lớp 5',
-    avatar: '👧',
-    status: 'active',
-    classes: ['Toán học', 'Tiếng Việt', 'Khoa học'],
-    attendance: 88,
-    lastActivity: '1 ngày trước',
-  },
-];
-
 const ChildrenManagementScreen: React.FC = () => {
   const { user } = useAuth();
-  const [children, setChildren] = useState(MOCK_CHILDREN);
-  const [loading, setLoading] = useState(false);
-  const [selectedChild, setSelectedChild] = useState<any>(null);
+  const { students, loading, error, refetch, pagination } = useCurrentUserStudents(1, 10);
+  const [selectedChild, setSelectedChild] = useState<StudentResponse | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const handleRefresh = () => {
-    setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false);
-    }, 1000);
+  // Show error alert
+  useEffect(() => {
+    if (error) {
+      Alert.alert('Lỗi', error, [
+        { text: 'Thử lại', onPress: () => refetch() },
+        { text: 'Đóng', style: 'cancel' },
+      ]);
+    }
+  }, [error, refetch]);
+
+  const handleRefresh = async () => {
+    await refetch();
+  };
+
+  // Format date helper
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('vi-VN');
+  };
+
+  // Calculate age from dateOfBirth
+  const calculateAge = (dateOfBirth: string) => {
+    const today = new Date();
+    const birthDate = new Date(dateOfBirth);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
   };
 
   const handleAddChild = () => {
@@ -98,20 +98,20 @@ const ChildrenManagementScreen: React.FC = () => {
     );
   };
 
-  const handleEditChild = (child: any) => {
+  const handleEditChild = (child: StudentResponse) => {
     setSelectedChild(child);
     setModalVisible(true);
   };
 
-  const handleViewDetails = (child: any) => {
+  const handleViewDetails = (child: StudentResponse) => {
     Alert.alert(
-      'Chi tiết con',
-      `Tên: ${child.name}\nTuổi: ${child.age}\nLớp: ${child.grade}\nLớp học: ${child.classes.join(', ')}\nĐiểm danh: ${child.attendance}%`,
+      'Chi tiết học sinh',
+      `Tên: ${child.name}\nTuổi: ${child.age} tuổi\nNgày sinh: ${formatDate(child.dateOfBirth)}\nTrường: ${child.schoolName || 'Chưa có'}\nCấp độ: ${child.studentLevelName || 'Chưa có'}\nChi nhánh: ${child.branchName || 'Chưa có'}`,
       [{ text: 'Đóng', style: 'default' }]
     );
   };
 
-  const handleAttendance = (child: any) => {
+  const handleAttendance = (child: StudentResponse) => {
     Alert.alert(
       'Điểm danh',
       `Xem lịch điểm danh của ${child.name}`,
@@ -119,30 +119,20 @@ const ChildrenManagementScreen: React.FC = () => {
     );
   };
 
-  const handleClasses = (child: any) => {
+  const handleClasses = (child: StudentResponse) => {
     Alert.alert(
       'Lớp học',
-      `${child.name} đang học:\n${child.classes.map((cls: string) => `• ${cls}`).join('\n')}`,
+      `${child.name}\nTrường: ${child.schoolName || 'Chưa có'}\nCấp độ: ${child.studentLevelName || 'Chưa có'}`,
       [{ text: 'Đóng', style: 'default' }]
     );
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active': return COLORS.SUCCESS;
-      case 'inactive': return COLORS.ERROR;
-      case 'pending': return COLORS.WARNING;
-      default: return COLORS.TEXT_SECONDARY;
-    }
+  const getStatusColor = (status: boolean) => {
+    return status ? COLORS.SUCCESS : COLORS.ERROR;
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'active': return 'Hoạt động';
-      case 'inactive': return 'Tạm nghỉ';
-      case 'pending': return 'Chờ duyệt';
-      default: return 'Không xác định';
-    }
+  const getStatusText = (status: boolean) => {
+    return status ? 'Hoạt động' : 'Tạm nghỉ';
   };
 
   return (
@@ -170,24 +160,36 @@ const ChildrenManagementScreen: React.FC = () => {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <MaterialIcons name="child-care" size={24} color={COLORS.PRIMARY} />
-            <Text style={styles.statNumber}>{children.length}</Text>
+            {loading && !students.length ? (
+              <ActivityIndicator size="small" color={COLORS.PRIMARY} style={{ marginTop: SPACING.SM }} />
+            ) : (
+              <Text style={styles.statNumber}>{pagination?.totalCount || students.length}</Text>
+            )}
             <Text style={styles.statLabel}>Tổng số con</Text>
           </View>
           
           <View style={styles.statCard}>
             <MaterialIcons name="school" size={24} color={COLORS.SECONDARY} />
-            <Text style={styles.statNumber}>
-              {children.reduce((sum, child) => sum + child.classes.length, 0)}
-            </Text>
-            <Text style={styles.statLabel}>Lớp học</Text>
+            {loading && !students.length ? (
+              <ActivityIndicator size="small" color={COLORS.SECONDARY} style={{ marginTop: SPACING.SM }} />
+            ) : (
+              <Text style={styles.statNumber}>
+                {students.filter(s => s.schoolName).length}
+              </Text>
+            )}
+            <Text style={styles.statLabel}>Có trường học</Text>
           </View>
           
           <View style={styles.statCard}>
             <MaterialIcons name="check-circle" size={24} color={COLORS.SUCCESS} />
-            <Text style={styles.statNumber}>
-              {Math.round(children.reduce((sum, child) => sum + child.attendance, 0) / children.length)}%
-            </Text>
-            <Text style={styles.statLabel}>Điểm danh TB</Text>
+            {loading && !students.length ? (
+              <ActivityIndicator size="small" color={COLORS.SUCCESS} style={{ marginTop: SPACING.SM }} />
+            ) : (
+              <Text style={styles.statNumber}>
+                {students.filter(s => s.status).length}
+              </Text>
+            )}
+            <Text style={styles.statLabel}>Đang hoạt động</Text>
           </View>
         </View>
 
@@ -195,44 +197,58 @@ const ChildrenManagementScreen: React.FC = () => {
         <View style={styles.childrenContainer}>
           <Text style={styles.sectionTitle}>Danh sách con</Text>
           
-          {children.map((child) => (
-            <View key={child.id} style={styles.childCard}>
-              <View style={styles.childHeader}>
-                <View style={styles.childAvatar}>
-                  <Text style={styles.avatarText}>{child.avatar}</Text>
+          {loading && !students.length ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={COLORS.PRIMARY} />
+              <Text style={styles.loadingText}>Đang tải danh sách học sinh...</Text>
+            </View>
+          ) : (
+            students.map((child) => (
+              <View key={child.id} style={styles.childCard}>
+                <View style={styles.childHeader}>
+                  <View style={styles.childAvatar}>
+                    <Text style={styles.avatarText}>
+                      {child.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={styles.childInfo}>
+                    <Text style={styles.childName}>{child.name}</Text>
+                    <Text style={styles.childDetails}>
+                      {child.age} tuổi • {child.studentLevelName || 'Chưa có cấp độ'}
+                    </Text>
+                    <View style={styles.statusContainer}>
+                      <View style={[styles.statusDot, { backgroundColor: getStatusColor(child.status) }]} />
+                      <Text style={styles.statusText}>{getStatusText(child.status)}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.moreButton}
+                    onPress={() => handleEditChild(child)}
+                  >
+                    <MaterialIcons name="more-vert" size={24} color={COLORS.TEXT_SECONDARY} />
+                  </TouchableOpacity>
                 </View>
-                <View style={styles.childInfo}>
-                  <Text style={styles.childName}>{child.name}</Text>
-                  <Text style={styles.childDetails}>
-                    {child.age} tuổi • {child.grade}
-                  </Text>
-                  <View style={styles.statusContainer}>
-                    <View style={[styles.statusDot, { backgroundColor: getStatusColor(child.status) }]} />
-                    <Text style={styles.statusText}>{getStatusText(child.status)}</Text>
+
+                <View style={styles.childStats}>
+                  <View style={styles.statItem}>
+                    <MaterialIcons name="school" size={16} color={COLORS.TEXT_SECONDARY} />
+                    <Text style={styles.statItemText} numberOfLines={1}>
+                      {child.schoolName || 'Chưa có trường'}
+                    </Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <MaterialIcons name="location-on" size={16} color={COLORS.TEXT_SECONDARY} />
+                    <Text style={styles.statItemText} numberOfLines={1}>
+                      {child.branchName || 'Chưa có chi nhánh'}
+                    </Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <MaterialIcons name="date-range" size={16} color={COLORS.TEXT_SECONDARY} />
+                    <Text style={styles.statItemText} numberOfLines={1}>
+                      {formatDate(child.dateOfBirth)}
+                    </Text>
                   </View>
                 </View>
-                <TouchableOpacity 
-                  style={styles.moreButton}
-                  onPress={() => handleEditChild(child)}
-                >
-                  <MaterialIcons name="more-vert" size={24} color={COLORS.TEXT_SECONDARY} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.childStats}>
-                <View style={styles.statItem}>
-                  <MaterialIcons name="school" size={16} color={COLORS.TEXT_SECONDARY} />
-                  <Text style={styles.statItemText}>{child.classes.length} lớp học</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <MaterialIcons name="check-circle" size={16} color={COLORS.TEXT_SECONDARY} />
-                  <Text style={styles.statItemText}>{child.attendance}% điểm danh</Text>
-                </View>
-                <View style={styles.statItem}>
-                  <MaterialIcons name="schedule" size={16} color={COLORS.TEXT_SECONDARY} />
-                  <Text style={styles.statItemText}>{child.lastActivity}</Text>
-                </View>
-              </View>
 
               <View style={styles.actionButtons}>
                 <TouchableOpacity 
@@ -260,11 +276,12 @@ const ChildrenManagementScreen: React.FC = () => {
                 </TouchableOpacity>
               </View>
             </View>
-          ))}
+            ))
+          )}
         </View>
 
         {/* Empty State */}
-        {children.length === 0 && (
+        {!loading && students.length === 0 && (
           <View style={styles.emptyContainer}>
             <MaterialIcons name="child-care" size={64} color={COLORS.TEXT_SECONDARY} />
             <Text style={styles.emptyTitle}>Chưa có con nào</Text>
@@ -300,7 +317,12 @@ const ChildrenManagementScreen: React.FC = () => {
                   Chỉnh sửa thông tin của {selectedChild.name}
                 </Text>
                 <Text style={styles.modalSubtext}>
-                  Tính năng đang được phát triển
+                  Tuổi: {selectedChild.age}{'\n'}
+                  Trường: {selectedChild.schoolName || 'Chưa có'}{'\n'}
+                  Cấp độ: {selectedChild.studentLevelName || 'Chưa có'}
+                </Text>
+                <Text style={[styles.modalSubtext, { marginTop: SPACING.MD }]}>
+                  Tính năng chỉnh sửa đang được phát triển
                 </Text>
               </View>
             )}
@@ -525,6 +547,15 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.SURFACE,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    padding: SPACING.XL,
+  },
+  loadingText: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.MD,
   },
   modalOverlay: {
     flex: 1,

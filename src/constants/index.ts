@@ -133,11 +133,14 @@ export const API_ENDPOINTS = {
   ADD_CHILD: '/children',
   UPDATE_CHILD: '/children/:id',
   DELETE_CHILD: '/children/:id',
+  STUDENT_PAGED_CURRENT_USER: '/api/Student/paged/current-user',
   
   // Wallet
   WALLET_BALANCE: '/wallet/balance',
   WALLET_TRANSACTIONS: '/wallet/transactions',
   TOP_UP_WALLET: '/wallet/top-up',
+  DEPOSIT_CREATE: '/api/Deposit/create',
+  DEPOSIT_WEBHOOK_TEST: '/api/Deposit/webhook/payos/test',
   
   // Schedule
   SCHEDULE: '/schedule',

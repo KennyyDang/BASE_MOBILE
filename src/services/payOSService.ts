@@ -1,4 +1,5 @@
 import axiosInstance from '../config/axios.config';
+import { DepositCreateRequest, DepositCreateResponse } from '../types/api';
 
 /**
  * PayOS Service
@@ -113,6 +114,46 @@ const payOSService = {
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to get wallet balance';
+    }
+  },
+
+  /**
+   * Create deposit
+   * @param depositData - Deposit request data with amount
+   * @returns Deposit response with checkoutUrl
+   */
+  createDeposit: async (depositData: DepositCreateRequest): Promise<DepositCreateResponse> => {
+    try {
+      const response = await axiosInstance.post<DepositCreateResponse>('/api/Deposit/create', depositData);
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to create deposit';
+    }
+  },
+
+  /**
+   * Call webhook to confirm deposit payment (for testing)
+   * @param orderCode - Order code from deposit response
+   * @param amount - Amount that was paid
+   * @param success - Whether payment was successful (default: true)
+   * @returns Webhook response
+   */
+  confirmDepositWebhook: async (
+    orderCode: number,
+    amount: number,
+    success: boolean = true
+  ): Promise<any> => {
+    try {
+      const response = await axiosInstance.post('/api/Deposit/webhook/payos/test', null, {
+        params: {
+          orderCode,
+          amount,
+          success,
+        },
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to confirm deposit';
     }
   },
 };

@@ -1,11 +1,12 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { DefaultTheme } from 'react-native-paper';
+import { Linking } from 'react-native';
 
 import { RootStackParamList, MainTabParamList } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -155,13 +156,54 @@ const MainTabNavigator = () => {
   );
 };
 
+// Linking configuration for deep links (simplified - using React Native Linking)
+const linking: LinkingOptions<any> = {
+  prefixes: ['baseapp://', 'https://baseapp.com'],
+  config: {
+    screens: {
+      Main: {
+        screens: {
+          Dashboard: 'dashboard',
+          Schedule: 'schedule',
+          Wallet: 'wallet',
+          Profile: 'profile',
+        },
+      },
+      TopUp: 'topup',
+      Login: 'login',
+      PaymentSuccess: 'payment/success',
+      PaymentCancel: 'payment/cancel',
+    },
+  },
+  async getInitialURL() {
+    // Check if app was opened from a deep link
+    const url = await Linking.getInitialURL();
+    if (url != null) {
+      return url;
+    }
+  },
+  subscribe(listener) {
+    // Listen to incoming links from deep linking
+    const onReceiveURL = ({ url }: { url: string }) => {
+      listener(url);
+    };
+
+    // Listen to URL events using React Native Linking
+    const subscription = Linking.addEventListener('url', onReceiveURL);
+
+    return () => {
+      subscription.remove();
+    };
+  },
+};
+
 // Root Navigator
 const AppNavigator = () => {
   const { isAuthenticated, user } = useAuth();
 
   return (
     <PaperProvider theme={theme}>
-      <NavigationContainer>
+      <NavigationContainer linking={linking}>
         <Stack.Navigator
           screenOptions={{
             headerStyle: {
