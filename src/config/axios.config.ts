@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL, NODE_ENV } from '@env';
 
 // Storage keys
 export const STORAGE_KEYS = {
@@ -8,20 +9,24 @@ export const STORAGE_KEYS = {
   USER: '@base_user',
 } as const;
 
-// Development configuration
-const DEV_BASE_URL = 'http://192.168.2.5:5160'; // Use your machine's IP for mobile testing
-// Alternative: 'http://localhost:5160' for web testing
+
+const getBaseURL = () => {
+  if (API_BASE_URL) {
+    return API_BASE_URL;
+  }
+  // Fallback to old hardcoded values
+  return __DEV__ ? 'http://172.20.10.2:5160' : 'http://172.20.10.2:5160';
+};
 
 // Create axios instance with base configuration
 const axiosInstance: AxiosInstance = axios.create({
-  baseURL: __DEV__ ? DEV_BASE_URL : 'https://api.brighway.edu.vn',
+  baseURL: getBaseURL(),
   timeout: 30000, // 30 seconds
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor - attach Bearer token
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     try {

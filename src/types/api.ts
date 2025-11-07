@@ -16,6 +16,11 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface MobileLoginRequest extends LoginRequest {
+  firebaseToken?: string;
+  deviceName?: string;
+}
+
 export interface LoginResponse {
   access_token: string;
   refresh_token: string;

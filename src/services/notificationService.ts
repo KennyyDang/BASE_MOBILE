@@ -1,59 +1,60 @@
 // Notification Service
-import { apiClient } from './apiClient';
+import axiosInstance from '../config/axios.config';
 import { API_ENDPOINTS } from '../constants';
-import { Notification, ApiResponse, PaginatedResponse } from '../types';
+import { Notification } from '../types';
 
 class NotificationService {
-  // Get all notifications
   async getNotifications(
     page: number = 1,
     limit: number = 20,
     unreadOnly: boolean = false
-  ): Promise<ApiResponse<PaginatedResponse<Notification>>> {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: limit.toString(),
-      unreadOnly: unreadOnly.toString(),
+  ): Promise<Notification[]> {
+    const response = await axiosInstance.get<Notification[]>(API_ENDPOINTS.NOTIFICATIONS, {
+      params: {
+        page,
+        limit,
+        unreadOnly,
+      },
     });
-
-    return await apiClient.get<PaginatedResponse<Notification>>(
-      `${API_ENDPOINTS.NOTIFICATIONS}?${params.toString()}`
-    );
+    return Array.isArray(response.data) ? response.data : [];
   }
 
-  // Mark notification as read
-  async markNotificationAsRead(notificationId: string): Promise<ApiResponse<void>> {
-    return await apiClient.post(API_ENDPOINTS.MARK_NOTIFICATION_READ.replace(':id', notificationId));
+  async markNotificationAsRead(notificationId: string): Promise<void> {
+    await axiosInstance.post(API_ENDPOINTS.MARK_NOTIFICATION_READ.replace(':id', notificationId));
   }
 
-  // Mark all notifications as read
-  async markAllNotificationsAsRead(): Promise<ApiResponse<void>> {
-    return await apiClient.post(`${API_ENDPOINTS.NOTIFICATIONS}/mark-all-read`);
+  async markAllNotificationsAsRead(): Promise<void> {
+    await axiosInstance.post(`${API_ENDPOINTS.NOTIFICATIONS}/mark-all-read`);
   }
 
-  // Get unread notification count
-  async getUnreadCount(): Promise<ApiResponse<{ count: number }>> {
-    return await apiClient.get<{ count: number }>(`${API_ENDPOINTS.NOTIFICATIONS}/unread-count`);
+  async getUnreadCount(): Promise<number> {
+    const response = await axiosInstance.get<{ count: number }>(`${API_ENDPOINTS.NOTIFICATIONS}/unread-count`);
+    return response.data?.count ?? 0;
   }
 
-  // Delete notification
-  async deleteNotification(notificationId: string): Promise<ApiResponse<void>> {
-    return await apiClient.delete(`${API_ENDPOINTS.NOTIFICATIONS}/${notificationId}`);
+  async deleteNotification(notificationId: string): Promise<void> {
+    await axiosInstance.delete(`${API_ENDPOINTS.NOTIFICATIONS}/${notificationId}`);
   }
 
-  // Get notification by ID
-  async getNotificationById(notificationId: string): Promise<ApiResponse<Notification>> {
-    return await apiClient.get<Notification>(`${API_ENDPOINTS.NOTIFICATIONS}/${notificationId}`);
+  async getNotificationById(notificationId: string): Promise<Notification | null> {
+    const response = await axiosInstance.get<Notification>(`${API_ENDPOINTS.NOTIFICATIONS}/${notificationId}`);
+    return (response.data as Notification) ?? null;
   }
 
-  // Update notification preferences
   async updateNotificationPreferences(preferences: {
     emailNotifications: boolean;
     pushNotifications: boolean;
     smsNotifications: boolean;
     notificationTypes: string[];
-  }): Promise<ApiResponse<void>> {
-    return await apiClient.put(`${API_ENDPOINTS.NOTIFICATIONS}/preferences`, preferences);
+  }): Promise<void> {
+    await axiosInstance.put(`${API_ENDPOINTS.NOTIFICATIONS}/preferences`, preferences);
+  }
+
+  async registerPushToken(token: string, platform: 'ios' | 'android' | 'web'): Promise<void> {
+    await axiosInstance.post(API_ENDPOINTS.REGISTER_PUSH_TOKEN, {
+      token,
+      platform,
+    });
   }
 }
 

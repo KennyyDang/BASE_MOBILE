@@ -169,14 +169,19 @@ export interface UserMembership {
 export interface Notification {
   id: string;
   userId: string;
-  type: NotificationType;
+  type: NotificationType | string;
   title: string;
   message: string;
   data?: Record<string, any>;
   isRead: boolean;
   scheduledAt?: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
+  priority?: string;
+  channels?: string[] | string;
+  iconName?: string | null;
+  imageUrl?: string | null;
+  actionUrl?: string | null;
 }
 
 export interface NFCCard {
@@ -236,6 +241,8 @@ export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
   TopUp: undefined;
+  Settings: undefined;
+  Notifications: undefined;
 };
 
 export type MainTabParamList = {
@@ -268,6 +275,7 @@ export type ProfileStackParamList = {
   AddChild: undefined;
   EditChild: { childId: string };
   Settings: undefined;
+  Notifications: undefined;
 };
 
 // Form Types

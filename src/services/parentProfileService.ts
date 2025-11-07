@@ -16,15 +16,58 @@ export interface ParentProfile {
   familyId: string;
 }
 
+/**
+ * Current User Response from /api/User/current-user
+ */
+export interface CurrentUserResponse {
+  id: string;
+  email: string;
+  name: string;
+  roleName: string;
+  branchId: string | null;
+  branchName: string | null;
+  profilePictureUrl: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
 const parentProfileService = {
   /**
+   * Get current user information
+   * Endpoint: GET /api/User/current-user
+   * @returns Current user information
+   */
+  getCurrentUser: async (): Promise<CurrentUserResponse> => {
+    try {
+      const response = await axiosInstance.get<CurrentUserResponse>('/api/User/current-user');
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch current user';
+    }
+  },
+
+  /**
    * Get all parents belonging to the current user's family
+   * Endpoint: GET /api/User/current-user
    * @returns Array of parent profiles
    */
   getMyParents: async (): Promise<ParentProfile[]> => {
     try {
-      const response = await axiosInstance.get<ParentProfile[]>('/api/ParentProfile/my-parents');
-      return response.data;
+      const response = await axiosInstance.get<CurrentUserResponse>('/api/User/current-user');
+      
+      const currentUser = response.data;
+      const parentProfile: ParentProfile = {
+        id: currentUser.id,
+        parentName: currentUser.name,
+        email: currentUser.email,
+        address: '',
+        phone: '',
+        relationshipToStudent: '',
+        note: '',
+        familyId: '',
+      };
+      
+      return [parentProfile];
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to fetch parent profiles';
     }

@@ -6,12 +6,25 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "baseapp",
+    "extra": {
+      "eas": {
+        "projectId": "5e1bc2ec-b339-45ac-81b9-91f473e387b8"
+      }
+    },
     "splash": {
       "resizeMode": "contain",
       "backgroundColor": "#2E7D32"
     },
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#2E7D32"
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,
@@ -28,7 +41,12 @@
       "adaptiveIcon": {
         "backgroundColor": "#2E7D32"
       },
-      "package": "com.base.mobile",
+      "package": "com.brightway.base",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",
@@ -41,6 +59,11 @@
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
+    },
+    "notification": {
+      "color": "#2E7D32",
+      "androidMode": "default",
+      "androidCollapsedTitle": "#{unread_notifications} thong bao moi"
     }
   }
 }

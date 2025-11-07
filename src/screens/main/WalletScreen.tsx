@@ -11,10 +11,13 @@ import {
   Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCurrentUserWallet, useStudentWallets } from '../../hooks/useWalletApi';
 import { walletService } from '../../services/walletService';
 import { TransferSmartRequest } from '../../types/api';
+import { MainTabParamList, RootStackParamList } from '../../types';
 
 // Inline constants
 const COLORS = {
@@ -58,9 +61,29 @@ const WALLET_TYPES = {
 };
 
 const WalletScreen: React.FC = () => {
-  const navigation = useNavigation();
+  type WalletNavigationProp = CompositeNavigationProp<
+    BottomTabNavigationProp<MainTabParamList, 'Wallet'>,
+    NativeStackNavigationProp<RootStackParamList>
+  >;
+
+  const navigation = useNavigation<WalletNavigationProp>();
   const { data: walletData, loading, error, refetch } = useCurrentUserWallet();
   const { data: studentWallets, loading: studentWalletsLoading, error: studentWalletsError, refetch: refetchStudentWallets } = useStudentWallets();
+
+  const navigateToTopUp = React.useCallback(() => {
+    let currentNavigator: any = navigation;
+
+    while (currentNavigator?.getParent) {
+      const parent = currentNavigator.getParent();
+      if (!parent) {
+        break;
+      }
+      currentNavigator = parent;
+    }
+
+    const targetNavigator = currentNavigator ?? navigation;
+    targetNavigator.navigate('TopUp');
+  }, [navigation]);
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -81,11 +104,8 @@ const WalletScreen: React.FC = () => {
     // TODO: Navigate to specific wallet screen
   };
 
-  const handleTopUp = (walletType: string) => {
-    // If it's main wallet or allowance wallet, navigate to TopUp screen
-    if (walletType.toUpperCase() === 'MAIN' || walletType.toUpperCase() === 'ALLOWANCE') {
-      navigation.navigate('TopUp' as never);
-    }
+  const handleTopUp = () => {
+    navigateToTopUp();
   };
 
   const handleTopUpStudent = (studentWallet: any) => {
@@ -247,7 +267,7 @@ const WalletScreen: React.FC = () => {
             
             <TouchableOpacity 
               style={styles.topUpButton}
-              onPress={() => handleTopUp(walletData?.type || WALLET_TYPES.MAIN)}
+              onPress={handleTopUp}
             >
               <MaterialIcons name="add" size={20} color={COLORS.SURFACE} />
               <Text style={styles.topUpButtonText}>Nạp tiền</Text>
@@ -350,7 +370,7 @@ const WalletScreen: React.FC = () => {
             
             <TouchableOpacity 
               style={styles.quickActionCard}
-              onPress={() => handleTopUp(walletData?.type || WALLET_TYPES.MAIN)}
+              onPress={navigateToTopUp}
             >
               <MaterialIcons name="account-balance" size={24} color={COLORS.SECONDARY} />
               <Text style={styles.quickActionText}>Nạp ví</Text>

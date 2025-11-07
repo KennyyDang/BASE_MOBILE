@@ -15,7 +15,9 @@ const storageUtils = {
       await AsyncStorage.multiRemove([
         STORAGE_KEYS.ACCESS_TOKEN,
         STORAGE_KEYS.USER,
-      ]);} catch (error) {throw error;
+      ]);
+    } catch (error) {
+      throw error;
     }
   },
 
@@ -24,8 +26,10 @@ const storageUtils = {
    */
   getAllKeys: async (): Promise<string[]> => {
     try {
-      const keys = await AsyncStorage.getAllKeys();return keys;
-    } catch (error) {return [];
+      const keys = await AsyncStorage.getAllKeys();
+      return Array.from(keys);
+    } catch (error) {
+      return [];
     }
   },
 
@@ -36,7 +40,8 @@ const storageUtils = {
     try {
       const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       return !!token;
-    } catch (error) {return false;
+    } catch (error) {
+      return false;
     }
   },
 
@@ -47,7 +52,8 @@ const storageUtils = {
     try {
       const userStr = await AsyncStorage.getItem(STORAGE_KEYS.USER);
       return userStr ? JSON.parse(userStr) : null;
-    } catch (error) {return null;
+    } catch (error) {
+      return null;
     }
   },
 
@@ -57,7 +63,8 @@ const storageUtils = {
   getToken: async (): Promise<string | null> => {
     try {
       return await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-    } catch (error) {return null;
+    } catch (error) {
+      return null;
     }
   },
 
@@ -66,20 +73,11 @@ const storageUtils = {
    */
   clearAllStorage: async (): Promise<void> => {
     try {
-      await AsyncStorage.clear();} catch (error) {throw error;
+      await AsyncStorage.clear();
+    } catch (error) {
+      throw error;
     }
-  },
-
-  /**
-   * Debug: Print all storage contents
-   */
-  debugPrintAll: async (): Promise<void> => {
-    try {
-      const keys = await AsyncStorage.getAllKeys();
-      const items = await AsyncStorage.multiGet(keys);items.forEach(([key, value]) => {});
-    } catch (error) {}
   },
 };
 
 export default storageUtils;
-export { STORAGE_KEYS };

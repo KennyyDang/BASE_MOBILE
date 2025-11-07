@@ -1,8 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, Alert, ScrollView, SafeAreaView, TouchableOpacity, RefreshControl } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../../contexts/AuthContext';
 import { useParentProfile } from '../../hooks/useParentProfile';
+import { RootStackParamList } from '../../types';
 
 // Inline constants
 const COLORS = {
@@ -32,15 +35,20 @@ const FONTS = {
 };
 
 const ProfileScreen: React.FC = () => {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { user, logout } = useAuth();
   const { parents, loading, error, refetch } = useParentProfile();
 
   const handleEditProfile = () => {
-    Alert.alert('Chỉnh sửa hồ sơ', 'Tính năng đang được phát triển');
+    Alert.alert('Chinh sua ho so', 'Tinh nang dang duoc phat trien');
   };
 
   const handleSettings = () => {
-    Alert.alert('Cài đặt', 'Tính năng đang được phát triển');
+    navigation.navigate('Settings');
+  };
+
+  const handleNotifications = () => {
+    navigation.navigate('Notifications');
   };
 
   const handleLogout = () => {
@@ -163,6 +171,12 @@ const ProfileScreen: React.FC = () => {
           <TouchableOpacity style={styles.menuItem} onPress={handleSettings}>
             <MaterialIcons name="settings" size={24} color={COLORS.PRIMARY} />
             <Text style={styles.menuText}>Cài đặt</Text>
+            <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={handleNotifications}>
+            <MaterialIcons name="notifications" size={24} color={COLORS.PRIMARY} />
+            <Text style={styles.menuText}>Thông báo</Text>
             <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
           </TouchableOpacity>
 

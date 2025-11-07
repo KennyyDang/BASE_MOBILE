@@ -2,24 +2,29 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { jwtDecode } from 'jwt-decode';
 import axiosInstance, { STORAGE_KEYS } from '../config/axios.config';
 import { 
-  LoginRequest, 
   LoginResponse, 
   UserInfo, 
   DecodedJWT,
-  JWT_CLAIMS 
+  JWT_CLAIMS,
+  MobileLoginRequest 
 } from '../types/api';
 
 
 const authService = {
   /**
-   * Login user
-   * @param credentials - { email, password }
+   * Login user via mobile endpoint
+   * @param credentials - { email, password, firebaseToken, deviceName }
    * @returns Response with token and decoded user data
    */
-  login: async (credentials: LoginRequest): Promise<{ token: string; user: UserInfo }> => {
+  login: async (credentials: MobileLoginRequest): Promise<{ token: string; user: UserInfo }> => {
     try {
-      // Endpoint from Swagger: POST /api/Auth/login
-      const response = await axiosInstance.post<LoginResponse>('/api/Auth/login', credentials);
+      const payload: MobileLoginRequest = {
+        email: credentials.email,
+        password: credentials.password,
+        firebaseToken: credentials.firebaseToken ?? '',
+        deviceName: credentials.deviceName ?? '',
+      };
+      const response = await axiosInstance.post<LoginResponse>('/api/Auth/mobile-login', payload);
       
       // Check if response has the expected structure
       if (!response.data) {

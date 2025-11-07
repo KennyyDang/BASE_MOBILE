@@ -118,6 +118,7 @@ export const NOTIFICATION_TYPES = {
 export const API_ENDPOINTS = {
   // Auth
   LOGIN: '/auth/login',
+  MOBILE_LOGIN: '/api/Auth/mobile-login',
   REGISTER: '/auth/register',
   REFRESH_TOKEN: '/auth/refresh',
   LOGOUT: '/auth/logout',
@@ -127,6 +128,7 @@ export const API_ENDPOINTS = {
   // User Management
   PROFILE: '/users/profile',
   UPDATE_PROFILE: '/users/profile',
+  CURRENT_USER: '/api/User/current-user',
   
   // Children Management
   CHILDREN: '/children',
@@ -159,6 +161,7 @@ export const API_ENDPOINTS = {
   NFC_PAYMENT: '/nfc/payment',
   
   // Notifications
-  NOTIFICATIONS: '/notifications',
-  MARK_NOTIFICATION_READ: '/notifications/:id/read',
+  NOTIFICATIONS: '/api/Notification',
+  MARK_NOTIFICATION_READ: '/api/Notification/:id/read',
+  REGISTER_PUSH_TOKEN: '/api/Notification/register-token',
 };

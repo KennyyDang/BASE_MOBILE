@@ -1,6 +1,6 @@
 // API Configuration and Client
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { APP_CONFIG } from '../constants';
+import { API_BASE_URL } from '@env';
 
 // API Response Types
 export interface ApiResponse<T = any> {
@@ -24,7 +24,8 @@ class ApiClient {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = APP_CONFIG.API_BASE_URL;
+    // Get base URL from environment variable
+    this.baseURL = API_BASE_URL || 'https://api.brighway.edu.vn';
     this.client = axios.create({
       baseURL: this.baseURL,
       timeout: 10000,
@@ -75,8 +76,7 @@ class ApiClient {
   }
 
   private handleUnauthorized() {
-    // TODO: Clear auth data and redirect to login
-    console.log('Unauthorized access - redirecting to login');
+    // Error will be handled by axiosInstance interceptor in axios.config.ts
   }
 
   // Generic HTTP methods

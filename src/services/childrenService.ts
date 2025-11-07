@@ -1,7 +1,9 @@
 // Children Management Service
 import axiosInstance from '../config/axios.config';
+import { apiClient } from './apiClient';
 import { API_ENDPOINTS } from '../constants';
-import { PaginatedResponse, StudentResponse } from '../types/api';
+import { PaginatedResponse, StudentResponse, ApiResponse } from '../types/api';
+import { Child, ChildForm } from '../types';
 
 class ChildrenService {
   // Get all children

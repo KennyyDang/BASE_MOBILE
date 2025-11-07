@@ -1,8 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Device from 'expo-device';
+import { Platform } from 'react-native';
 import authService from '../services/auth.service';
+import notificationService from '../services/notificationService';
+import pushNotificationService from '../services/pushNotificationService';
 import { STORAGE_KEYS } from '../config/axios.config';
-import { LoginRequest, UserInfo } from '../types/api';
+import { LoginRequest, UserInfo, MobileLoginRequest } from '../types/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -61,17 +65,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = async (credentials: LoginRequest) => {
     try {
       setLoading(true);
-      
-      
-      const response = await authService.login(credentials);
-      
-      
+
+      let pushToken:
+        | { token: string; platform: 'ios' | 'android' | 'web' }
+        | null = null;
+      let firebaseToken: string | undefined;
+
+      try {
+        pushToken = await pushNotificationService.registerForPushNotifications();
+        firebaseToken = pushToken?.token;
+      } catch {
+        // Ignore push token errors, proceed with login
+      }
+
+      let deviceName = Device.deviceName ?? Device.modelName ?? Platform.OS;
+      if (!deviceName) {
+        try {
+          deviceName = await Device.getDeviceNameAsync();
+        } catch {
+          deviceName = Platform.OS;
+        }
+      }
+
+      const payload: MobileLoginRequest = {
+        ...credentials,
+        firebaseToken,
+        deviceName,
+      };
+
+      if (__DEV__) {
+        console.log('Mobile login payload:', payload);
+      }
+
+      const response = await authService.login(payload);
+
       setUser(response.user);
       setIsAuthenticated(true);
-      
-      
+
+      if (pushToken) {
+        try {
+          await notificationService.registerPushToken(pushToken.token, pushToken.platform);
+        } catch {
+          // Ignore registration errors to avoid interrupting login flow
+        }
+      }
     } catch (error: any) {
-     
       throw error;
     } finally {
       setLoading(false);

@@ -132,25 +132,12 @@ const payOSService = {
   },
 
   /**
-   * Call webhook to confirm deposit payment (for testing)
-   * @param orderCode - Order code from deposit response
-   * @param amount - Amount that was paid
-   * @param success - Whether payment was successful (default: true)
-   * @returns Webhook response
+   * Call webhook to confirm deposit payment
+   * Backend will verify latest PayOS transaction and update wallet if paid
    */
-  confirmDepositWebhook: async (
-    orderCode: number,
-    amount: number,
-    success: boolean = true
-  ): Promise<any> => {
+  confirmDeposit: async (): Promise<any> => {
     try {
-      const response = await axiosInstance.post('/api/Deposit/webhook/payos/test', null, {
-        params: {
-          orderCode,
-          amount,
-          success,
-        },
-      });
+      const response = await axiosInstance.post('/api/Deposit/webhook/payos');
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to confirm deposit';

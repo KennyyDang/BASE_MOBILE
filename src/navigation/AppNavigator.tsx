@@ -52,6 +52,8 @@ import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import ChildrenManagementScreen from '../screens/main/ChildrenManagementScreen';
 import TopUpScreen from '../screens/main/TopUpScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
+import NotificationScreen from '../screens/main/NotificationScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -116,40 +118,40 @@ const MainTabNavigator = () => {
         name="Dashboard" 
         component={DashboardScreen}
         options={{
-          title: 'Trang chủ',
-          headerTitle: 'BASE - Trang chủ',
+          title: 'Trang Chủ',
+          headerTitle: 'BASE - Trang Chủ',
         }}
       />
       <Tab.Screen 
         name="Schedule" 
         component={ScheduleScreen}
         options={{
-          title: 'Lịch học',
-          headerTitle: 'Lịch học',
+          title: 'Lịch Học',
+          headerTitle: 'Lịch Học',
         }}
       />
       <Tab.Screen 
         name="Wallet" 
         component={WalletScreen}
         options={{
-          title: 'Ví tiền',
-          headerTitle: 'Ví tiền',
+          title: 'Ví Tiền',
+          headerTitle: 'Ví Tiền',
         }}
       />
       <Tab.Screen 
         name="Children" 
         component={ChildrenManagementScreen}
         options={{
-          title: 'Quản lý con',
-          headerTitle: 'Quản lý con',
+          title: 'Quản Lý Con',
+          headerTitle: 'Quản Lý Con',
         }}
       />
       <Tab.Screen 
         name="Profile" 
         component={ProfileScreen}
         options={{
-          title: 'Hồ sơ',
-          headerTitle: 'Hồ sơ cá nhân',
+          title: 'Hồ Sơ',
+          headerTitle: 'Hồ Sơ Cá Nhân',
         }}
       />
     </Tab.Navigator>
@@ -264,8 +266,24 @@ const AppNavigator = () => {
               name="TopUp" 
               component={TopUpScreen}
               options={{
-                title: 'Nạp tiền',
+                title: 'Nạp Tiền',
                 headerTitle: 'Nạp tiền',
+              }}
+            />
+            <Stack.Screen 
+              name="Settings" 
+              component={SettingsScreen}
+              options={{
+                title: 'Cài Đặt',
+                headerTitle: 'Cài Đặt',
+              }}
+            />
+            <Stack.Screen
+              name="Notifications"
+              component={NotificationScreen}
+              options={{
+                title: 'Thông Báo',
+                headerTitle: 'Thông Báo',
               }}
             />
           </>

@@ -52,7 +52,7 @@ const FONTS = {
 
 const DashboardScreen: React.FC = () => {
   const { logout } = useAuth();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const { data: walletData, loading: walletLoading } = useCurrentUserWallet();
   const { data: studentWallets, loading: studentWalletsLoading } = useStudentWallets();
   
@@ -67,23 +67,19 @@ const DashboardScreen: React.FC = () => {
   const handleQuickAction = (action: string) => {
     switch (action) {
       case 'schedule':
-        navigation.navigate('Schedule' as never);
+        navigation.navigate('Main', { screen: 'Schedule' });
         break;
       case 'wallet':
-        navigation.navigate('Wallet' as never);
+        navigation.navigate('Main', { screen: 'Wallet' });
         break;
       case 'children':
-        navigation.navigate('Children' as never);
+        navigation.navigate('Main', { screen: 'Children' });
         break;
       case 'notifications':
-        Alert.alert(
-          'Thông báo',
-          'Tính năng đang được phát triển.\nSẽ có sớm trong phiên bản tiếp theo.',
-          [{ text: 'Đóng', style: 'default' }]
-        );
+        navigation.navigate('Notifications');
         break;
       case 'profile':
-        navigation.navigate('Profile' as never);
+        navigation.navigate('Main', { screen: 'Profile' });
         break;
       case 'help':
         Alert.alert(

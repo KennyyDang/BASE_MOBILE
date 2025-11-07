@@ -21,7 +21,6 @@ export const useParentProfile = () => {
       setParents(data);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch parents');
-      console.error('Error fetching parents:', err);
     } finally {
       setLoading(false);
     }
