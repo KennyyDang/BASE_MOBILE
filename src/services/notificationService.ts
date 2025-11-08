@@ -20,11 +20,11 @@ class NotificationService {
   }
 
   async markNotificationAsRead(notificationId: string): Promise<void> {
-    await axiosInstance.post(API_ENDPOINTS.MARK_NOTIFICATION_READ.replace(':id', notificationId));
+    await axiosInstance.put(API_ENDPOINTS.MARK_NOTIFICATION_READ.replace(':id', notificationId));
   }
 
   async markAllNotificationsAsRead(): Promise<void> {
-    await axiosInstance.post(`${API_ENDPOINTS.NOTIFICATIONS}/mark-all-read`);
+    await axiosInstance.put(`${API_ENDPOINTS.NOTIFICATIONS}/mark-all-read`);
   }
 
   async getUnreadCount(): Promise<number> {

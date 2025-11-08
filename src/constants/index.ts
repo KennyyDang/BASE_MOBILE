@@ -142,7 +142,7 @@ export const API_ENDPOINTS = {
   WALLET_TRANSACTIONS: '/wallet/transactions',
   TOP_UP_WALLET: '/wallet/top-up',
   DEPOSIT_CREATE: '/api/Deposit/create',
-  DEPOSIT_WEBHOOK_TEST: '/api/Deposit/webhook/payos/test',
+  DEPOSIT_WEBHOOK: '/api/Deposit/webhook/payos',
   
   // Schedule
   SCHEDULE: '/schedule',
@@ -162,6 +162,6 @@ export const API_ENDPOINTS = {
   
   // Notifications
   NOTIFICATIONS: '/api/Notification',
-  MARK_NOTIFICATION_READ: '/api/Notification/:id/read',
+  MARK_NOTIFICATION_READ: '/api/Notification/:id/mark-read',
   REGISTER_PUSH_TOKEN: '/api/Notification/register-token',
 };

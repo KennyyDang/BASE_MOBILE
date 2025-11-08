@@ -12,6 +12,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import notificationService from '../../services/notificationService';
+import pushNotificationService from '../../services/pushNotificationService';
 import { Notification } from '../../types';
 
 const COLORS = {
@@ -99,6 +100,11 @@ const NotificationScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const updateBadgeCount = useCallback((items: NotificationItem[]) => {
+    const unread = items.filter((item) => !item.isRead).length;
+    pushNotificationService.setBadgeCount(unread).catch(() => {});
+  }, []);
+
   const fetchNotifications = async (opts?: { refresh?: boolean }) => {
     const { refresh } = opts || {};
     try {
@@ -112,6 +118,7 @@ const NotificationScreen: React.FC = () => {
       const response = await notificationService.getNotifications(1, 50);
       const extracted = extractNotifications(response);
       setNotifications(extracted);
+      updateBadgeCount(extracted);
     } catch (err: any) {
       setError(err?.message || 'Không thể tải danh sách thông báo');
     } finally {
@@ -127,16 +134,18 @@ const NotificationScreen: React.FC = () => {
   const handleMarkAsRead = async (notificationId: string) => {
     try {
       await notificationService.markNotificationAsRead(notificationId);
-      setNotifications((prev) =>
-        prev.map((item) =>
+      setNotifications((prev) => {
+        const next = prev.map((item) =>
           item.id === notificationId
             ? {
                 ...item,
                 isRead: true,
               }
             : item
-        )
-      );
+        );
+        updateBadgeCount(next);
+        return next;
+      });
     } catch (err) {
       // Ignore marking error; user can retry
     }
@@ -145,7 +154,11 @@ const NotificationScreen: React.FC = () => {
   const handleMarkAllAsRead = async () => {
     try {
       await notificationService.markAllNotificationsAsRead();
-      setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
+      setNotifications((prev) => {
+        const next = prev.map((item) => ({ ...item, isRead: true }));
+        updateBadgeCount(next);
+        return next;
+      });
     } catch (err) {
       // Ignore errors for now
     }

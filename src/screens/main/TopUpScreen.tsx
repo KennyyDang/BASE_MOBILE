@@ -92,7 +92,9 @@ const TopUpScreen: React.FC = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'checking'>('idle');
   const [paymentInProgress, setPaymentInProgress] = useState(false);
+  const [lastDepositInfo, setLastDepositInfo] = useState<DepositCreateResponse | null>(null);
   const appState = useRef(AppState.currentState);
+  const hasPendingDeposit = lastDepositInfo !== null;
 
   // Format currency helper
   const formatCurrency = (amount: number) => {
@@ -104,26 +106,62 @@ const TopUpScreen: React.FC = () => {
 
   // Confirm payment by calling webhook
   const handleConfirmPayment = React.useCallback(async () => {
+    if (!lastDepositInfo) {
+      Alert.alert('Thông báo', 'Không tìm thấy giao dịch nào để kiểm tra. Vui lòng nạp lại.');
+      setPaymentInProgress(false);
+      setPaymentStatus('idle');
+      setLastDepositInfo(null);
+      return;
+    }
+
     try {
       setPaymentStatus('checking');
+
       const result = await payOSService.confirmDeposit();
 
-      if (result?.status === 'PAID') {
+      const normalizedStatus = typeof result?.status === 'string' ? result.status.toUpperCase() : '';
+      const normalizedPaymentStatus =
+        typeof result?.paymentStatus === 'string' ? result.paymentStatus.toUpperCase() : '';
+      const isSuccess =
+        normalizedStatus === 'PAID' ||
+        normalizedStatus === 'COMPLETED' ||
+        normalizedPaymentStatus === 'PAID' ||
+        normalizedPaymentStatus === 'COMPLETED' ||
+        result?.success === true;
+
+      if (isSuccess) {
         await refetchWallet();
-        Alert.alert('Thành công', 'Thanh toán đã được cập nhật vào ví!', [{ text: 'OK' }]);
-      } else if (result?.status === 'CANCELLED') {
-        Alert.alert('Đã hủy', 'Giao dịch đã bị hủy. Vui lòng thử lại nếu cần.');
+        setPaymentInProgress(false);
+        setLastDepositInfo(null);
+        Alert.alert('Thành công', result?.message || 'Thanh toán đã được cập nhật vào ví!', [{ text: 'OK' }]);
+        return;
+      }
+
+      if (normalizedStatus === 'CANCELLED') {
+        setPaymentInProgress(false);
+        setLastDepositInfo(null);
+        Alert.alert('Đã hủy', result?.message || 'Giao dịch đã bị hủy. Vui lòng thử lại nếu cần.');
+        return;
+      }
+
+      if (normalizedStatus === 'PENDING' || normalizedPaymentStatus === 'PENDING') {
+        setPaymentInProgress(false);
+        Alert.alert('Thông báo', result?.message || 'Giao dịch chưa hoàn tất, vui lòng kiểm tra lại sau.');
+      } else if (result?.message) {
+        setPaymentInProgress(false);
+        Alert.alert('Thông báo', result.message);
       } else {
+        setPaymentInProgress(false);
         Alert.alert('Thông báo', 'Giao dịch chưa hoàn tất, vui lòng kiểm tra lại sau.');
       }
     } catch (err: any) {
       const errorMessage = err.response?.data?.message || err.message || 'Không thể xác nhận thanh toán';
+      setPaymentInProgress(false);
       Alert.alert('Lỗi', errorMessage);
     } finally {
       setPaymentStatus('idle');
-      setPaymentInProgress(false);
     }
-  }, [refetchWallet]);
+  }, [lastDepositInfo, refetchWallet]);
 
   // Initialize selected wallet based on API data
   useEffect(() => {
@@ -245,6 +283,7 @@ const TopUpScreen: React.FC = () => {
 
       if (depositResponse.checkoutUrl) {
         setPaymentInProgress(true);
+        setLastDepositInfo(depositResponse);
         setPaymentStatus('pending');
 
         try {
@@ -291,6 +330,7 @@ const TopUpScreen: React.FC = () => {
     setPaymentInProgress(false);
     setPaymentStatus('idle');
     clearPayment();
+    setLastDepositInfo(null);
   };
 
 
@@ -486,7 +526,7 @@ const TopUpScreen: React.FC = () => {
           </Text>
         </TouchableOpacity>
 
-        {paymentInProgress && (
+        {hasPendingDeposit && (
           <TouchableOpacity
             style={[styles.topUpButton, styles.confirmButton]}
             onPress={handleConfirmPayment}

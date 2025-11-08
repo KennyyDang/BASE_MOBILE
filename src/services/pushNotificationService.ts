@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 // Cấu hình notification handler
@@ -51,7 +52,12 @@ class PushNotificationService {
 
       let tokenData;
       try {
-        tokenData = await Notifications.getExpoPushTokenAsync();
+        const projectId =
+          Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+
+        tokenData = projectId
+          ? await Notifications.getExpoPushTokenAsync({ projectId })
+          : await Notifications.getExpoPushTokenAsync();
       } catch (error: any) {
         // Nếu lỗi về projectId, bỏ qua và không đăng ký push notification
         if (error.message?.includes('projectId')) {
@@ -175,6 +181,32 @@ class PushNotificationService {
    */
   async getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
     return await Notifications.getAllScheduledNotificationsAsync();
+  }
+
+  /**
+   * Hiển thị local notification ngay lập tức
+   */
+  async presentLocalNotification(
+    title: string,
+    body: string,
+    data?: Record<string, any>,
+    channelId?: string
+  ): Promise<string> {
+    const content: Notifications.NotificationContentInput = {
+      title: title || 'Thông báo mới',
+      body: body || '',
+      data: data ?? {},
+      sound: true,
+    };
+
+    if (channelId && Platform.OS === 'android') {
+      content.channelId = channelId;
+    }
+
+    return await Notifications.scheduleNotificationAsync({
+      content,
+      trigger: null,
+    });
   }
 
   /**

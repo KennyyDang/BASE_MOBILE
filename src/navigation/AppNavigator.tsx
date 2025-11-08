@@ -54,6 +54,7 @@ import ChildrenManagementScreen from '../screens/main/ChildrenManagementScreen';
 import TopUpScreen from '../screens/main/TopUpScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import NotificationScreen from '../screens/main/NotificationScreen';
+import NotificationWatcher from '../components/NotificationWatcher';
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -206,6 +207,7 @@ const AppNavigator = () => {
   return (
     <PaperProvider theme={theme}>
       <NavigationContainer linking={linking}>
+        {isAuthenticated && <NotificationWatcher enabled />}
         <Stack.Navigator
           screenOptions={{
             headerStyle: {

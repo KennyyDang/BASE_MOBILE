@@ -1,4 +1,5 @@
 import axiosInstance from '../config/axios.config';
+import { API_ENDPOINTS } from '../constants';
 import { DepositCreateRequest, DepositCreateResponse } from '../types/api';
 
 /**
@@ -124,7 +125,7 @@ const payOSService = {
    */
   createDeposit: async (depositData: DepositCreateRequest): Promise<DepositCreateResponse> => {
     try {
-      const response = await axiosInstance.post<DepositCreateResponse>('/api/Deposit/create', depositData);
+      const response = await axiosInstance.post<DepositCreateResponse>(API_ENDPOINTS.DEPOSIT_CREATE, depositData);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to create deposit';
@@ -137,7 +138,7 @@ const payOSService = {
    */
   confirmDeposit: async (): Promise<any> => {
     try {
-      const response = await axiosInstance.post('/api/Deposit/webhook/payos');
+      const response = await axiosInstance.post(API_ENDPOINTS.DEPOSIT_WEBHOOK);
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to confirm deposit';
