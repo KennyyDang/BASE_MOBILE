@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,10 +11,14 @@ import {
   Modal,
   ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCurrentUserStudents } from '../../hooks/useChildrenApi';
-import { StudentResponse } from '../../types/api';
+import { StudentResponse, StudentPackageSubscription } from '../../types/api';
+import { RootStackParamList } from '../../types';
+import packageService from '../../services/packageService';
 
 // Inline constants
 const COLORS = {
@@ -53,10 +57,21 @@ const FONTS = {
 };
 
 const ChildrenManagementScreen: React.FC = () => {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { user } = useAuth();
   const { students, loading, error, refetch, pagination } = useCurrentUserStudents(1, 10);
   const [selectedChild, setSelectedChild] = useState<StudentResponse | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [studentPackages, setStudentPackages] = useState<
+    Record<
+      string,
+      {
+        loading: boolean;
+        data: StudentPackageSubscription[];
+        error: string | null;
+      }
+    >
+  >({});
 
   // Show error alert
   useEffect(() => {
@@ -125,6 +140,68 @@ const ChildrenManagementScreen: React.FC = () => {
       `${child.name}\nTrường: ${child.schoolName || 'Chưa có'}\nCấp độ: ${child.studentLevelName || 'Chưa có'}`,
       [{ text: 'Đóng', style: 'default' }]
     );
+  };
+
+  const handleViewPackages = (child: StudentResponse) => {
+    navigation.navigate('StudentPackages', {
+      studentId: child.id,
+      studentName: child.name,
+      branchName: child.branchName || '',
+      studentLevelName: child.studentLevelName || '',
+    });
+  };
+
+  const fetchStudentPackages = useCallback(async (studentId: string) => {
+    setStudentPackages((prev) => ({
+      ...prev,
+      [studentId]: {
+        data: prev[studentId]?.data || [],
+        loading: true,
+        error: null,
+      },
+    }));
+
+    try {
+      const data = await packageService.getStudentSubscriptions(studentId);
+      setStudentPackages((prev) => ({
+        ...prev,
+        [studentId]: {
+          data,
+          loading: false,
+          error: null,
+        },
+      }));
+    } catch (err: any) {
+      const message =
+        err?.response?.data?.message ||
+        err?.message ||
+        'Không thể tải gói đã đăng ký. Vui lòng thử lại.';
+      setStudentPackages((prev) => ({
+        ...prev,
+        [studentId]: {
+          data: prev[studentId]?.data || [],
+          loading: false,
+          error: message,
+        },
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!students.length) {
+      setStudentPackages({});
+      return;
+    }
+
+    students.forEach((student) => {
+      if (!studentPackages[student.id]) {
+        fetchStudentPackages(student.id);
+      }
+    });
+  }, [students, fetchStudentPackages, studentPackages]);
+
+  const handleRetryPackages = (studentId: string) => {
+    fetchStudentPackages(studentId);
   };
 
   const getStatusColor = (status: boolean) => {
@@ -274,6 +351,82 @@ const ChildrenManagementScreen: React.FC = () => {
                   <MaterialIcons name="school" size={16} color={COLORS.SECONDARY} />
                   <Text style={[styles.actionButtonText, { color: COLORS.SECONDARY }]}>Lớp học</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.tertiaryButton]}
+                  onPress={() => handleViewPackages(child)}
+                >
+                  <MaterialIcons name="shopping-cart" size={16} color={COLORS.PRIMARY} />
+                  <Text style={[styles.actionButtonText, { color: COLORS.PRIMARY }]}>Gói học</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.packageContainer}>
+                <View style={styles.packageHeader}>
+                  <MaterialIcons name="card-membership" size={18} color={COLORS.PRIMARY} />
+                  <Text style={styles.packageTitle}>Gói đã đăng ký</Text>
+                </View>
+                {studentPackages[child.id]?.loading ? (
+                  <View style={styles.packageStateRow}>
+                    <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                    <Text style={styles.packageStateText}>Đang tải gói đã đăng ký...</Text>
+                  </View>
+                ) : studentPackages[child.id]?.error ? (
+                  <View>
+                    <View style={styles.packageStateRow}>
+                      <MaterialIcons name="error-outline" size={18} color={COLORS.ERROR} />
+                      <Text style={[styles.packageStateText, { color: COLORS.ERROR }]}>
+                        {studentPackages[child.id]?.error}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.packageRetryButton}
+                      onPress={() => handleRetryPackages(child.id)}
+                    >
+                      <Text style={styles.packageRetryText}>Thử lại</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : studentPackages[child.id]?.data?.length ? (
+                  studentPackages[child.id].data.map((subscription) => (
+                    <View key={subscription.id} style={styles.packageCard}>
+                      <View style={styles.packageCardHeader}>
+                        <Text style={styles.packageName}>{subscription.packageName}</Text>
+                        <View
+                          style={[
+                            styles.packageStatusBadge,
+                            subscription.status === 'Active'
+                              ? styles.packageStatusActive
+                              : styles.packageStatusInactive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.packageStatusText,
+                              subscription.status === 'Active'
+                                ? { color: COLORS.SURFACE }
+                                : { color: COLORS.TEXT_PRIMARY },
+                            ]}
+                          >
+                            {subscription.status === 'Active' ? 'Đang hiệu lực' : subscription.status}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.packageDate}>
+                        Bắt đầu: {formatDate(subscription.startDate)} • Kết thúc: {formatDate(subscription.endDate)}
+                      </Text>
+                      <Text style={styles.packageUsedSlot}>
+                        Số buổi đã dùng: {subscription.usedSlot}{' '}
+                        {typeof subscription.totalSlotsSnapshot === 'number'
+                          ? `/ ${subscription.totalSlotsSnapshot}`
+                          : ''}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.packageStateText}>
+                    Chưa có gói nào được đăng ký cho học sinh này.
+                  </Text>
+                )}
               </View>
             </View>
             ))
@@ -515,10 +668,105 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.BORDER,
   },
+  tertiaryButton: {
+    backgroundColor: COLORS.SURFACE,
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY + '33',
+  },
   actionButtonText: {
     fontSize: FONTS.SIZES.SM,
     fontWeight: '600',
     marginLeft: SPACING.XS,
+  },
+  packageContainer: {
+    marginTop: SPACING.MD,
+    padding: SPACING.MD,
+    borderRadius: 12,
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  packageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  packageTitle: {
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  packageStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  packageStateText: {
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    flex: 1,
+  },
+  packageRetryButton: {
+    alignSelf: 'flex-start',
+    marginTop: SPACING.XS,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY,
+  },
+  packageRetryText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  packageCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 12,
+    padding: SPACING.SM,
+    marginBottom: SPACING.SM,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  packageCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.XS,
+  },
+  packageName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+    marginRight: SPACING.SM,
+  },
+  packageStatusBadge: {
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    borderRadius: 10,
+  },
+  packageStatusActive: {
+    backgroundColor: COLORS.PRIMARY,
+  },
+  packageStatusInactive: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  packageStatusText: {
+    fontSize: FONTS.SIZES.XS,
+    fontWeight: '600',
+  },
+  packageDate: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  packageUsedSlot: {
+    marginTop: SPACING.XS,
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -602,6 +850,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.SM,
     paddingHorizontal: SPACING.LG,
     borderRadius: 8,
+    alignItems: 'center',
   },
   modalButtonText: {
     fontSize: FONTS.SIZES.MD,

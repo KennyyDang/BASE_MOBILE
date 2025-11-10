@@ -54,6 +54,7 @@ import ChildrenManagementScreen from '../screens/main/ChildrenManagementScreen';
 import TopUpScreen from '../screens/main/TopUpScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import NotificationScreen from '../screens/main/NotificationScreen';
+import StudentPackagesScreen from '../screens/main/StudentPackagesScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -286,6 +287,14 @@ const AppNavigator = () => {
               options={{
                 title: 'Thông Báo',
                 headerTitle: 'Thông Báo',
+              }}
+            />
+            <Stack.Screen
+              name="StudentPackages"
+              component={StudentPackagesScreen}
+              options={{
+                title: 'Gói học',
+                headerTitle: 'Chọn gói phù hợp',
               }}
             />
           </>

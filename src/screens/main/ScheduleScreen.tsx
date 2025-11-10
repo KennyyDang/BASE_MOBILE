@@ -1,23 +1,43 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
   SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
-// Inline constants
+import { useCurrentUserStudents } from '../../hooks/useChildrenApi';
+import branchSlotService from '../../services/branchSlotService';
+import studentSlotService from '../../services/studentSlotService';
+import {
+  BranchSlotResponse,
+  BranchSlotRoomResponse,
+  StudentPackageSubscription,
+  StudentResponse,
+} from '../../types/api';
+import packageService from '../../services/packageService';
+
 const COLORS = {
   PRIMARY: '#2E7D32',
+  PRIMARY_LIGHT: '#4CAF50',
+  SECONDARY: '#FF6F00',
+  ACCENT: '#2196F3',
   BACKGROUND: '#F5F5F5',
   SURFACE: '#FFFFFF',
   TEXT_PRIMARY: '#212121',
   TEXT_SECONDARY: '#757575',
   BORDER: '#E0E0E0',
-  ACCENT: '#2196F3',
+  SUCCESS_BG: '#E8F5E9',
+  ERROR: '#F44336',
+  WARNING_BG: '#FFF3E0',
+  INFO_BG: '#E3F2FD',
   SHADOW: '#000000',
 };
 
@@ -40,183 +60,1155 @@ const FONTS = {
   },
 };
 
+const PAGE_SIZE = 20;
+const ROOM_PAGE_SIZE = 10;
+type WeekdayKey = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+const WEEKDAY_ORDER: WeekdayKey[] = [1, 2, 3, 4, 5, 6, 0];
+const WEEKDAY_LABELS: Record<WeekdayKey, { title: string; subtitle: string }> = {
+  0: { title: 'Chủ nhật', subtitle: 'Ngày nghỉ / Chủ động đăng ký thêm' },
+  1: { title: 'Thứ 2', subtitle: 'Khởi động tuần mới cho con' },
+  2: { title: 'Thứ 3', subtitle: 'Duy trì nhịp học tập' },
+  3: { title: 'Thứ 4', subtitle: 'Tăng tốc giữa tuần' },
+  4: { title: 'Thứ 5', subtitle: 'Hoạt động kỹ năng mềm' },
+  5: { title: 'Thứ 6', subtitle: 'Chuẩn bị cuối tuần' },
+  6: { title: 'Thứ 7', subtitle: 'Cuối tuần tại trung tâm' },
+};
+
+interface SlotsPagination {
+  pageIndex: number;
+  totalPages: number;
+  totalCount: number;
+  pageSize: number;
+  hasNextPage: boolean;
+}
+
+const normalizeWeekDate = (value: number): WeekdayKey => {
+  if (value >= 0 && value <= 6) {
+    return value as WeekdayKey;
+  }
+  return 0;
+};
+
+const formatTime = (time?: string | null) => {
+  if (!time) {
+    return '--:--';
+  }
+  const parts = time.split(':');
+  if (parts.length < 2) {
+    return time;
+  }
+  const hours = parts[0]?.padStart(2, '0') ?? '--';
+  const minutes = parts[1]?.padStart(2, '0') ?? '00';
+  return `${hours}:${minutes}`;
+};
+
+const formatTimeRange = (timeframe: BranchSlotResponse['timeframe']) => {
+  if (!timeframe) {
+    return 'Chưa có khung giờ';
+  }
+  return `${formatTime(timeframe.startTime)} - ${formatTime(timeframe.endTime)}`;
+};
+
+const getStatusBadgeStyle = (status: string) => {
+  const normalized = (status || '').toLowerCase();
+  switch (normalized) {
+    case 'available':
+      return {
+        label: 'Còn slot',
+        icon: 'check-circle',
+        backgroundColor: COLORS.SUCCESS_BG,
+        textColor: COLORS.PRIMARY,
+      };
+    case 'full':
+    case 'unavailable':
+      return {
+        label: 'Đã kín',
+        icon: 'block',
+        backgroundColor: '#FFEBEE',
+        textColor: COLORS.ERROR,
+      };
+    default:
+      return {
+        label: status || 'Đang cập nhật',
+        icon: 'help-outline',
+        backgroundColor: COLORS.INFO_BG,
+        textColor: COLORS.ACCENT,
+      };
+  }
+};
+
+interface SlotRoomsStateEntry {
+  rooms: BranchSlotRoomResponse[];
+  pagination: SlotsPagination | null;
+  loading: boolean;
+  error: string | null;
+  expanded: boolean;
+  selectedRoomId: string | null;
+  parentNote: string;
+  bookingLoading: boolean;
+}
+
+const createDefaultSlotRoomsState = (): SlotRoomsStateEntry => ({
+  rooms: [],
+  pagination: null,
+  loading: false,
+  error: null,
+  expanded: false,
+  selectedRoomId: null,
+  parentNote: '',
+  bookingLoading: false,
+});
+
+const computeSlotDateISO = (slot: BranchSlotResponse): string => {
+  const targetDay = normalizeWeekDate(slot.weekDate);
+  const now = new Date();
+  const currentDay = now.getDay();
+
+  const slotDate = new Date(now);
+  slotDate.setHours(0, 0, 0, 0);
+
+  let diff = targetDay - currentDay;
+  if (diff < 0) {
+    diff += 7;
+  }
+
+  slotDate.setDate(slotDate.getDate() + diff);
+
+  if (diff === 0 && slot.timeframe?.startTime) {
+    const [slotHour = '00', slotMinute = '00'] = slot.timeframe.startTime.split(':');
+    const slotStartToday = new Date(slotDate);
+    slotStartToday.setHours(Number(slotHour), Number(slotMinute), 0, 0);
+    if (slotStartToday <= now) {
+      slotDate.setDate(slotDate.getDate() + 7);
+    }
+  }
+
+  if (slot.timeframe?.startTime) {
+    const [hours = '0', minutes = '0', seconds = '0'] = slot.timeframe.startTime.split(':');
+    slotDate.setHours(Number(hours), Number(minutes), Number(seconds || 0), 0);
+  }
+
+  return slotDate.toISOString();
+};
+
 const ScheduleScreen: React.FC = () => {
-  const handleClassPress = (classId: string) => {// TODO: Navigate to class details screen
+  const {
+    students,
+    loading: studentsLoading,
+    error: studentsError,
+    refetch: refetchStudents,
+  } = useCurrentUserStudents(1, 10);
+
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [slots, setSlots] = useState<BranchSlotResponse[]>([]);
+  const [pagination, setPagination] = useState<SlotsPagination | null>(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsRefreshing, setSlotsRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
+  const [slotRoomsState, setSlotRoomsState] = useState<Record<string, SlotRoomsStateEntry>>({});
+  const [subscriptions, setSubscriptions] = useState<StudentPackageSubscription[]>([]);
+  const [subscriptionsLoading, setSubscriptionsLoading] = useState(false);
+  const [subscriptionsError, setSubscriptionsError] = useState<string | null>(null);
+  const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (students.length && !selectedStudentId) {
+      setSelectedStudentId(students[0].id);
+    }
+  }, [students, selectedStudentId]);
+
+  const selectedStudent: StudentResponse | null = useMemo(() => {
+    return students.find((student) => student.id === selectedStudentId) ?? null;
+  }, [selectedStudentId, students]);
+
+  const computeRemainingSlots = useCallback((subscription: StudentPackageSubscription) => {
+    if (typeof subscription.totalSlotsSnapshot === 'number') {
+      return Math.max(subscription.totalSlotsSnapshot - (subscription.usedSlot || 0), 0);
+    }
+    return undefined;
+  }, []);
+
+  const selectedSubscription = useMemo(() => {
+    if (!selectedSubscriptionId) {
+      return null;
+    }
+    return subscriptions.find((sub) => sub.id === selectedSubscriptionId) ?? null;
+  }, [selectedSubscriptionId, subscriptions]);
+
+  const fetchSubscriptions = useCallback(
+    async (studentId: string) => {
+      setSubscriptionsLoading(true);
+      setSubscriptionsError(null);
+      try {
+        const data = await packageService.getStudentSubscriptions(studentId);
+        setSubscriptions(data);
+
+        const currentValid = data.find((sub) => sub.id === selectedSubscriptionId);
+        if (currentValid) {
+          setSelectedSubscriptionId(currentValid.id);
+        } else {
+          const defaultSubscription =
+            data.find((sub) => sub.status === 'Active' && (computeRemainingSlots(sub) ?? 1) > 0) ||
+            data.find((sub) => sub.status === 'Active') ||
+            data[0];
+          setSelectedSubscriptionId(defaultSubscription ? defaultSubscription.id : null);
+        }
+      } catch (error: any) {
+        const message =
+          error?.response?.data?.message ||
+          error?.message ||
+          'Không thể tải gói đã đăng ký của học sinh. Vui lòng thử lại.';
+        setSubscriptionsError(message);
+        setSubscriptions([]);
+        setSelectedSubscriptionId(null);
+      } finally {
+        setSubscriptionsLoading(false);
+      }
+    },
+    [selectedSubscriptionId, computeRemainingSlots]
+  );
+
+  useEffect(() => {
+    if (!selectedStudentId) {
+      setSubscriptions([]);
+      setSelectedSubscriptionId(null);
+      setSubscriptionsError(null);
+      setSubscriptionsLoading(false);
+      return;
+    }
+    fetchSubscriptions(selectedStudentId);
+  }, [selectedStudentId, fetchSubscriptions]);
+
+  const resolvePackageSubscriptionId = useCallback(
+    (slot: BranchSlotResponse): string | null => {
+      const possibleIds = [
+        slot.packageSubscriptionId,
+        slot.studentPackageSubscriptionId,
+        slot.packageSubscription?.id,
+        (slot as any)?.studentPackageSubscriptionId,
+        (slot as any)?.packageSubscription?.id,
+      ];
+
+      const slotSpecificId =
+        (possibleIds.find((id) => typeof id === 'string' && id.length > 0) as string | undefined) || null;
+
+      if (slotSpecificId) {
+        return slotSpecificId;
+      }
+
+      return selectedSubscriptionId;
+    },
+    [selectedSubscriptionId]
+  );
+
+  const fetchSlots = useCallback(
+    async ({ page = 1, append = false, silent = false }: { page?: number; append?: boolean; silent?: boolean } = {}) => {
+      if (!selectedStudentId) {
+        return;
+      }
+
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setSlotsError(null);
+        if (!silent) {
+          setSlotsLoading(true);
+        }
+      }
+
+      try {
+        const response = await branchSlotService.getAvailableSlotsForStudent(
+          selectedStudentId,
+          page,
+          PAGE_SIZE
+        );
+        const items = response?.items ?? [];
+
+        setSlots((prev) => (append ? [...prev, ...items] : items));
+        setPagination({
+          pageIndex: response.pageIndex,
+          totalPages: response.totalPages,
+          totalCount: response.totalCount,
+          pageSize: response.pageSize,
+          hasNextPage: response.hasNextPage,
+        });
+      } catch (error: any) {
+        const message =
+          error?.message ||
+          error?.response?.data?.message ||
+          'Không thể tải danh sách slot phù hợp. Vui lòng thử lại.';
+        setSlotsError(message);
+
+        if (!append) {
+          setSlots([]);
+          setPagination(null);
+        }
+      } finally {
+        if (append) {
+          setLoadingMore(false);
+        } else {
+          setSlotsLoading(false);
+          setSlotsRefreshing(false);
+        }
+      }
+    },
+    [selectedStudentId]
+  );
+
+  const fetchSlotRooms = useCallback(
+    async (slotId: string, { page = 1, append = false }: { page?: number; append?: boolean } = {}) => {
+      setSlotRoomsState((prev) => {
+        const existing = prev[slotId] ? { ...prev[slotId] } : createDefaultSlotRoomsState();
+        if (!prev[slotId]) {
+          existing.expanded = true;
+        }
+        return {
+          ...prev,
+          [slotId]: {
+            ...existing,
+            loading: true,
+            error: null,
+          },
+        };
+      });
+
+      try {
+        const response = await branchSlotService.getRoomsBySlot(slotId, page, ROOM_PAGE_SIZE);
+        const items = response?.items ?? [];
+
+        setSlotRoomsState((prev) => {
+          const existing = prev[slotId] ? { ...prev[slotId] } : createDefaultSlotRoomsState();
+          const mergedRooms = append ? [...existing.rooms, ...items] : items;
+          const nextSelectedRoomId =
+            existing.selectedRoomId && mergedRooms.some((room) => room.id === existing.selectedRoomId)
+              ? existing.selectedRoomId
+              : mergedRooms[0]?.id ?? null;
+
+          return {
+            ...prev,
+            [slotId]: {
+              ...existing,
+              rooms: mergedRooms,
+              pagination: {
+                pageIndex: response.pageIndex,
+                totalPages: response.totalPages,
+                totalCount: response.totalCount,
+                pageSize: response.pageSize,
+                hasNextPage: response.hasNextPage,
+              },
+              loading: false,
+              error: null,
+              selectedRoomId: nextSelectedRoomId,
+            },
+          };
+        });
+      } catch (error: any) {
+        const message =
+          error?.message ||
+          error?.response?.data?.message ||
+          'Không thể tải danh sách phòng. Vui lòng thử lại.';
+
+        setSlotRoomsState((prev) => {
+          const existing = prev[slotId] ? { ...prev[slotId] } : createDefaultSlotRoomsState();
+          return {
+            ...prev,
+            [slotId]: {
+              ...existing,
+              loading: false,
+              error: message,
+            },
+          };
+        });
+      }
+    },
+    []
+  );
+
+  const handleToggleRooms = useCallback(
+    (slotId: string) => {
+      let shouldFetch = false;
+      setSlotRoomsState((prev) => {
+        const existing = prev[slotId] ? { ...prev[slotId] } : createDefaultSlotRoomsState();
+        const nextExpanded = !existing.expanded;
+        if (nextExpanded && !existing.rooms.length && !existing.loading) {
+          shouldFetch = true;
+        }
+        return {
+          ...prev,
+          [slotId]: {
+            ...existing,
+            expanded: nextExpanded,
+          },
+        };
+      });
+
+      if (shouldFetch) {
+        fetchSlotRooms(slotId);
+      }
+    },
+    [fetchSlotRooms]
+  );
+
+  const handleRetryRooms = useCallback(
+    (slotId: string) => {
+      fetchSlotRooms(slotId);
+    },
+    [fetchSlotRooms]
+  );
+
+  const handleLoadMoreRooms = useCallback(
+    (slotId: string) => {
+      const entry = slotRoomsState[slotId];
+      if (!entry || entry.loading || !entry.pagination?.hasNextPage) {
+        return;
+      }
+      const nextPage = (entry.pagination.pageIndex ?? 1) + 1;
+      fetchSlotRooms(slotId, { page: nextPage, append: true });
+    },
+    [slotRoomsState, fetchSlotRooms]
+  );
+
+  const handleSelectRoom = useCallback((slotId: string, roomId: string) => {
+    setSlotRoomsState((prev) => {
+      const existing = prev[slotId] ? { ...prev[slotId] } : createDefaultSlotRoomsState();
+      return {
+        ...prev,
+        [slotId]: {
+          ...existing,
+          selectedRoomId: roomId,
+        },
+      };
+    });
+  }, []);
+
+  const handleChangeParentNote = useCallback((slotId: string, note: string) => {
+    setSlotRoomsState((prev) => {
+      const existing = prev[slotId] ? { ...prev[slotId] } : createDefaultSlotRoomsState();
+      return {
+        ...prev,
+        [slotId]: {
+          ...existing,
+          parentNote: note,
+        },
+      };
+    });
+  }, []);
+
+  const handleBookSlot = useCallback(
+    async (slot: BranchSlotResponse) => {
+      if (!selectedStudentId) {
+        Alert.alert('Thông báo', 'Vui lòng chọn con trước khi đặt lịch.');
+        return;
+      }
+
+      const entry = slotRoomsState[slot.id];
+      if (!entry) {
+        Alert.alert('Thông báo', 'Vui lòng mở danh sách phòng trước khi đặt lịch.');
+        return;
+      }
+
+      if (!entry.selectedRoomId) {
+        Alert.alert('Thông báo', 'Vui lòng chọn phòng để đặt lịch.');
+        return;
+      }
+
+      const packageSubscriptionId = resolvePackageSubscriptionId(slot);
+      if (!packageSubscriptionId) {
+        Alert.alert(
+          'Thiếu thông tin gói học',
+          'Không tìm được gói đã đăng ký phù hợp với slot này. Vui lòng kiểm tra lại gói của con hoặc liên hệ trung tâm.'
+        );
+        return;
+      }
+
+      const payload = {
+        studentId: selectedStudentId,
+        branchSlotId: slot.id,
+        packageSubscriptionId,
+        roomId: entry.selectedRoomId,
+        date: computeSlotDateISO(slot),
+        parentNote: entry.parentNote?.trim() || undefined,
+      };
+
+      setSlotRoomsState((prev) => {
+        const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
+        return {
+          ...prev,
+          [slot.id]: {
+            ...existing,
+            bookingLoading: true,
+          },
+        };
+      });
+
+      try {
+        const response = await studentSlotService.bookSlot(payload);
+        Alert.alert('Thành công', response?.message || 'Đặt slot cho con thành công.');
+        setSlotRoomsState((prev) => {
+          const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
+          return {
+            ...prev,
+            [slot.id]: {
+              ...existing,
+              bookingLoading: false,
+              parentNote: '',
+            },
+          };
+        });
+        fetchSubscriptions(selectedStudentId);
+      } catch (error: any) {
+        const message =
+          error?.response?.data?.message ||
+          error?.message ||
+          'Không thể đặt slot cho con. Vui lòng thử lại sau.';
+        Alert.alert('Lỗi', message);
+        setSlotRoomsState((prev) => {
+          const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
+          return {
+            ...prev,
+            [slot.id]: {
+              ...existing,
+              bookingLoading: false,
+            },
+          };
+        });
+      }
+    },
+    [selectedStudentId, slotRoomsState]
+  );
+
+  useEffect(() => {
+    setSlotRoomsState({});
+    if (selectedStudentId) {
+      fetchSlots({ page: 1 });
+    } else {
+      setSlots([]);
+      setPagination(null);
+    }
+  }, [selectedStudentId, fetchSlots]);
+
+  const handleRefreshSlots = useCallback(() => {
+    if (!selectedStudentId) {
+      return;
+    }
+    setSlotsRefreshing(true);
+    fetchSlots({ page: 1, silent: true });
+  }, [selectedStudentId, fetchSlots]);
+
+  const handleRetrySlots = useCallback(() => {
+    if (!selectedStudentId) {
+      return;
+    }
+    fetchSlots({ page: 1 });
+  }, [selectedStudentId, fetchSlots]);
+
+  const handleLoadMore = useCallback(() => {
+    if (!pagination?.hasNextPage || loadingMore) {
+      return;
+    }
+    const nextPage = (pagination.pageIndex ?? 1) + 1;
+    fetchSlots({ page: nextPage, append: true });
+  }, [fetchSlots, pagination, loadingMore]);
+
+  const groupedSlots = useMemo(() => {
+    const groups: Record<WeekdayKey, BranchSlotResponse[]> = {
+      0: [],
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+      6: [],
+    };
+
+    slots.forEach((slot) => {
+      const day = normalizeWeekDate(slot.weekDate);
+      groups[day].push(slot);
+    });
+
+    return groups;
+  }, [slots]);
+
+  const renderStudentSelector = () => {
+    if (!students.length) {
+      return null;
+    }
+
+  return (
+      <View style={[styles.sectionCard, styles.sectionSpacing]}>
+        <Text style={styles.sectionTitle}>Chọn con cần xem lịch</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.studentChipList}
+        >
+          {students.map((student) => {
+            const active = student.id === selectedStudentId;
+            return (
+          <TouchableOpacity 
+                key={student.id}
+                style={[styles.studentChip, active && styles.studentChipActive]}
+                onPress={() => setSelectedStudentId(student.id)}
+              >
+                <MaterialIcons
+                  name={active ? 'child-care' : 'face-retouching-natural'}
+                  size={18}
+                  color={active ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
+                />
+                <Text
+                  style={[
+                    styles.studentChipText,
+                    active && { color: COLORS.PRIMARY, fontWeight: '700' },
+                  ]}
+                >
+                  {student.name}
+                </Text>
+          </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+        </View>
+    );
   };
 
-  const handleRegisterClass = () => {// TODO: Navigate to register class screen
+  const renderSelectedStudentInfo = () => {
+    if (!selectedStudent) {
+      return null;
+    }
+
+    return (
+      <View style={[styles.studentInfoCard, styles.sectionSpacing]}>
+        <View style={[styles.studentInfoHeader, styles.withBottomSpacing]}>
+          <View style={styles.studentAvatar}>
+            <MaterialIcons name="emoji-emotions" size={26} color={COLORS.PRIMARY} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.studentName}>{selectedStudent.name}</Text>
+            <Text style={styles.studentMeta}>
+              {selectedStudent.studentLevelName || 'Chưa có cấp độ phù hợp'}
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.studentMetaRow, styles.withTopSpacing]}>
+          <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
+          <Text style={styles.studentMetaText}>
+            {selectedStudent.branchName || 'Chưa gắn chi nhánh'}
+          </Text>
+        </View>
+        <View style={[styles.studentMetaRow, styles.withTopSpacing]}>
+          <MaterialIcons name="school" size={18} color={COLORS.PRIMARY} />
+          <Text style={styles.studentMetaText}>
+            {selectedStudent.schoolName || 'Chưa cập nhật trường học'}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderSubscriptionSection = () => {
+    if (!selectedStudentId) {
+      return null;
+    }
+
+    return (
+      <View style={[styles.sectionCard, styles.sectionSpacing]}>
+        <View style={styles.subscriptionHeader}>
+          <MaterialIcons name='card-membership' size={20} color={COLORS.PRIMARY} />
+          <Text style={styles.subscriptionTitle}>Gói áp dụng</Text>
+          <TouchableOpacity onPress={() => fetchSubscriptions(selectedStudentId)} style={styles.subscriptionRefresh}>
+            <MaterialIcons name='refresh' size={20} color={COLORS.PRIMARY} />
+          </TouchableOpacity>
+        </View>
+        {subscriptionsLoading ? (
+          <View style={styles.subscriptionStateRow}>
+            <ActivityIndicator size='small' color={COLORS.PRIMARY} />
+            <Text style={styles.subscriptionStateText}>Đang tải gói đã đăng ký...</Text>
+          </View>
+        ) : subscriptionsError ? (
+          <View>
+            <View style={styles.subscriptionStateRow}>
+              <MaterialIcons name='error-outline' size={18} color={COLORS.ERROR} />
+              <Text style={[styles.subscriptionStateText, { color: COLORS.ERROR }]}>{subscriptionsError}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.subscriptionRetryButton}
+              onPress={() => fetchSubscriptions(selectedStudentId)}
+            >
+              <Text style={styles.subscriptionRetryText}>Thử lại</Text>
+            </TouchableOpacity>
+          </View>
+        ) : subscriptions.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subscriptionChipList}>
+            {subscriptions.map((subscription) => {
+              const remaining = computeRemainingSlots(subscription);
+              const active = subscription.id === selectedSubscriptionId;
+              const isValid = subscription.status === 'Active' && (remaining === undefined || remaining > 0);
+
+              return (
+                <TouchableOpacity
+                  key={subscription.id}
+                  style={[
+                    styles.subscriptionChip,
+                    active && styles.subscriptionChipActive,
+                    !isValid && styles.subscriptionChipInactive,
+                  ]}
+                  onPress={() => setSelectedSubscriptionId(subscription.id)}
+                  activeOpacity={0.9}
+                >
+                  <View style={styles.subscriptionChipHeader}>
+                    <Text style={[styles.subscriptionChipText, active && styles.subscriptionChipTextActive]}>
+                      {subscription.packageName || 'Gói không tên'}
+                    </Text>
+                    <View
+                      style={[
+                        styles.subscriptionStatusBadge,
+                        subscription.status === 'Active'
+                          ? styles.subscriptionStatusActive
+                          : styles.subscriptionStatusInactive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.subscriptionStatusText,
+                          subscription.status === 'Active' ? { color: COLORS.SURFACE } : { color: COLORS.TEXT_PRIMARY },
+                        ]}
+                      >
+                        {subscription.status === 'Active' ? 'Đang hiệu lực' : subscription.status}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.subscriptionChipMeta}>
+                    Còn {remaining ?? '...'} buổi • HSD {new Date(subscription.endDate).toLocaleDateString('vi-VN')}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : (
+          <Text style={styles.subscriptionStateText}>
+            Chưa có gói nào được đăng ký cho học sinh. Vui lòng đăng ký gói trước khi đặt slot.
+          </Text>
+        )}
+      </View>
+    );
+  };
+
+  const renderSlotList = () => {
+    if (slotsLoading && slots.length === 0) {
+      return (
+        <View style={[styles.stateCard, styles.surfaceCard, styles.sectionSpacing]}>
+          <ActivityIndicator color={COLORS.PRIMARY} size="large" />
+          <Text style={styles.stateText}>Đang tải khung giờ phù hợp...</Text>
+        </View>
+      );
+    }
+
+    if (slotsError) {
+      return (
+        <View style={[styles.stateCard, styles.surfaceCard, styles.sectionSpacing]}>
+          <MaterialIcons name="error-outline" size={42} color={COLORS.ERROR} />
+          <Text style={[styles.stateText, { color: COLORS.ERROR }]}>{slotsError}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRetrySlots}>
+            <Text style={styles.retryButtonText}>Thử lại</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (!slotsLoading && slots.length === 0) {
+      return (
+        <View style={[styles.stateCard, styles.surfaceCard, styles.sectionSpacing]}>
+          <MaterialIcons name="event-busy" size={40} color={COLORS.TEXT_SECONDARY} />
+          <Text style={styles.stateText}>
+            Trung tâm chưa có slot trống phù hợp với hồ sơ của con. Phụ huynh vui lòng theo dõi lại sau
+            hoặc liên hệ tư vấn viên.
+          </Text>
+              </View>
+      );
+    }
+
+    return (
+      <View style={styles.slotListContainer}>
+        {WEEKDAY_ORDER.map((day) => {
+          const daySlots = groupedSlots[day];
+          const { title, subtitle } = WEEKDAY_LABELS[day];
+
+          return (
+            <View key={day} style={styles.daySection}>
+              <View style={styles.dayHeader}>
+                <View>
+                  <Text style={styles.dayTitle}>{title}</Text>
+                  <Text style={styles.daySubtitle}>{subtitle}</Text>
+              </View>
+                <View style={styles.dayBadge}>
+                  <MaterialIcons name="event-available" size={18} color={COLORS.PRIMARY} />
+                  <Text style={styles.dayBadgeText}>{daySlots.length}</Text>
+            </View>
+          </View>
+
+              {daySlots.length === 0 ? (
+                <View style={styles.emptySlotCard}>
+                  <MaterialIcons name="watch-later" size={32} color={COLORS.TEXT_SECONDARY} />
+                  <Text style={styles.emptySlotText}>Chưa có slot nào trong ngày</Text>
+              </View>
+              ) : (
+                daySlots.map((slot) => {
+                  const statusStyle = getStatusBadgeStyle(slot.status);
+                  const staffCount = slot.staff?.length ?? 0;
+                  const roomState = slotRoomsState[slot.id];
+                  const roomsCount = roomState?.rooms?.length ?? 0;
+                  const isExpanded = roomState?.expanded ?? false;
+                  const packageSubscriptionId = resolvePackageSubscriptionId(slot);
+                  const packageName =
+                    slot.packageSubscription?.name ||
+                    slot.packageName ||
+                    slot.packageSubscriptionName ||
+                    (slot as any)?.studentPackageName ||
+                    (slot as any)?.packageName ||
+                    undefined;
+                  const remainingSlots =
+                    slot.packageSubscription?.remainingSlots ??
+                    slot.packageRemainingSlots ??
+                    (slot as any)?.remainingSlots ??
+                    null;
+                  const effectiveSubscription =
+                    subscriptions.find((sub) => sub.id === packageSubscriptionId) ||
+                    (packageSubscriptionId ? null : selectedSubscription);
+                  const computedRemaining =
+                    typeof remainingSlots === 'number'
+                      ? remainingSlots
+                      : effectiveSubscription
+                      ? computeRemainingSlots(effectiveSubscription)
+                      : undefined;
+                  const displayPackageName = packageName || effectiveSubscription?.packageName;
+                  const isSubscriptionActive =
+                    effectiveSubscription?.status === 'Active' ||
+                    (!effectiveSubscription && Boolean(packageSubscriptionId));
+                  const hasRemaining = computedRemaining === undefined || computedRemaining > 0;
+                  const canBook =
+                    Boolean(packageSubscriptionId && roomState?.selectedRoomId && roomsCount > 0) &&
+                    isSubscriptionActive &&
+                    hasRemaining;
+                  const subscriptionWarning = !packageSubscriptionId
+                    ? 'Chưa tìm thấy gói áp dụng. Vui lòng chọn gói phù hợp trước khi đặt slot.'
+                    : !isSubscriptionActive
+                    ? 'Gói này đã hết hiệu lực. Vui lòng chọn gói khác.'
+                    : !hasRemaining
+                    ? 'Gói hiện không còn buổi khả dụng. Vui lòng gia hạn hoặc chọn gói khác.'
+                    : null;
+
+                  return (
+                    <View key={slot.id} style={styles.slotCard}>
+                      <View style={styles.slotHeader}>
+                        <View style={styles.slotIcon}>
+                          <MaterialIcons name="access-time" size={22} color={COLORS.ACCENT} />
+              </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.slotTime}>{formatTimeRange(slot.timeframe)}</Text>
+                          <Text style={styles.slotTitle}>
+                            {slot.timeframe?.name || 'Khung giờ chưa đặt tên'}
+                          </Text>
+                        </View>
+                        <View
+                          style={[styles.statusTag, { backgroundColor: statusStyle.backgroundColor }]}
+                        >
+                          <MaterialIcons
+                            name={statusStyle.icon as any}
+                            size={18}
+                            color={statusStyle.textColor}
+                          />
+                          <Text
+                            style={[styles.statusTagText, { color: statusStyle.textColor }]}
+                          >
+                            {statusStyle.label}
+                          </Text>
+            </View>
+          </View>
+
+                      <View style={styles.slotMetaRow}>
+                        <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
+                        <Text style={styles.slotMetaText}>
+                          {slot.branch?.branchName || 'Chưa có thông tin chi nhánh'}
+                        </Text>
+              </View>
+
+                      <View style={styles.slotMetaRow}>
+                        <MaterialIcons name="category" size={18} color={COLORS.PRIMARY} />
+                        <Text style={styles.slotMetaText}>
+                          {slot.slotType?.name || 'Loại slot chưa xác định'}
+                        </Text>
+              </View>
+
+                      <View style={styles.slotMetaRow}>
+                        <MaterialIcons name="card-membership" size={18} color={COLORS.ACCENT} />
+                        <Text style={styles.slotMetaText}>
+                          {displayPackageName
+                            ? `Gói áp dụng: ${displayPackageName}${
+                                computedRemaining !== undefined ? ` • Còn ${computedRemaining} buổi` : ''
+                              }`
+                            : 'Chưa nhận diện được gói áp dụng'}
+                        </Text>
+                      </View>
+
+                      {slot.slotType?.description ? (
+                        <Text style={styles.slotDescription}>{slot.slotType.description}</Text>
+                      ) : null}
+
+                      {slot.timeframe?.description ? (
+                        <View style={styles.slotMetaRow}>
+                          <MaterialIcons name="notes" size={18} color={COLORS.TEXT_SECONDARY} />
+                          <Text style={styles.slotMetaText}>
+                            {slot.timeframe.description}
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {staffCount > 0 ? (
+                        <View style={styles.staffBadge}>
+                          <MaterialIcons name="groups" size={18} color={COLORS.SECONDARY} />
+                          <Text style={styles.staffBadgeText}>
+                            {staffCount} nhân sự phụ trách
+                          </Text>
+                        </View>
+                      ) : null}
+
+              <TouchableOpacity 
+                        style={styles.roomsToggleButton}
+                        onPress={() => handleToggleRooms(slot.id)}
+                        activeOpacity={0.85}
+                      >
+                        <MaterialIcons
+                          name={isExpanded ? 'expand-less' : 'meeting-room'}
+                          size={20}
+                          color={COLORS.PRIMARY}
+                        />
+                        <Text style={styles.roomsToggleText}>
+                          {isExpanded ? 'Thu gọn danh sách phòng' : 'Xem phòng khả dụng'}
+                        </Text>
+                        {roomsCount > 0 ? (
+                          <View style={styles.roomsCountBadge}>
+                            <Text style={styles.roomsCountText}>{roomsCount}</Text>
+            </View>
+                        ) : null}
+                      </TouchableOpacity>
+
+                      {isExpanded ? (
+                        <View style={styles.roomsContainer}>
+                          {roomState?.loading && roomsCount === 0 ? (
+                            <View style={styles.roomsStateRow}>
+                              <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                              <Text style={styles.roomsStateText}>Đang tải danh sách phòng...</Text>
+            </View>
+                          ) : null}
+
+                          {roomState?.error ? (
+                            <View style={styles.roomsStateColumn}>
+                              <View style={styles.roomsStateRow}>
+                                <MaterialIcons name="error-outline" size={20} color={COLORS.ERROR} />
+                                <Text style={[styles.roomsStateText, { color: COLORS.ERROR }]}>
+                                  {roomState.error}
+                                </Text>
+              </View>
+              <TouchableOpacity 
+                                style={styles.roomsRetryButton}
+                                onPress={() => handleRetryRooms(slot.id)}
+              >
+                                <Text style={styles.roomsRetryButtonText}>Thử lại</Text>
+              </TouchableOpacity>
+            </View>
+                          ) : null}
+
+                          {!roomState?.loading && !roomState?.error && roomsCount === 0 ? (
+                            <View style={styles.roomsStateRow}>
+                              <MaterialIcons
+                                name="meeting-room"
+                                size={20}
+                                color={COLORS.TEXT_SECONDARY}
+                              />
+                              <Text style={styles.roomsStateText}>
+                                Chưa có phòng phù hợp cho khung giờ này. Vui lòng liên hệ trung tâm.
+                              </Text>
+          </View>
+                          ) : null}
+
+                          {roomState?.rooms.map((room) => (
+                            <TouchableOpacity
+                              key={room.id}
+                              style={[
+                                styles.roomCard,
+                                roomState.selectedRoomId === room.id && styles.roomCardSelected,
+                              ]}
+                              onPress={() => handleSelectRoom(slot.id, room.id)}
+                              activeOpacity={0.85}
+                            >
+                              <View style={styles.roomCardHeader}>
+                                <Text style={styles.roomTitle}>{room.roomName}</Text>
+                                {roomState.selectedRoomId === room.id ? (
+                                  <MaterialIcons name="check-circle" size={20} color={COLORS.PRIMARY} />
+                                ) : null}
+                              </View>
+                              {room.branchName || slot.branch?.branchName ? (
+                                <View style={styles.roomMetaRow}>
+                                  <MaterialIcons name="domain" size={18} color={COLORS.SECONDARY} />
+                                  <Text style={styles.roomMetaText}>
+                                    {room.branchName || slot.branch?.branchName || 'Chi nhánh đang cập nhật'}
+                                  </Text>
+                                </View>
+                              ) : null}
+                              {room.facilityName ? (
+                                <View style={styles.roomMetaRow}>
+                                  <MaterialIcons name="business" size={18} color={COLORS.ACCENT} />
+                                  <Text style={styles.roomMetaText}>{room.facilityName}</Text>
+                                </View>
+                              ) : null}
+                              {typeof room.capacity === 'number' ? (
+                                <View style={styles.roomMetaRow}>
+                                  <MaterialIcons name="event-seat" size={18} color={COLORS.PRIMARY} />
+                                  <Text style={styles.roomMetaText}>
+                                    Sức chứa tối đa: {room.capacity}
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </TouchableOpacity>
+                          ))}
+
+                          {roomState?.pagination?.hasNextPage ? (
+                            <TouchableOpacity
+                              style={styles.roomLoadMoreButton}
+                              onPress={() => handleLoadMoreRooms(slot.id)}
+                              disabled={roomState.loading}
+                              activeOpacity={0.85}
+                            >
+                              {roomState.loading ? (
+                                <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                              ) : (
+                                <>
+                                  <MaterialIcons name="expand-more" size={20} color={COLORS.PRIMARY} />
+                                  <Text style={styles.roomLoadMoreText}>Xem thêm phòng</Text>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          ) : null}
+
+                          {roomsCount > 0 ? (
+                            <>
+                              <TextInput
+                                style={styles.noteInput}
+                                placeholder="Ghi chú cho trung tâm (không bắt buộc)"
+                                placeholderTextColor={COLORS.TEXT_SECONDARY}
+                                multiline
+                                value={roomState?.parentNote ?? ''}
+                                onChangeText={(text) => handleChangeParentNote(slot.id, text)}
+                              />
+                              {subscriptionWarning ? (
+                                <Text style={styles.packageWarning}>{subscriptionWarning}</Text>
+                              ) : null}
+                              <TouchableOpacity
+                                style={[
+                                  styles.bookButton,
+                                  (!canBook || roomState?.bookingLoading) && styles.bookButtonDisabled,
+                                ]}
+                                onPress={() => handleBookSlot(slot)}
+                                disabled={!canBook || roomState?.bookingLoading}
+                                activeOpacity={0.85}
+                              >
+                                {roomState?.bookingLoading ? (
+                                  <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                                ) : (
+                                  <>
+                                    <MaterialIcons name="event-available" size={20} color={COLORS.SURFACE} />
+                                    <Text style={styles.bookButtonText}>Đặt slot cho con</Text>
+                                  </>
+                                )}
+                              </TouchableOpacity>
+                            </>
+                          ) : null}
+              </View>
+                      ) : null}
+            </View>
+                  );
+                })
+              )}
+          </View>
+          );
+        })}
+
+        {pagination?.hasNextPage ? (
+          <TouchableOpacity
+            style={styles.loadMoreButton}
+            onPress={handleLoadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? (
+              <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+            ) : (
+              <>
+                <MaterialIcons name="expand-more" size={24} color={COLORS.PRIMARY} />
+                <Text style={styles.loadMoreText}>Xem thêm khung giờ</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : null}
+        </View>
+    );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header Actions */}
-        <View style={styles.headerActions}>
-          <TouchableOpacity 
-            style={styles.registerButton}
-            onPress={handleRegisterClass}
-          >
-            <MaterialIcons name="add" size={20} color={COLORS.SURFACE} />
-            <Text style={styles.registerButtonText}>Đăng ký lớp mới</Text>
-          </TouchableOpacity>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          selectedStudentId ? (
+            <RefreshControl
+              refreshing={slotsRefreshing}
+              onRefresh={handleRefreshSlots}
+              colors={[COLORS.PRIMARY]}
+              tintColor={COLORS.PRIMARY}
+            />
+          ) : undefined
+        }
+      >
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Khung giờ trống phù hợp</Text>
+          <Text style={styles.headerSubtitle}>
+            Theo dõi và lựa chọn khung giờ tại trung tâm phù hợp với nhịp sinh hoạt của con
+          </Text>
         </View>
 
-        {/* Week Navigation */}
-        <View style={styles.weekNavigation}>
-          <TouchableOpacity style={styles.weekNavButton}>
-            <MaterialIcons name="chevron-left" size={24} color={COLORS.PRIMARY} />
-          </TouchableOpacity>
-          
-          <View style={styles.currentWeek}>
-            <Text style={styles.currentWeekText}>Tuần 14 - 20 Tháng 9</Text>
-            <Text style={styles.currentYear}>2024</Text>
-          </View>
-          
-          <TouchableOpacity style={styles.weekNavButton}>
-            <MaterialIcons name="chevron-right" size={24} color={COLORS.PRIMARY} />
-          </TouchableOpacity>
-        </View>
+        {studentsLoading && !students.length ? (
+          <View style={[styles.stateCard, styles.surfaceCard]}>
+            <ActivityIndicator size="large" color={COLORS.PRIMARY} />
+            <Text style={styles.stateText}>Đang tải danh sách con...</Text>
+            </View>
+        ) : null}
 
-        {/* Weekly Schedule */}
-        <View style={styles.scheduleContainer}>
-          {/* Monday */}
-          <View style={styles.dayContainer}>
-            <Text style={styles.dayTitle}>Thứ 2</Text>
-            <View style={styles.classCard}>
-              <View style={styles.classTimeContainer}>
-                <Text style={styles.classTime}>14:00</Text>
-                <Text style={styles.classDuration}>90 phút</Text>
-              </View>
-              <View style={styles.classInfo}>
-                <Text style={styles.className}>Toán học nâng cao</Text>
-                <Text style={styles.classRoom}>Phòng A101</Text>
-                <Text style={styles.classTeacher}>Cô Nguyễn Thị Lan</Text>
-              </View>
-              <TouchableOpacity 
-                style={styles.classAction}
-                onPress={() => handleClassPress('math-101')}
-              >
-                <MaterialIcons name="chevron-right" size={20} color={COLORS.PRIMARY} />
-              </TouchableOpacity>
+        {studentsError ? (
+          <View style={[styles.stateCard, styles.surfaceCard]}>
+            <MaterialIcons name="error-outline" size={42} color={COLORS.ERROR} />
+            <Text style={[styles.stateText, { color: COLORS.ERROR }]}>{studentsError}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={refetchStudents}>
+              <Text style={styles.retryButtonText}>Thử lại</Text>
+            </TouchableOpacity>
             </View>
-          </View>
+        ) : null}
 
-          {/* Tuesday */}
-          <View style={styles.dayContainer}>
-            <Text style={styles.dayTitle}>Thứ 3</Text>
-            <View style={styles.classCard}>
-              <View style={styles.classTimeContainer}>
-                <Text style={styles.classTime}>16:00</Text>
-                <Text style={styles.classDuration}>60 phút</Text>
-              </View>
-              <View style={styles.classInfo}>
-                <Text style={styles.className}>Tiếng Anh giao tiếp</Text>
-                <Text style={styles.classRoom}>Phòng B202</Text>
-                <Text style={styles.classTeacher}>Thầy John Smith</Text>
-              </View>
-              <TouchableOpacity 
-                style={styles.classAction}
-                onPress={() => handleClassPress('english-201')}
-              >
-                <MaterialIcons name="chevron-right" size={20} color={COLORS.PRIMARY} />
-              </TouchableOpacity>
+        {!studentsLoading && students.length === 0 ? (
+          <View style={[styles.stateCard, styles.surfaceCard]}>
+            <MaterialIcons name="child-care" size={42} color={COLORS.TEXT_SECONDARY} />
+            <Text style={styles.stateText}>
+              Chưa có thông tin con trong tài khoản. Vui lòng thêm con tại mục Quản lý con để xem các
+              khung giờ phù hợp.
+            </Text>
             </View>
-          </View>
-
-          {/* Wednesday */}
-          <View style={styles.dayContainer}>
-            <Text style={styles.dayTitle}>Thứ 4</Text>
-            <View style={styles.classCard}>
-              <View style={styles.classTimeContainer}>
-                <Text style={styles.classTime}>15:00</Text>
-                <Text style={styles.classDuration}>90 phút</Text>
-              </View>
-              <View style={styles.classInfo}>
-                <Text style={styles.className}>Khoa học thực hành</Text>
-                <Text style={styles.classRoom}>Phòng Lab C301</Text>
-                <Text style={styles.classTeacher}>Cô Trần Thị Mai</Text>
-              </View>
-              <TouchableOpacity 
-                style={styles.classAction}
-                onPress={() => handleClassPress('science-lab')}
-              >
-                <MaterialIcons name="chevron-right" size={20} color={COLORS.PRIMARY} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Thursday */}
-          <View style={styles.dayContainer}>
-            <Text style={styles.dayTitle}>Thứ 5</Text>
-            <View style={styles.emptyDay}>
-              <MaterialIcons name="event-busy" size={48} color={COLORS.TEXT_SECONDARY} />
-              <Text style={styles.emptyDayText}>Không có lớp học</Text>
-            </View>
-          </View>
-
-          {/* Friday */}
-          <View style={styles.dayContainer}>
-            <Text style={styles.dayTitle}>Thứ 6</Text>
-            <View style={styles.classCard}>
-              <View style={styles.classTimeContainer}>
-                <Text style={styles.classTime}>14:30</Text>
-                <Text style={styles.classDuration}>60 phút</Text>
-              </View>
-              <View style={styles.classInfo}>
-                <Text style={styles.className}>Nghệ thuật & Thủ công</Text>
-                <Text style={styles.classRoom}>Phòng D401</Text>
-                <Text style={styles.classTeacher}>Cô Lê Thị Hoa</Text>
-              </View>
-              <TouchableOpacity 
-                style={styles.classAction}
-                onPress={() => handleClassPress('art-craft')}
-              >
-                <MaterialIcons name="chevron-right" size={20} color={COLORS.PRIMARY} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Weekend */}
-          <View style={styles.weekendContainer}>
-            <View style={styles.dayContainer}>
-              <Text style={styles.dayTitle}>Thứ 7</Text>
-              <View style={styles.emptyDay}>
-                <MaterialIcons name="weekend" size={48} color={COLORS.TEXT_SECONDARY} />
-                <Text style={styles.emptyDayText}>Cuối tuần</Text>
-              </View>
-            </View>
-            
-            <View style={styles.dayContainer}>
-              <Text style={styles.dayTitle}>Chủ nhật</Text>
-              <View style={styles.emptyDay}>
-                <MaterialIcons name="weekend" size={48} color={COLORS.TEXT_SECONDARY} />
-                <Text style={styles.emptyDayText}>Cuối tuần</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Statistics */}
-        <View style={styles.statisticsContainer}>
-          <Text style={styles.sectionTitle}>Thống kê tuần này</Text>
-          
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>4</Text>
-              <Text style={styles.statLabel}>Lớp học</Text>
-            </View>
-            
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>6h</Text>
-              <Text style={styles.statLabel}>Tổng thời gian</Text>
-            </View>
-            
-            <View style={styles.statItem}>
-              <Text style={styles.statNumber}>100%</Text>
-              <Text style={styles.statLabel}>Điểm danh</Text>
-            </View>
-          </View>
-        </View>
+        ) : (
+          <>
+            {renderStudentSelector()}
+            {renderSelectedStudentInfo()}
+            {renderSubscriptionSection()}
+            {renderSlotList()}
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -227,160 +1219,537 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.BACKGROUND,
   },
-  scrollContent: {
+  content: {
     padding: SPACING.MD,
+    paddingBottom: SPACING.XL,
   },
-  headerActions: {
-    marginBottom: SPACING.LG,
+  header: {
+    marginBottom: SPACING.SM,
   },
-  registerButton: {
-    backgroundColor: COLORS.PRIMARY,
-    borderRadius: 8,
-    paddingVertical: SPACING.MD,
-    paddingHorizontal: SPACING.LG,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  registerButtonText: {
-    color: COLORS.SURFACE,
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: 'bold',
-    marginLeft: SPACING.SM,
-  },
-  weekNavigation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.SURFACE,
-    borderRadius: 12,
-    padding: SPACING.MD,
-    marginBottom: SPACING.LG,
-  },
-  weekNavButton: {
-    padding: SPACING.SM,
-  },
-  currentWeek: {
-    alignItems: 'center',
-  },
-  currentWeekText: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: 'bold',
+  headerTitle: {
+    fontSize: FONTS.SIZES.XXL,
+    fontWeight: '700',
     color: COLORS.TEXT_PRIMARY,
   },
-  currentYear: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-  },
-  scheduleContainer: {
-    marginBottom: SPACING.LG,
-  },
-  dayContainer: {
-    marginBottom: SPACING.LG,
-  },
-  dayTitle: {
-    fontSize: FONTS.SIZES.LG,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.MD,
-  },
-  classCard: {
-    backgroundColor: COLORS.SURFACE,
-    borderRadius: 12,
-    padding: SPACING.MD,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: COLORS.SHADOW,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  classTimeContainer: {
-    alignItems: 'center',
-    marginRight: SPACING.MD,
-    minWidth: 60,
-  },
-  classTime: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: 'bold',
-    color: COLORS.PRIMARY,
-  },
-  classDuration: {
-    fontSize: FONTS.SIZES.XS,
-    color: COLORS.TEXT_SECONDARY,
+  headerSubtitle: {
     marginTop: SPACING.XS,
-  },
-  classInfo: {
-    flex: 1,
-  },
-  className: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.XS,
-  },
-  classRoom: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
-    marginBottom: SPACING.XS,
+    lineHeight: 20,
   },
-  classTeacher: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
+  sectionSpacing: {
+    marginTop: SPACING.MD,
   },
-  classAction: {
-    padding: SPACING.SM,
-  },
-  emptyDay: {
+  sectionCard: {
     backgroundColor: COLORS.SURFACE,
-    borderRadius: 12,
-    padding: SPACING.XL,
+    borderRadius: 16,
+    padding: SPACING.MD,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.SM,
+  },
+  studentChipList: {
+    flexDirection: 'row',
+    paddingRight: SPACING.SM,
+  },
+  studentChip: {
+    flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.BORDER,
-    borderStyle: 'dashed',
-  },
-  emptyDayText: {
-    fontSize: FONTS.SIZES.MD,
-    color: COLORS.TEXT_SECONDARY,
-    marginTop: SPACING.SM,
-  },
-  weekendContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statisticsContainer: {
+    borderRadius: 20,
+    paddingVertical: SPACING.XS,
+    paddingHorizontal: SPACING.MD,
     backgroundColor: COLORS.SURFACE,
-    borderRadius: 12,
-    padding: SPACING.LG,
-    marginBottom: SPACING.LG,
+    marginRight: SPACING.SM,
   },
-  sectionTitle: {
-    fontSize: FONTS.SIZES.LG,
-    fontWeight: 'bold',
+  studentChipActive: {
+    borderColor: COLORS.PRIMARY,
+    backgroundColor: COLORS.SUCCESS_BG,
+  },
+  studentChipText: {
+    fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.MD,
-    textAlign: 'center',
+    marginLeft: SPACING.XS,
   },
-  statsRow: {
+  studentInfoCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 16,
+    padding: SPACING.MD,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  studentInfoHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
     alignItems: 'center',
   },
-  statNumber: {
-    fontSize: FONTS.SIZES.XXL,
-    fontWeight: 'bold',
+  studentAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: COLORS.SUCCESS_BG,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  studentName: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  studentMeta: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  studentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  studentMetaText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  withBottomSpacing: {
+    marginBottom: SPACING.SM,
+  },
+  withTopSpacing: {
+    marginTop: SPACING.SM,
+  },
+  stateCard: {
+    borderRadius: 16,
+    padding: SPACING.LG,
+    alignItems: 'center',
+  },
+  surfaceCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  stateText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: SPACING.SM,
+  },
+  retryButton: {
+    marginTop: SPACING.XS,
+    backgroundColor: COLORS.PRIMARY,
+    paddingHorizontal: SPACING.LG,
+    paddingVertical: SPACING.SM,
+    borderRadius: 12,
+  },
+  retryButtonText: {
+    color: COLORS.SURFACE,
+    fontWeight: '600',
+    fontSize: FONTS.SIZES.SM,
+  },
+  daySection: {
+    marginTop: SPACING.LG,
+  },
+  dayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.SM,
+  },
+  dayTitle: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  daySubtitle: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: 4,
+  },
+  dayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.SUCCESS_BG,
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    borderRadius: 16,
+  },
+  dayBadgeText: {
+    fontSize: FONTS.SIZES.SM,
     color: COLORS.PRIMARY,
+    fontWeight: '600',
+    marginLeft: SPACING.XS,
+  },
+  emptySlotCard: {
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    paddingVertical: SPACING.LG,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  emptySlotText: {
+    marginTop: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  slotCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 16,
+    padding: SPACING.MD,
+    marginBottom: SPACING.SM,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  slotHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  slotIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.INFO_BG,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  slotTime: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  slotTitle: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: 2,
+  },
+  statusTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    borderRadius: 16,
+  },
+  statusTagText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    marginLeft: SPACING.XS,
+  },
+  slotMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.SM,
+  },
+  slotMetaText: {
+    flex: 1,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    lineHeight: 20,
+  },
+  slotDescription: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    lineHeight: 20,
+    marginTop: SPACING.SM,
+  },
+  staffBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.WARNING_BG,
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    borderRadius: 14,
+    marginTop: SPACING.SM,
+  },
+  staffBadgeText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.SECONDARY,
+    fontWeight: '600',
+    marginLeft: SPACING.XS,
+  },
+  roomsToggleButton: {
+    marginTop: SPACING.SM,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY,
+    borderRadius: 14,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.XS,
+    backgroundColor: COLORS.SURFACE,
+  },
+  roomsToggleText: {
+    flex: 1,
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  roomsCountBadge: {
+    marginLeft: SPACING.SM,
+    backgroundColor: COLORS.PRIMARY,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: 2,
+  },
+  roomsCountText: {
+    color: COLORS.SURFACE,
+    fontSize: FONTS.SIZES.XS,
+    fontWeight: '700',
+  },
+  roomsContainer: {
+    marginTop: SPACING.SM,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.BORDER,
+    paddingTop: SPACING.SM,
+  },
+  roomsStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  roomsStateColumn: {
+    marginBottom: SPACING.SM,
+  },
+  roomsStateText: {
+    flex: 1,
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    lineHeight: 20,
+  },
+  roomsRetryButton: {
+    alignSelf: 'flex-start',
+    marginTop: SPACING.XS,
+    backgroundColor: COLORS.PRIMARY,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.XS,
+  },
+  roomsRetryButtonText: {
+    color: COLORS.SURFACE,
+    fontWeight: '600',
+    fontSize: FONTS.SIZES.SM,
+  },
+  roomCard: {
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    marginBottom: SPACING.SM,
+    backgroundColor: COLORS.SURFACE,
+  },
+  roomCardSelected: {
+    borderColor: COLORS.PRIMARY,
+    backgroundColor: COLORS.SUCCESS_BG,
+  },
+  roomCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: SPACING.XS,
   },
-  statLabel: {
+  roomTitle: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  roomMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.XS,
+  },
+  roomMetaText: {
+    marginLeft: SPACING.SM,
     fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  roomLoadMoreButton: {
+    marginTop: SPACING.XS,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY,
+    borderRadius: 14,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.XS,
+    backgroundColor: COLORS.SURFACE,
+  },
+  roomLoadMoreText: {
+    marginLeft: SPACING.XS,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  noteInput: {
+    marginTop: SPACING.SM,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    backgroundColor: COLORS.SURFACE,
+    minHeight: 70,
+    textAlignVertical: 'top',
+  },
+  packageWarning: {
+    marginTop: SPACING.XS,
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.ERROR,
+  },
+  bookButton: {
+    marginTop: SPACING.SM,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    paddingVertical: SPACING.SM,
+    backgroundColor: COLORS.PRIMARY,
+  },
+  bookButtonDisabled: {
+    opacity: 0.5,
+  },
+  bookButtonText: {
+    marginLeft: SPACING.SM,
+    color: COLORS.SURFACE,
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '700',
+  },
+  loadMoreButton: {
+    marginTop: SPACING.SM,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY,
+    borderRadius: 16,
+    paddingHorizontal: SPACING.LG,
+    paddingVertical: SPACING.SM,
+    backgroundColor: COLORS.SURFACE,
+  },
+  loadMoreText: {
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+    fontSize: FONTS.SIZES.MD,
+    marginLeft: SPACING.XS,
+  },
+  slotListContainer: {
+    marginTop: SPACING.LG,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  subscriptionTitle: {
+    flex: 1,
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  subscriptionRefresh: {
+    padding: SPACING.XS,
+  },
+  subscriptionStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.SM,
+  },
+  subscriptionStateText: {
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    flex: 1,
+  },
+  subscriptionRetryButton: {
+    alignSelf: 'flex-start',
+    marginTop: SPACING.XS,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.XS,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY,
+  },
+  subscriptionRetryText: {
+    color: COLORS.PRIMARY,
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+  },
+  subscriptionChipList: {
+    marginTop: SPACING.SM,
+    paddingRight: SPACING.SM,
+  },
+  subscriptionChip: {
+    width: 220,
+    marginRight: SPACING.SM,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    backgroundColor: COLORS.SURFACE,
+    padding: SPACING.MD,
+  },
+  subscriptionChipActive: {
+    borderColor: COLORS.PRIMARY,
+    backgroundColor: COLORS.SUCCESS_BG,
+  },
+  subscriptionChipInactive: {
+    opacity: 0.6,
+  },
+  subscriptionChipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.XS,
+  },
+  subscriptionChipText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+    marginRight: SPACING.SM,
+  },
+  subscriptionChipTextActive: {
+    color: COLORS.PRIMARY,
+  },
+  subscriptionStatusBadge: {
+    borderRadius: 10,
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+  },
+  subscriptionStatusActive: {
+    backgroundColor: COLORS.PRIMARY,
+  },
+  subscriptionStatusInactive: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  subscriptionStatusText: {
+    fontSize: FONTS.SIZES.XS,
+    fontWeight: '600',
+  },
+  subscriptionChipMeta: {
+    fontSize: FONTS.SIZES.XS,
     color: COLORS.TEXT_SECONDARY,
   },
 });

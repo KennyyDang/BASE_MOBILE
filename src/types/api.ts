@@ -78,6 +78,97 @@ export interface PaginatedResponse<T> {
   hasNextPage: boolean;
 }
 
+export interface BranchSlotBranchResponse {
+  id: string;
+  branchName: string;
+}
+
+export interface BranchSlotTimeframeResponse {
+  id: string;
+  name: string;
+  description?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+}
+
+export interface BranchSlotTypeResponse {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface BranchSlotStaffResponse {
+  id?: string;
+  fullName?: string | null;
+  role?: string | null;
+  phoneNumber?: string | null;
+  [key: string]: any;
+}
+
+export interface BranchSlotResponse {
+  id: string;
+  branchId: string;
+  branch?: BranchSlotBranchResponse | null;
+  timeframeId: string;
+  timeframe?: BranchSlotTimeframeResponse | null;
+  slotTypeId: string;
+  slotType?: BranchSlotTypeResponse | null;
+  weekDate: number;
+  status: string;
+  staff: BranchSlotStaffResponse[];
+  packageSubscriptionId?: string | null;
+  studentPackageSubscriptionId?: string | null;
+  packageSubscription?: {
+    id: string;
+    name?: string | null;
+    remainingSlots?: number | null;
+  } | null;
+  packageName?: string | null;
+  packageSubscriptionName?: string | null;
+  packageRemainingSlots?: number | null;
+}
+
+export interface BranchSlotRoomResponse {
+  id: string;
+  roomName: string;
+  facilityId?: string | null;
+  facilityName?: string | null;
+  branchId?: string | null;
+  branchName?: string | null;
+  capacity?: number | null;
+}
+
+export interface StudentPackageSubscription {
+  id: string;
+  packageId: string;
+  packageName: string;
+  studentId: string;
+  studentName: string;
+  startDate: string;
+  endDate: string;
+  usedSlot: number;
+  status: string;
+  priceFinal?: number | null;
+  durationMonthsSnapshot?: number | null;
+  totalSlotsSnapshot?: number | null;
+  snapshotBenefitsJson?: string | null;
+}
+
+export interface BookStudentSlotRequest {
+  studentId: string;
+  branchSlotId: string;
+  packageSubscriptionId: string;
+  roomId: string;
+  date: string;
+  parentNote?: string;
+}
+
+export interface BookStudentSlotResponse {
+  success: boolean;
+  message?: string;
+  data?: any;
+}
+
 // Student API Response
 export interface StudentResponse {
   id: string;
@@ -122,6 +213,53 @@ export interface DepositCreateResponse {
   status: string;
   orderCode: number;
   amount: number;
+}
+
+// Packages
+export interface PackageBenefit {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface PackageBranchInfo {
+  id: string;
+  branchName: string;
+}
+
+export interface PackageStudentLevelInfo {
+  id: string;
+  name: string;
+}
+
+export interface StudentPackageResponse {
+  id: string;
+  name: string;
+  desc: string;
+  durationInMonths: number;
+  totalSlots: number;
+  price: number;
+  isActive: boolean;
+  createdTime?: string;
+  packageTemplateId?: string;
+  packageTemplateName?: string | null;
+  benefits: PackageBenefit[];
+  branch?: PackageBranchInfo | null;
+  branchId?: string | null;
+  studentLevel?: PackageStudentLevelInfo | null;
+  studentLevelId?: string | null;
+}
+
+export interface RegisterPackageRequest {
+  packageId: string;
+  studentId: string;
+  startDate?: string;
+}
+
+export interface RegisterPackageResponse {
+  success: boolean;
+  message?: string;
+  walletBalance?: number;
 }
 
 // Transfer Smart API

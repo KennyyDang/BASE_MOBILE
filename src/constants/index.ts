@@ -155,6 +155,10 @@ export const API_ENDPOINTS = {
   COURSE_DETAILS: '/courses/:id',
   AVAILABLE_COURSES: '/courses/available',
   
+  // Packages
+  STUDENT_SUITABLE_PACKAGES: '/api/Package/student/:studentId/suitable-packages',
+  PACKAGE_BUY_FOR_CHILD: '/api/PackageSubscription/buy-for-child',
+
   // NFC Integration
   NFC_CHECK_IN: '/nfc/check-in',
   NFC_CHECK_OUT: '/nfc/check-out',

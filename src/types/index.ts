@@ -243,6 +243,12 @@ export type RootStackParamList = {
   TopUp: undefined;
   Settings: undefined;
   Notifications: undefined;
+  StudentPackages: {
+    studentId: string;
+    studentName: string;
+    branchName?: string;
+    studentLevelName?: string;
+  };
 };
 
 export type MainTabParamList = {
