@@ -3,4 +3,4 @@ export { useApi, usePaginatedApi } from './useApi';
 export { useCurrentUserWallet, useWalletBalance, useTransactionHistory, useWalletStats, useTopUpWallet, useStudentWallets } from './useWalletApi';
 export { usePayOSPayment, usePaymentHistory } from './usePayOSPayment';
 export { useParentProfile } from './useParentProfile';
-export { useCurrentUserStudents } from './useChildrenApi';
+export { useCurrentUserStudents, useMyChildren } from './useChildrenApi';

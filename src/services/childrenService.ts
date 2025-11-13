@@ -58,6 +58,23 @@ class ChildrenService {
     return response.data;
   }
 
+  // Get current user's students (simple array, no pagination)
+  /**
+   * Get list of students for current user (simple array response)
+   * Endpoint: GET /api/Student/my-children
+   * @returns Array of student responses
+   */
+  async getMyChildren(): Promise<StudentResponse[]> {
+    try {
+      const response = await axiosInstance.get<StudentResponse[]>(
+        API_ENDPOINTS.STUDENT_MY_CHILDREN
+      );
+      return response.data || [];
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch students';
+    }
+  }
+
   // Get current user's students (paginated)
   /**
    * Get paginated list of students for current user
@@ -83,6 +100,33 @@ class ChildrenService {
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to fetch students';
+    }
+  }
+
+  /**
+   * Update child information by parent
+   * Endpoint: PUT /api/Student/{id}/parent-update
+   * Allows a parent to update their own child's basic information (name, date of birth, note)
+   * @param studentId Student ID (UUID)
+   * @param updateData Object containing name, dateOfBirth, and note
+   * @returns Updated student response
+   */
+  async updateChildByParent(
+    studentId: string,
+    updateData: {
+      name?: string;
+      dateOfBirth?: string;
+      note?: string;
+    }
+  ): Promise<StudentResponse> {
+    try {
+      const response = await axiosInstance.put<StudentResponse>(
+        `/api/Student/${studentId}/parent-update`,
+        updateData
+      );
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to update child information';
     }
   }
 }

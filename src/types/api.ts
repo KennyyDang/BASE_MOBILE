@@ -151,6 +151,8 @@ export interface StudentPackageSubscription {
   priceFinal?: number | null;
   durationMonthsSnapshot?: number | null;
   totalSlotsSnapshot?: number | null;
+  totalSlots?: number | null;
+  remainingSlots?: number | null;
   snapshotBenefitsJson?: string | null;
 }
 
@@ -167,6 +169,19 @@ export interface BookStudentSlotResponse {
   success: boolean;
   message?: string;
   data?: any;
+}
+
+export interface StudentSlotResponse {
+  id: string;
+  branchSlotId: string;
+  packageSubscriptionId: string;
+  date: string;
+  status: string;
+  parentNote?: string | null;
+  roomId: string;
+  // Enriched data (not from API, added by frontend)
+  branchSlot?: BranchSlotResponse | null;
+  room?: BranchSlotRoomResponse | null;
 }
 
 // Student API Response
@@ -213,6 +228,18 @@ export interface DepositCreateResponse {
   status: string;
   orderCode: number;
   amount: number;
+}
+
+export interface DepositResponse {
+  id: string;
+  walletId: string;
+  amount: number;
+  timestamp: string;
+  status: string; // e.g., "Pending", "Completed", "Failed"
+  payOSOrderCode?: number | null;
+  payOSTransactionId?: string | null;
+  userEmail?: string | null;
+  userName?: string | null;
 }
 
 // Packages

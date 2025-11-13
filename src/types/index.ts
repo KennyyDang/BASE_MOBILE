@@ -249,6 +249,7 @@ export type RootStackParamList = {
     branchName?: string;
     studentLevelName?: string;
   };
+  TransactionHistory: undefined;
 };
 
 export type MainTabParamList = {

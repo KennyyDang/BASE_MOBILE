@@ -55,6 +55,7 @@ import TopUpScreen from '../screens/main/TopUpScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import NotificationScreen from '../screens/main/NotificationScreen';
 import StudentPackagesScreen from '../screens/main/StudentPackagesScreen';
+import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -295,6 +296,14 @@ const AppNavigator = () => {
               options={{
                 title: 'Gói học',
                 headerTitle: 'Chọn gói phù hợp',
+              }}
+            />
+            <Stack.Screen
+              name="TransactionHistory"
+              component={TransactionHistoryScreen}
+              options={{
+                title: 'Lịch sử giao dịch',
+                headerTitle: 'Lịch sử giao dịch',
               }}
             />
           </>

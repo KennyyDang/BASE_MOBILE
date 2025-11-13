@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
-import { useCurrentUserStudents } from '../../hooks/useChildrenApi';
+import { useMyChildren } from '../../hooks/useChildrenApi';
 import branchSlotService from '../../services/branchSlotService';
 import studentSlotService from '../../services/studentSlotService';
 import {
@@ -197,7 +197,7 @@ const ScheduleScreen: React.FC = () => {
     loading: studentsLoading,
     error: studentsError,
     refetch: refetchStudents,
-  } = useCurrentUserStudents(1, 10);
+  } = useMyChildren();
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [slots, setSlots] = useState<BranchSlotResponse[]>([]);
@@ -223,8 +223,17 @@ const ScheduleScreen: React.FC = () => {
   }, [selectedStudentId, students]);
 
   const computeRemainingSlots = useCallback((subscription: StudentPackageSubscription) => {
-    if (typeof subscription.totalSlotsSnapshot === 'number') {
-      return Math.max(subscription.totalSlotsSnapshot - (subscription.usedSlot || 0), 0);
+    const total = subscription.totalSlotsSnapshot ?? subscription.totalSlots ?? subscription.remainingSlots;
+    if (typeof total === 'number') {
+      return Math.max(total - (subscription.usedSlot || 0), 0);
+    }
+    // Try to parse from packageName if it contains a number (e.g., "15 slot")
+    const nameMatch = subscription.packageName?.match(/(\d+)/);
+    if (nameMatch) {
+      const totalFromName = parseInt(nameMatch[1], 10);
+      if (!isNaN(totalFromName)) {
+        return Math.max(totalFromName - (subscription.usedSlot || 0), 0);
+      }
     }
     return undefined;
   }, []);
@@ -407,6 +416,7 @@ const ScheduleScreen: React.FC = () => {
         const message =
           error?.message ||
           error?.response?.data?.message ||
+          error?.response?.data?.error ||
           'Không thể tải danh sách phòng. Vui lòng thử lại.';
 
         setSlotRoomsState((prev) => {
@@ -556,10 +566,13 @@ const ScheduleScreen: React.FC = () => {
             },
           };
         });
+        // Refresh slots and subscriptions after successful booking
         fetchSubscriptions(selectedStudentId);
+        fetchSlots({ page: 1, silent: true });
       } catch (error: any) {
         const message =
           error?.response?.data?.message ||
+          error?.response?.data?.error ||
           error?.message ||
           'Không thể đặt slot cho con. Vui lòng thử lại sau.';
         Alert.alert('Lỗi', message);
@@ -575,7 +588,7 @@ const ScheduleScreen: React.FC = () => {
         });
       }
     },
-    [selectedStudentId, slotRoomsState]
+    [selectedStudentId, slotRoomsState, resolvePackageSubscriptionId, fetchSubscriptions, fetchSlots]
   );
 
   useEffect(() => {
@@ -779,7 +792,23 @@ const ScheduleScreen: React.FC = () => {
                     </View>
                   </View>
                   <Text style={styles.subscriptionChipMeta}>
-                    Còn {remaining ?? '...'} buổi • HSD {new Date(subscription.endDate).toLocaleDateString('vi-VN')}
+                    {(() => {
+                      const total = subscription.totalSlotsSnapshot ?? subscription.totalSlots ?? subscription.remainingSlots;
+                      let totalDisplay = '?';
+                      if (typeof total === 'number') {
+                        totalDisplay = total.toString();
+                      } else {
+                        // Try to parse from packageName
+                        const nameMatch = subscription.packageName?.match(/(\d+)/);
+                        if (nameMatch) {
+                          totalDisplay = nameMatch[1];
+                        }
+                      }
+                      return `${subscription.usedSlot || 0} / ${totalDisplay} buổi đã dùng`;
+                    })()}
+                    {remaining !== undefined ? ` • Còn ${remaining} buổi` : ''}
+                    {' • HSD '}
+                    {new Date(subscription.endDate).toLocaleDateString('vi-VN')}
                   </Text>
                 </TouchableOpacity>
               );

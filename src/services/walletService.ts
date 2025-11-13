@@ -3,7 +3,7 @@ import { apiClient } from './apiClient';
 import axiosInstance from '../config/axios.config';
 import { API_ENDPOINTS } from '../constants';
 import { Wallet, Transaction, TopUpForm, ApiResponse, PaginatedResponse } from '../types';
-import { CurrentUserWalletResponse, StudentWalletResponse, TransferSmartRequest, TransferSmartResponse } from '../types/api';
+import { CurrentUserWalletResponse, StudentWalletResponse, TransferSmartRequest, TransferSmartResponse, DepositResponse } from '../types/api';
 
 class WalletService {
   /**
@@ -50,11 +50,6 @@ class WalletService {
     return await apiClient.post<Transaction>(API_ENDPOINTS.TOP_UP_WALLET, topUpData);
   }
 
-  // Get transaction by ID
-  async getTransactionById(transactionId: string): Promise<ApiResponse<Transaction>> {
-    return await apiClient.get<Transaction>(`${API_ENDPOINTS.WALLET_TRANSACTIONS}/${transactionId}`);
-  }
-
   // Get wallet statistics
   async getWalletStats(): Promise<ApiResponse<{
     totalBalance: number;
@@ -91,6 +86,30 @@ class WalletService {
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to transfer money to student';
+    }
+  }
+
+  /**
+   * Get paginated deposits for current user
+   * Endpoint: GET /api/Deposit/me
+   * @param pageIndex Page number (1-based)
+   * @param pageSize Number of items per page
+   * @returns Array of deposit transactions
+   */
+  async getDeposits(
+    pageIndex: number = 1,
+    pageSize: number = 20
+  ): Promise<DepositResponse[]> {
+    try {
+      const response = await axiosInstance.get<DepositResponse[]>('/api/Deposit/me', {
+        params: {
+          pageIndex,
+          pageSize,
+        },
+      });
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch deposits';
     }
   }
 }

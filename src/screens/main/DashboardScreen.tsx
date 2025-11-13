@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,17 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { useCurrentUserWallet, useStudentWallets } from '../../hooks/useWalletApi';
+import { useMyChildren } from '../../hooks/useChildrenApi';
+import studentSlotService from '../../services/studentSlotService';
+import branchSlotService from '../../services/branchSlotService';
+import walletService from '../../services/walletService';
+import { StudentSlotResponse, BranchSlotResponse, BranchSlotRoomResponse, DepositResponse } from '../../types/api';
 
 // Inline constants
 const COLORS = {
@@ -55,13 +61,192 @@ const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { data: walletData, loading: walletLoading } = useCurrentUserWallet();
   const { data: studentWallets, loading: studentWalletsLoading } = useStudentWallets();
+  const { students } = useMyChildren();
   
+  const [upcomingSlots, setUpcomingSlots] = useState<(StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse })[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<(StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) | null>(null);
+  const [slotDetailModalVisible, setSlotDetailModalVisible] = useState(false);
+  const [recentTransactions, setRecentTransactions] = useState<DepositResponse[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+
   // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
       currency: 'VND',
     }).format(amount);
+  };
+
+  const formatTime = (time?: string | null) => {
+    if (!time) return '--:--';
+    const parts = time.split(':');
+    if (parts.length < 2) return time;
+    const hours = parts[0]?.padStart(2, '0') ?? '--';
+    const minutes = parts[1]?.padStart(2, '0') ?? '00';
+    return `${hours}:${minutes}`;
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return {
+      date: date.toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      time: date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      full: date.toLocaleString('vi-VN'),
+    };
+  };
+
+  const fetchUpcomingSlots = useCallback(async () => {
+    if (students.length === 0) {
+      setUpcomingSlots([]);
+      return;
+    }
+
+    setSlotsLoading(true);
+    try {
+      const now = new Date();
+      const allUpcomingSlots: (StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse })[] = [];
+
+      // Fetch slots for all students
+      for (const student of students) {
+        try {
+          const response = await studentSlotService.getStudentSlots({
+            studentId: student.id,
+            pageIndex: 1,
+            pageSize: 20,
+            upcomingOnly: true,
+            status: 'Booked',
+          });
+
+          const studentSlots = response.items || [];
+          
+          // Enrich with branch slot and room info
+          for (const slot of studentSlots) {
+            const slotDate = new Date(slot.date);
+            if (slotDate >= now) {
+              try {
+                // Fetch branch slot details
+                const branchSlot = await branchSlotService.getBranchSlotById(slot.branchSlotId, student.id);
+                
+                // Fetch room details
+                let room: BranchSlotRoomResponse | null = null;
+                if (slot.roomId) {
+                  try {
+                    const roomsResponse = await branchSlotService.getRoomsBySlot(slot.branchSlotId, 1, 10);
+                    room = roomsResponse.items.find(r => r.id === slot.roomId) || null;
+                  } catch (err) {
+                    // Room fetch failed, continue without room info
+                  }
+                }
+
+                allUpcomingSlots.push({
+                  ...slot,
+                  branchSlot: branchSlot || undefined,
+                  room: room || undefined,
+                });
+              } catch (err) {
+                // If enrichment fails, still add the slot without extra info
+                allUpcomingSlots.push({
+                  ...slot,
+                  branchSlot: undefined,
+                  room: undefined,
+                });
+              }
+            }
+          }
+        } catch (err) {
+          // Continue with other students if one fails
+        }
+      }
+
+      // Sort by date and take top 5
+      const sorted = allUpcomingSlots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      setUpcomingSlots(sorted.slice(0, 5));
+    } catch (error: any) {
+      // Error handled silently, slots will remain empty
+    } finally {
+      setSlotsLoading(false);
+    }
+  }, [students]);
+
+  useEffect(() => {
+    fetchUpcomingSlots();
+  }, [fetchUpcomingSlots]);
+
+  const fetchRecentTransactions = useCallback(async () => {
+    setTransactionsLoading(true);
+    try {
+      const deposits = await walletService.getDeposits(1, 5);
+      // Ensure deposits is always an array
+      if (Array.isArray(deposits)) {
+        setRecentTransactions(deposits);
+      } else if (deposits && typeof deposits === 'object' && 'items' in deposits) {
+        // Handle paginated response
+        setRecentTransactions(Array.isArray((deposits as any).items) ? (deposits as any).items : []);
+      } else {
+        setRecentTransactions([]);
+      }
+    } catch (error: any) {
+      // Error handled silently, ensure array is set
+      setRecentTransactions([]);
+    } finally {
+      setTransactionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRecentTransactions();
+  }, [fetchRecentTransactions]);
+
+  const formatTransactionTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Vừa xong';
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    if (diffHours < 24) return `${diffHours} giờ trước`;
+    if (diffDays === 1) return 'Hôm qua';
+    if (diffDays < 7) return `${diffDays} ngày trước`;
+    return date.toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric', year: 'numeric' });
+  };
+
+  const getTransactionIcon = (status: string) => {
+    if (status === 'Completed') return 'check-circle';
+    if (status === 'Pending') return 'schedule';
+    if (status === 'Failed') return 'error';
+    return 'account-balance-wallet';
+  };
+
+  const getTransactionIconColor = (status: string) => {
+    if (status === 'Completed') return COLORS.SUCCESS;
+    if (status === 'Pending') return COLORS.WARNING;
+    if (status === 'Failed') return COLORS.ERROR;
+    return COLORS.PRIMARY;
+  };
+
+  const handleViewSlotDetail = (slot: StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) => {
+    setSelectedSlot(slot);
+    setSlotDetailModalVisible(true);
+  };
+
+  const getClassTimeRange = (slot: StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) => {
+    if (slot.branchSlot?.timeframe?.startTime && slot.branchSlot?.timeframe?.endTime) {
+      return `${formatTime(slot.branchSlot.timeframe.startTime)} - ${formatTime(slot.branchSlot.timeframe.endTime)}`;
+    }
+    // Fallback to booking date time if no timeframe
+    return formatDateTime(slot.date).time;
+  };
+
+  const getClassName = (slot: StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) => {
+    return slot.branchSlot?.timeframe?.name || slot.branchSlot?.slotType?.name || 'Lớp học';
+  };
+
+  const getRoomName = (slot: StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) => {
+    return slot.room?.roomName || 'Chưa có thông tin phòng';
   };
   
   const handleQuickAction = (action: string) => {
@@ -71,6 +256,9 @@ const DashboardScreen: React.FC = () => {
         break;
       case 'wallet':
         navigation.navigate('Main', { screen: 'Wallet' });
+        break;
+      case 'transactionHistory':
+        navigation.navigate('TransactionHistory');
         break;
       case 'children':
         navigation.navigate('Main', { screen: 'Children' });
@@ -119,7 +307,16 @@ const DashboardScreen: React.FC = () => {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <MaterialIcons name="schedule" size={24} color={COLORS.PRIMARY} />
-            <Text style={styles.statNumber}>3</Text>
+            {slotsLoading ? (
+              <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
+            ) : (
+              <Text style={styles.statNumber}>
+                {upcomingSlots.filter(slot => {
+                  const slotDate = new Date(slot.date);
+                  return slotDate.toDateString() === new Date().toDateString();
+                }).length}
+              </Text>
+            )}
             <Text style={styles.statLabel}>Lớp học hôm nay</Text>
           </View>
           
@@ -221,66 +418,230 @@ const DashboardScreen: React.FC = () => {
 
         {/* Upcoming Classes */}
         <View style={styles.upcomingClassesContainer}>
-          <Text style={styles.sectionTitle}>Lớp học sắp tới</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Lớp học sắp tới</Text>
+            <TouchableOpacity onPress={() => handleQuickAction('schedule')}>
+              <Text style={styles.seeAllText}>Xem tất cả</Text>
+            </TouchableOpacity>
+          </View>
           
-          <TouchableOpacity 
-            style={styles.classCard}
-            onPress={() => handleQuickAction('schedule')}
-          >
-            <View style={styles.classInfo}>
-              <Text style={styles.className}>Toán học - Lớp 5</Text>
-              <Text style={styles.classTime}>14:00 - 15:30</Text>
-              <Text style={styles.classRoom}>Phòng A101</Text>
+          {slotsLoading ? (
+            <View style={styles.classCard}>
+              <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+              <Text style={styles.loadingText}>Đang tải lịch học...</Text>
             </View>
-            <View style={styles.classStatus}>
-              <Text style={styles.classStatusText}>Sắp bắt đầu</Text>
+          ) : upcomingSlots.length === 0 ? (
+            <View style={styles.classCard}>
+              <MaterialIcons name="event-busy" size={32} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.emptyText}>Chưa có lớp học sắp tới</Text>
+              <TouchableOpacity 
+                style={styles.emptyButton}
+                onPress={() => handleQuickAction('schedule')}
+              >
+                <Text style={styles.emptyButtonText}>Đặt lịch học ngay</Text>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.classCard}
-            onPress={() => handleQuickAction('schedule')}
-          >
-            <View style={styles.classInfo}>
-              <Text style={styles.className}>Tiếng Anh - Giao tiếp</Text>
-              <Text style={styles.classTime}>16:00 - 17:00</Text>
-              <Text style={styles.classRoom}>Phòng B202</Text>
-            </View>
-            <View style={styles.classStatus}>
-              <Text style={styles.classStatusText}>Đã đăng ký</Text>
-            </View>
-          </TouchableOpacity>
+          ) : (
+            upcomingSlots.map((slot) => {
+              const slotDate = new Date(slot.date);
+              const isToday = slotDate.toDateString() === new Date().toDateString();
+              const isTomorrow = slotDate.toDateString() === new Date(Date.now() + 86400000).toDateString();
+              
+              return (
+                <TouchableOpacity
+                  key={slot.id}
+                  style={styles.classCard}
+                  onPress={() => handleViewSlotDetail(slot)}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.classInfo}>
+                    <Text style={styles.className}>{getClassName(slot)}</Text>
+                    <Text style={styles.classTime}>
+                      {getClassTimeRange(slot)}
+                      {isToday ? ' • Hôm nay' : isTomorrow ? ' • Ngày mai' : ` • ${formatDateTime(slot.date).date.split(',')[0]}`}
+                    </Text>
+                    <Text style={styles.classRoom}>{getRoomName(slot)}</Text>
+                    {slot.branchSlot?.branch?.branchName && (
+                      <Text style={styles.classBranch}>{slot.branchSlot.branch.branchName}</Text>
+                    )}
+                  </View>
+                  <View style={styles.classStatus}>
+                    <Text style={styles.classStatusText}>Đã đặt</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </View>
 
         {/* Recent Transactions */}
         <View style={styles.recentTransactionsContainer}>
-          <Text style={styles.sectionTitle}>Giao dịch gần đây</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Giao dịch gần đây</Text>
+            <TouchableOpacity onPress={() => handleQuickAction('transactionHistory')}>
+              <Text style={styles.seeAllText}>Xem tất cả</Text>
+            </TouchableOpacity>
+          </View>
           
-          <TouchableOpacity 
-            style={styles.transactionCard}
-            onPress={() => handleQuickAction('wallet')}
-          >
-            <MaterialIcons name="add-circle" size={24} color={COLORS.SUCCESS} />
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionDescription}>Nạp tiền vào ví chính</Text>
-              <Text style={styles.transactionTime}>2 giờ trước</Text>
+          {transactionsLoading ? (
+            <View style={styles.transactionCard}>
+              <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+              <Text style={styles.loadingText}>Đang tải giao dịch...</Text>
             </View>
-            <Text style={styles.transactionAmount}>+500,000 VNĐ</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.transactionCard}
-            onPress={() => handleQuickAction('wallet')}
-          >
-            <MaterialIcons name="remove-circle" size={24} color={COLORS.SECONDARY} />
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionDescription}>Mua đồ ăn vặt</Text>
-              <Text style={styles.transactionTime}>1 ngày trước</Text>
+          ) : !recentTransactions || recentTransactions.length === 0 ? (
+            <View style={styles.transactionCard}>
+              <MaterialIcons name="receipt-long" size={32} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.emptyText}>Chưa có giao dịch nào</Text>
             </View>
-            <Text style={styles.transactionAmount}>-25,000 VNĐ</Text>
-          </TouchableOpacity>
+          ) : Array.isArray(recentTransactions) ? (
+            recentTransactions
+              .filter((transaction, index, self) => 
+                index === self.findIndex((t) => t.id === transaction.id)
+              )
+              .map((transaction) => (
+              <TouchableOpacity
+                key={transaction.id}
+                style={styles.transactionCard}
+                onPress={() => handleQuickAction('transactionHistory')}
+                activeOpacity={0.85}
+              >
+                <MaterialIcons 
+                  name={getTransactionIcon(transaction.status)} 
+                  size={24} 
+                  color={getTransactionIconColor(transaction.status)} 
+                />
+                <View style={styles.transactionInfo}>
+                  <Text style={styles.transactionDescription}>
+                    {transaction.status === 'Completed' 
+                      ? 'Nạp tiền vào ví' 
+                      : transaction.status === 'Pending'
+                      ? 'Đang xử lý nạp tiền'
+                      : 'Giao dịch thất bại'}
+                  </Text>
+                  <Text style={styles.transactionTime}>
+                    {formatTransactionTime(transaction.timestamp)}
+                  </Text>
+                </View>
+                <Text style={[
+                  styles.transactionAmount,
+                  transaction.status === 'Completed' && { color: COLORS.SUCCESS }
+                ]}>
+                  {transaction.status === 'Completed' ? '+' : ''}
+                  {transaction.amount.toLocaleString('vi-VN')} VNĐ
+                </Text>
+              </TouchableOpacity>
+            ))
+          ) : null}
         </View>
       </ScrollView>
+
+      {/* Slot Detail Modal */}
+      <Modal
+        visible={slotDetailModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setSlotDetailModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chi tiết lịch học</Text>
+              <TouchableOpacity onPress={() => setSlotDetailModalVisible(false)}>
+                <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
+              </TouchableOpacity>
+            </View>
+            
+            {selectedSlot && (
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                <View style={styles.slotDetailSection}>
+                  <View style={styles.slotDetailRow}>
+                    <MaterialIcons name="event" size={20} color={COLORS.PRIMARY} />
+                    <View style={styles.slotDetailContent}>
+                      <Text style={styles.slotDetailLabel}>Ngày học</Text>
+                      <Text style={styles.slotDetailValue}>
+                        {formatDateTime(selectedSlot.date).date}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.slotDetailRow}>
+                    <MaterialIcons name="access-time" size={20} color={COLORS.SECONDARY} />
+                    <View style={styles.slotDetailContent}>
+                      <Text style={styles.slotDetailLabel}>Giờ học</Text>
+                      <Text style={styles.slotDetailValue}>
+                        {getClassTimeRange(selectedSlot)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.slotDetailRow}>
+                    <MaterialIcons name="meeting-room" size={20} color={COLORS.ACCENT} />
+                    <View style={styles.slotDetailContent}>
+                      <Text style={styles.slotDetailLabel}>Phòng học</Text>
+                      <Text style={styles.slotDetailValue}>
+                        {getRoomName(selectedSlot)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {selectedSlot.branchSlot?.branch?.branchName && (
+                    <View style={styles.slotDetailRow}>
+                      <MaterialIcons name="location-on" size={20} color={COLORS.SECONDARY} />
+                      <View style={styles.slotDetailContent}>
+                        <Text style={styles.slotDetailLabel}>Chi nhánh</Text>
+                        <Text style={styles.slotDetailValue}>
+                          {selectedSlot.branchSlot.branch.branchName}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {selectedSlot.branchSlot?.slotType?.name && (
+                    <View style={styles.slotDetailRow}>
+                      <MaterialIcons name="category" size={20} color={COLORS.PRIMARY} />
+                      <View style={styles.slotDetailContent}>
+                        <Text style={styles.slotDetailLabel}>Loại lớp</Text>
+                        <Text style={styles.slotDetailValue}>
+                          {selectedSlot.branchSlot.slotType.name}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  <View style={styles.slotDetailRow}>
+                    <MaterialIcons name="check-circle" size={20} color={COLORS.SUCCESS} />
+                    <View style={styles.slotDetailContent}>
+                      <Text style={styles.slotDetailLabel}>Trạng thái</Text>
+                      <Text style={styles.slotDetailValue}>
+                        {selectedSlot.status === 'Booked' ? 'Đã đặt' : selectedSlot.status}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {selectedSlot.parentNote && (
+                    <View style={styles.slotDetailRow}>
+                      <MaterialIcons name="note" size={20} color={COLORS.ACCENT} />
+                      <View style={styles.slotDetailContent}>
+                        <Text style={styles.slotDetailLabel}>Ghi chú của phụ huynh</Text>
+                        <Text style={styles.slotDetailValue}>{selectedSlot.parentNote}</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+            )}
+            
+            <View style={styles.modalFooter}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.modalButtonFull]}
+                onPress={() => setSlotDetailModalVisible(false)}
+              >
+                <Text style={styles.modalButtonText}>Đóng</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -483,6 +844,119 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.MD,
+  },
+  seeAllText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  loadingText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.SM,
+  },
+  emptyText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.SM,
+    textAlign: 'center',
+  },
+  emptyButton: {
+    marginTop: SPACING.MD,
+    backgroundColor: COLORS.PRIMARY,
+    paddingHorizontal: SPACING.LG,
+    paddingVertical: SPACING.SM,
+    borderRadius: 8,
+  },
+  emptyButtonText: {
+    color: COLORS.SURFACE,
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+  },
+  classBranch: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.XS,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 16,
+    padding: SPACING.LG,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.MD,
+  },
+  modalTitle: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  modalBody: {
+    marginBottom: SPACING.MD,
+    maxHeight: 400,
+  },
+  slotDetailSection: {
+    marginBottom: SPACING.MD,
+  },
+  slotDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.MD,
+    paddingBottom: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  slotDetailContent: {
+    flex: 1,
+    marginLeft: SPACING.MD,
+  },
+  slotDetailLabel: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginBottom: SPACING.XS,
+  },
+  slotDetailValue: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_PRIMARY,
+    fontWeight: '600',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: SPACING.MD,
+  },
+  modalButton: {
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.LG,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonFull: {
+    flex: 1,
+  },
+  modalButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
   },
 });
 

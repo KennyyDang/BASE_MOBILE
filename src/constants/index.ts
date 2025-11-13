@@ -136,6 +136,7 @@ export const API_ENDPOINTS = {
   UPDATE_CHILD: '/children/:id',
   DELETE_CHILD: '/children/:id',
   STUDENT_PAGED_CURRENT_USER: '/api/Student/paged/current-user',
+  STUDENT_MY_CHILDREN: '/api/Student/my-children',
   
   // Wallet
   WALLET_BALANCE: '/wallet/balance',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCurrentUserWallet, useStudentWallets } from '../../hooks/useWalletApi';
 import { walletService } from '../../services/walletService';
-import { TransferSmartRequest } from '../../types/api';
+import { TransferSmartRequest, DepositResponse } from '../../types/api';
 import { MainTabParamList, RootStackParamList } from '../../types';
 
 // Inline constants
@@ -69,6 +69,8 @@ const WalletScreen: React.FC = () => {
   const navigation = useNavigation<WalletNavigationProp>();
   const { data: walletData, loading, error, refetch } = useCurrentUserWallet();
   const { data: studentWallets, loading: studentWalletsLoading, error: studentWalletsError, refetch: refetchStudentWallets } = useStudentWallets();
+  const [recentTransactions, setRecentTransactions] = useState<DepositResponse[]>([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
 
   const navigateToTopUp = React.useCallback(() => {
     let currentNavigator: any = navigation;
@@ -175,7 +177,71 @@ const WalletScreen: React.FC = () => {
   };
 
   const handleTransactionHistory = () => {
-    // TODO: Navigate to transaction history screen
+    navigation.navigate('TransactionHistory');
+  };
+
+  const fetchRecentTransactions = useCallback(async () => {
+    setTransactionsLoading(true);
+    try {
+      const deposits = await walletService.getDeposits(1, 5);
+      // Ensure deposits is always an array
+      if (Array.isArray(deposits)) {
+        setRecentTransactions(deposits);
+      } else if (deposits && typeof deposits === 'object' && 'items' in deposits) {
+        // Handle paginated response
+        setRecentTransactions(Array.isArray((deposits as any).items) ? (deposits as any).items : []);
+      } else {
+        setRecentTransactions([]);
+      }
+    } catch (error: any) {
+      // Error handled silently, ensure array is set
+      setRecentTransactions([]);
+    } finally {
+      setTransactionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRecentTransactions();
+  }, [fetchRecentTransactions]);
+
+  const formatTransactionTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Vừa xong';
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    if (diffHours < 24) {
+      const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      return `Hôm nay, ${timeStr}`;
+    }
+    if (diffDays === 1) {
+      const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      return `Hôm qua, ${timeStr}`;
+    }
+    if (diffDays < 7) {
+      const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      return `${diffDays} ngày trước, ${timeStr}`;
+    }
+    return date.toLocaleString('vi-VN', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const getTransactionIcon = (status: string) => {
+    if (status === 'Completed') return 'check-circle';
+    if (status === 'Pending') return 'schedule';
+    if (status === 'Failed') return 'error';
+    return 'account-balance-wallet';
+  };
+
+  const getTransactionIconColor = (status: string) => {
+    if (status === 'Completed') return COLORS.SUCCESS;
+    if (status === 'Pending') return COLORS.WARNING;
+    if (status === 'Failed') return COLORS.ERROR;
+    return COLORS.PRIMARY;
   };
 
   // Show error alert
@@ -407,49 +473,57 @@ const WalletScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
           
-          <View style={styles.transactionCard}>
-            <View style={styles.transactionIcon}>
-              <MaterialIcons name="add-circle" size={24} color={COLORS.SUCCESS} />
+          {transactionsLoading ? (
+            <View style={styles.transactionCard}>
+              <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+              <Text style={styles.loadingText}>Đang tải giao dịch...</Text>
             </View>
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionDescription}>Nạp tiền vào ví chính</Text>
-              <Text style={styles.transactionTime}>Hôm nay, 14:30</Text>
+          ) : !recentTransactions || recentTransactions.length === 0 ? (
+            <View style={styles.transactionCard}>
+              <MaterialIcons name="receipt-long" size={32} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.emptyText}>Chưa có giao dịch nào</Text>
             </View>
-            <Text style={styles.transactionAmount}>+500,000 VNĐ</Text>
-          </View>
-          
-          <View style={styles.transactionCard}>
-            <View style={styles.transactionIcon}>
-              <MaterialIcons name="remove-circle" size={24} color={COLORS.SECONDARY} />
-            </View>
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionDescription}>Mua đồ ăn vặt</Text>
-              <Text style={styles.transactionTime}>Hôm qua, 16:45</Text>
-            </View>
-            <Text style={styles.transactionAmount}>-25,000 VNĐ</Text>
-          </View>
-          
-          <View style={styles.transactionCard}>
-            <View style={styles.transactionIcon}>
-              <MaterialIcons name="remove-circle" size={24} color={COLORS.SECONDARY} />
-            </View>
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionDescription}>Mua đồ chơi</Text>
-              <Text style={styles.transactionTime}>2 ngày trước, 15:20</Text>
-            </View>
-            <Text style={styles.transactionAmount}>-45,000 VNĐ</Text>
-          </View>
-          
-          <View style={styles.transactionCard}>
-            <View style={styles.transactionIcon}>
-              <MaterialIcons name="account-balance-wallet" size={24} color={COLORS.PRIMARY} />
-            </View>
-            <View style={styles.transactionInfo}>
-              <Text style={styles.transactionDescription}>Thanh toán học phí tháng 9</Text>
-              <Text style={styles.transactionTime}>3 ngày trước, 10:00</Text>
-            </View>
-            <Text style={styles.transactionAmount}>-2,500,000 VNĐ</Text>
-          </View>
+          ) : Array.isArray(recentTransactions) ? (
+            recentTransactions
+              .filter((transaction, index, self) => 
+                index === self.findIndex((t) => t.id === transaction.id)
+              )
+              .map((transaction) => (
+              <TouchableOpacity
+                key={transaction.id}
+                style={styles.transactionCard}
+                onPress={handleTransactionHistory}
+                activeOpacity={0.85}
+              >
+                <View style={styles.transactionIcon}>
+                  <MaterialIcons 
+                    name={getTransactionIcon(transaction.status)} 
+                    size={24} 
+                    color={getTransactionIconColor(transaction.status)} 
+                  />
+                </View>
+                <View style={styles.transactionInfo}>
+                  <Text style={styles.transactionDescription}>
+                    {transaction.status === 'Completed' 
+                      ? 'Nạp tiền vào ví' 
+                      : transaction.status === 'Pending'
+                      ? 'Đang xử lý nạp tiền'
+                      : 'Giao dịch thất bại'}
+                  </Text>
+                  <Text style={styles.transactionTime}>
+                    {formatTransactionTime(transaction.timestamp)}
+                  </Text>
+                </View>
+                <Text style={[
+                  styles.transactionAmount,
+                  transaction.status === 'Completed' && { color: COLORS.SUCCESS }
+                ]}>
+                  {transaction.status === 'Completed' ? '+' : ''}
+                  {transaction.amount.toLocaleString('vi-VN')} VNĐ
+                </Text>
+              </TouchableOpacity>
+            ))
+          ) : null}
         </View>
 
         {/* Wallet Tips */}
@@ -754,6 +828,16 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.SM,
     color: COLORS.SURFACE,
     fontWeight: '600',
+  },
+  loadingText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginLeft: SPACING.MD,
+  },
+  emptyText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginLeft: SPACING.MD,
   },
 });
 

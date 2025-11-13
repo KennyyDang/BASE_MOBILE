@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,15 +10,19 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  TextInput,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { useCurrentUserStudents } from '../../hooks/useChildrenApi';
+import { useMyChildren } from '../../hooks/useChildrenApi';
 import { StudentResponse, StudentPackageSubscription } from '../../types/api';
 import { RootStackParamList } from '../../types';
 import packageService from '../../services/packageService';
+import childrenService from '../../services/childrenService';
 
 // Inline constants
 const COLORS = {
@@ -59,9 +63,13 @@ const FONTS = {
 const ChildrenManagementScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { user } = useAuth();
-  const { students, loading, error, refetch, pagination } = useCurrentUserStudents(1, 10);
+  const { students, loading, error, refetch } = useMyChildren();
   const [selectedChild, setSelectedChild] = useState<StudentResponse | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editDateOfBirth, setEditDateOfBirth] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [updating, setUpdating] = useState(false);
   const [studentPackages, setStudentPackages] = useState<
     Record<
       string,
@@ -93,18 +101,6 @@ const ChildrenManagementScreen: React.FC = () => {
     return date.toLocaleDateString('vi-VN');
   };
 
-  // Calculate age from dateOfBirth
-  const calculateAge = (dateOfBirth: string) => {
-    const today = new Date();
-    const birthDate = new Date(dateOfBirth);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-    return age;
-  };
-
   const handleAddChild = () => {
     Alert.alert(
       'Thêm con',
@@ -115,13 +111,67 @@ const ChildrenManagementScreen: React.FC = () => {
 
   const handleEditChild = (child: StudentResponse) => {
     setSelectedChild(child);
+    setEditName(child.name || '');
+    setEditDateOfBirth(child.dateOfBirth ? new Date(child.dateOfBirth).toISOString().split('T')[0] : '');
+    setEditNote(child.note || '');
     setModalVisible(true);
+  };
+
+  const handleUpdateChild = async () => {
+    if (!selectedChild) return;
+
+    if (!editName.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập tên của con.');
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      const updateData: {
+        name?: string;
+        dateOfBirth?: string;
+        note?: string;
+      } = {};
+
+      if (editName.trim() !== selectedChild.name) {
+        updateData.name = editName.trim();
+      }
+
+      if (editDateOfBirth && editDateOfBirth !== new Date(selectedChild.dateOfBirth).toISOString().split('T')[0]) {
+        // Convert date to ISO string
+        const date = new Date(editDateOfBirth);
+        updateData.dateOfBirth = date.toISOString();
+      }
+
+      if (editNote.trim() !== (selectedChild.note || '')) {
+        updateData.note = editNote.trim();
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        Alert.alert('Thông báo', 'Không có thay đổi nào để cập nhật.');
+        setUpdating(false);
+        return;
+      }
+
+      await childrenService.updateChildByParent(selectedChild.id, updateData);
+      Alert.alert('Thành công', 'Cập nhật thông tin con thành công.');
+      setModalVisible(false);
+      refetch();
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Không thể cập nhật thông tin con. Vui lòng thử lại.';
+      Alert.alert('Lỗi', message);
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleViewDetails = (child: StudentResponse) => {
     Alert.alert(
       'Chi tiết học sinh',
-      `Tên: ${child.name}\nTuổi: ${child.age} tuổi\nNgày sinh: ${formatDate(child.dateOfBirth)}\nTrường: ${child.schoolName || 'Chưa có'}\nCấp độ: ${child.studentLevelName || 'Chưa có'}\nChi nhánh: ${child.branchName || 'Chưa có'}`,
+      `Tên: ${child.name}\nNgày sinh: ${formatDate(child.dateOfBirth)}\nTrường: ${child.schoolName || 'Chưa có'}\nCấp độ: ${child.studentLevelName || 'Chưa có'}\nChi nhánh: ${child.branchName || 'Chưa có'}`,
       [{ text: 'Đóng', style: 'default' }]
     );
   };
@@ -151,7 +201,13 @@ const ChildrenManagementScreen: React.FC = () => {
     });
   };
 
+  // Track which students have been fetched to prevent duplicate fetches
+  const fetchedStudentsRef = useRef<Set<string>>(new Set());
+
   const fetchStudentPackages = useCallback(async (studentId: string) => {
+    // Mark as fetching
+    fetchedStudentsRef.current.add(studentId);
+    
     setStudentPackages((prev) => ({
       ...prev,
       [studentId]: {
@@ -190,19 +246,24 @@ const ChildrenManagementScreen: React.FC = () => {
   useEffect(() => {
     if (!students.length) {
       setStudentPackages({});
+      fetchedStudentsRef.current.clear();
       return;
     }
 
+    // Fetch packages for students that haven't been fetched yet
     students.forEach((student) => {
-      if (!studentPackages[student.id]) {
+      if (!fetchedStudentsRef.current.has(student.id)) {
         fetchStudentPackages(student.id);
       }
     });
-  }, [students, fetchStudentPackages, studentPackages]);
+  }, [students, fetchStudentPackages]);
 
   const handleRetryPackages = (studentId: string) => {
+    // Remove from fetched set to allow retry
+    fetchedStudentsRef.current.delete(studentId);
     fetchStudentPackages(studentId);
   };
+
 
   const getStatusColor = (status: boolean) => {
     return status ? COLORS.SUCCESS : COLORS.ERROR;
@@ -240,7 +301,7 @@ const ChildrenManagementScreen: React.FC = () => {
             {loading && !students.length ? (
               <ActivityIndicator size="small" color={COLORS.PRIMARY} style={{ marginTop: SPACING.SM }} />
             ) : (
-              <Text style={styles.statNumber}>{pagination?.totalCount || students.length}</Text>
+              <Text style={styles.statNumber}>{students.length}</Text>
             )}
             <Text style={styles.statLabel}>Tổng số con</Text>
           </View>
@@ -291,7 +352,7 @@ const ChildrenManagementScreen: React.FC = () => {
                   <View style={styles.childInfo}>
                     <Text style={styles.childName}>{child.name}</Text>
                     <Text style={styles.childDetails}>
-                      {child.age} tuổi • {child.studentLevelName || 'Chưa có cấp độ'}
+                      {child.studentLevelName || 'Chưa có cấp độ'}
                     </Text>
                     <View style={styles.statusContainer}>
                       <View style={[styles.statusDot, { backgroundColor: getStatusColor(child.status) }]} />
@@ -415,10 +476,25 @@ const ChildrenManagementScreen: React.FC = () => {
                         Bắt đầu: {formatDate(subscription.startDate)} • Kết thúc: {formatDate(subscription.endDate)}
                       </Text>
                       <Text style={styles.packageUsedSlot}>
-                        Số buổi đã dùng: {subscription.usedSlot}{' '}
-                        {typeof subscription.totalSlotsSnapshot === 'number'
-                          ? `/ ${subscription.totalSlotsSnapshot}`
-                          : ''}
+                        {(() => {
+                          const total = subscription.totalSlotsSnapshot ?? subscription.totalSlots ?? subscription.remainingSlots;
+                          let totalDisplay: number | string = '?';
+                          if (typeof total === 'number') {
+                            totalDisplay = total;
+                          } else {
+                            // Try to parse from packageName
+                            const nameMatch = subscription.packageName?.match(/(\d+)/);
+                            if (nameMatch) {
+                              totalDisplay = parseInt(nameMatch[1], 10);
+                            }
+                          }
+                          const used = subscription.usedSlot || 0;
+                          const remaining = typeof totalDisplay === 'number' 
+                            ? Math.max(totalDisplay - used, 0) 
+                            : undefined;
+                          
+                          return `Số buổi đã dùng: ${used}${typeof totalDisplay === 'number' ? ` / ${totalDisplay}` : ''}${remaining !== undefined ? ` • Còn lại: ${remaining}` : ''}`;
+                        })()}
                       </Text>
                     </View>
                   ))
@@ -453,43 +529,107 @@ const ChildrenManagementScreen: React.FC = () => {
         visible={modalVisible}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          setModalVisible(false);
+        }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Chỉnh sửa thông tin</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <TouchableOpacity 
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setModalVisible(false);
+                }}
+              >
                 <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
               </TouchableOpacity>
             </View>
             
             {selectedChild && (
-              <View style={styles.modalBody}>
-                <Text style={styles.modalText}>
-                  Chỉnh sửa thông tin của {selectedChild.name}
-                </Text>
+              <ScrollView 
+                style={styles.modalBody}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.modalFormGroup}>
+                  <Text style={styles.modalLabel}>Tên *</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={editName}
+                    onChangeText={setEditName}
+                    placeholder="Nhập tên của con"
+                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                  />
+                </View>
+
+                <View style={styles.modalFormGroup}>
+                  <Text style={styles.modalLabel}>Ngày sinh</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    value={editDateOfBirth}
+                    onChangeText={setEditDateOfBirth}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                  />
+                  <Text style={styles.modalHint}>Định dạng: YYYY-MM-DD (ví dụ: 2010-01-15)</Text>
+                </View>
+
+                <View style={styles.modalFormGroup}>
+                  <Text style={styles.modalLabel}>Ghi chú</Text>
+                  <TextInput
+                    style={[styles.modalInput, styles.modalTextArea]}
+                    value={editNote}
+                    onChangeText={setEditNote}
+                    placeholder="Nhập ghi chú (nếu có)"
+                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                </View>
+
                 <Text style={styles.modalSubtext}>
-                  Tuổi: {selectedChild.age}{'\n'}
                   Trường: {selectedChild.schoolName || 'Chưa có'}{'\n'}
                   Cấp độ: {selectedChild.studentLevelName || 'Chưa có'}
                 </Text>
-                <Text style={[styles.modalSubtext, { marginTop: SPACING.MD }]}>
-                  Tính năng chỉnh sửa đang được phát triển
-                </Text>
-              </View>
+              </ScrollView>
             )}
             
             <View style={styles.modalFooter}>
               <TouchableOpacity 
-                style={styles.modalButton}
-                onPress={() => setModalVisible(false)}
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setModalVisible(false);
+                }}
+                disabled={updating}
               >
-                <Text style={styles.modalButtonText}>Đóng</Text>
+                <Text style={[styles.modalButtonText, styles.modalButtonCancelText]}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, updating && styles.modalButtonDisabled]}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  handleUpdateChild();
+                }}
+                disabled={updating}
+              >
+                {updating ? (
+                  <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                ) : (
+                  <Text style={styles.modalButtonText}>Cập nhật</Text>
+                )}
               </TouchableOpacity>
             </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   );
@@ -831,6 +971,7 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     marginBottom: SPACING.LG,
+    maxHeight: 400,
   },
   modalText: {
     fontSize: FONTS.SIZES.MD,
@@ -841,9 +982,33 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
   },
-  modalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+  modalFormGroup: {
+    marginBottom: SPACING.MD,
+  },
+  modalLabel: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_PRIMARY,
+    backgroundColor: COLORS.SURFACE,
+  },
+  modalTextArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  modalHint: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.XS,
   },
   modalButton: {
     backgroundColor: COLORS.PRIMARY,
@@ -851,11 +1016,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.LG,
     borderRadius: 8,
     alignItems: 'center',
+    flex: 1,
+    marginLeft: SPACING.SM,
+  },
+  modalButtonCancel: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    marginLeft: 0,
+  },
+  modalButtonCancelText: {
+    color: COLORS.TEXT_PRIMARY,
+  },
+  modalButtonDisabled: {
+    opacity: 0.5,
   },
   modalButtonText: {
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.SURFACE,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: SPACING.MD,
   },
 });
 
