@@ -46,15 +46,6 @@ class ScheduleService {
     return await apiClient.get<Course>(API_ENDPOINTS.COURSE_DETAILS.replace(':id', courseId));
   }
 
-  // Get upcoming classes
-  async getUpcomingClasses(limit: number = 10): Promise<ApiResponse<ClassSession[]>> {
-    return await apiClient.get<ClassSession[]>(`${API_ENDPOINTS.SCHEDULE}/upcoming?limit=${limit}`);
-  }
-
-  // Get class attendance
-  async getClassAttendance(classId: string): Promise<ApiResponse<any[]>> {
-    return await apiClient.get(`${API_ENDPOINTS.SCHEDULE}/${classId}/attendance`);
-  }
 }
 
 export const scheduleService = new ScheduleService();

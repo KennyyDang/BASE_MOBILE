@@ -208,7 +208,7 @@ export interface NFCEvent {
 }
 
 // Enums
-export type UserRole = 'PARENT' | 'TEACHER' | 'ADMIN';
+export type UserRole = 'PARENT' | 'TEACHER' | 'ADMIN' | 'STAFF';
 export type WalletType = 'MAIN' | 'ALLOWANCE';
 export type TransactionType = 'TOP_UP' | 'PAYMENT' | 'REFUND' | 'ALLOWANCE_SPENDING' | 'MEMBERSHIP_PURCHASE';
 export type TransactionStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
@@ -240,6 +240,7 @@ export interface PaginatedResponse<T> {
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
+  StaffMain: undefined;
   TopUp: undefined;
   Settings: undefined;
   Notifications: undefined;
@@ -250,6 +251,11 @@ export type RootStackParamList = {
     studentLevelName?: string;
   };
   TransactionHistory: undefined;
+};
+
+export type StaffStackParamList = {
+  StaffHome: undefined;
+  StaffRegisterParent: undefined;
 };
 
 export type MainTabParamList = {

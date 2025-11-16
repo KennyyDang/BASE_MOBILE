@@ -27,6 +27,22 @@ BASE Mobile là ứng dụng quản lý trung tâm đào tạo Brighway, đượ
 - **Expo CLI**: `npm install -g @expo/cli`
 - **Expo Go app**: Cài đặt từ App Store/Play Store
 
+### Cấu hình ENV (Google Vision OCR cho luồng Staff)
+Tạo file `.env` ở thư mục gốc với nội dung:
+
+```
+GOOGLE_VISION_API_KEY=your_google_cloud_vision_api_key_here
+API_BASE_URL=http://192.168.2.7:5160
+```
+
+Sau đó cài dependencies OCR/Camera:
+
+```
+npm install expo-image-picker react-native-dotenv --legacy-peer-deps
+```
+
+Lưu ý: Bật Google Cloud Vision API trong GCP và tạo API Key.
+
 ### 🛠️ Setup cho Developer mới
 
 #### Bước 1: Clone repository
@@ -113,6 +129,23 @@ Project đã được cấu hình với:
 - **`.nvmrc`**: Đảm bảo Node.js version đúng
 - **`.npmrc`**: Cấu hình npm để tránh peer dependency conflicts
 - **`package.json`**: Tất cả dependencies đã được test và hoạt động ổn định
+
+### 🧪 Build APK nội bộ bằng EAS
+Đã cấu hình sẵn `eas.json` và workflow build APK.
+
+- Build APK thủ công:
+
+```bash
+npx eas build --platform android --profile preview
+```
+
+- Tự động build khi push:
+  - Push lên nhánh `apk-preview` hoặc `develop` sẽ kích hoạt `.eas/workflows/build-android-preview.yml`
+
+- Tải artifact:
+  - Mở link dashboard EAS hiển thị trong log sau khi build để tải file APK.
+
+Tham khảo tự động hóa: [Automating EAS CLI commands](https://docs.expo.dev/eas/workflows/automating-eas-cli/)
 
 ## 📁 Cấu trúc project
 

@@ -44,6 +44,7 @@ const LoginScreen: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<'PARENT' | 'STAFF'>('PARENT');
 
   const handleLogin = async () => {
     if (!formData.email || !formData.password) {
@@ -107,6 +108,34 @@ const LoginScreen: React.FC = () => {
           {/* Login Form */}
           <Card style={styles.card} elevation={4}>
             <Card.Content style={styles.cardContent}>
+              {/* Role Selector */}
+              <View style={styles.roleContainer}>
+                <Text variant="bodyMedium" style={styles.roleLabel}>
+                  Chọn vai trò đăng nhập
+                </Text>
+                <View style={styles.roleButtons}>
+                  <Button
+                    mode={selectedRole === 'PARENT' ? 'contained' : 'outlined'}
+                    onPress={() => setSelectedRole('PARENT')}
+                    style={[styles.roleButton, selectedRole === 'PARENT' && styles.roleButtonActive]}
+                    compact
+                  >
+                    Phụ huynh
+                  </Button>
+                  <Button
+                    mode={selectedRole === 'STAFF' ? 'contained' : 'outlined'}
+                    onPress={() => setSelectedRole('STAFF')}
+                    style={[styles.roleButton, selectedRole === 'STAFF' && styles.roleButtonActive]}
+                    compact
+                  >
+                    Nhân viên
+                  </Button>
+                </View>
+                <Text variant="labelSmall" style={styles.roleHint}>
+                  Lưu ý: Quyền truy cập sẽ dựa trên role thật trong tài khoản của bạn.
+                </Text>
+              </View>
+
               <TextInput
                 label="Email"
                 value={formData.email}
@@ -215,6 +244,28 @@ const styles = StyleSheet.create({
   },
   cardContent: {
     padding: SPACING.LG,
+  },
+  roleContainer: {
+    marginBottom: SPACING.LG,
+  },
+  roleLabel: {
+    marginBottom: SPACING.SM,
+    color: COLORS.TEXT_PRIMARY,
+  },
+  roleButtons: {
+    flexDirection: 'row',
+    gap: SPACING.SM,
+    marginBottom: SPACING.SM,
+  } as any,
+  roleButton: {
+    flex: 1,
+    borderRadius: 8,
+  },
+  roleButtonActive: {
+    borderColor: COLORS.PRIMARY,
+  },
+  roleHint: {
+    color: COLORS.TEXT_SECONDARY,
   },
   input: {
     marginBottom: SPACING.MD,

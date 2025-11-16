@@ -96,16 +96,21 @@ const authService = {
         role: normalizedRole || 'USER',
       };
 
-      // Only allow parents to sign in
-      // Note: In this system, parents have role "User"
+      // Allow parents and staff to sign in
       const roleStr = (userInfo.role || '').toUpperCase();
-      const isParent = roleStr === 'USER' || roleStr === 'PARENT' || roleStr.includes('PARENT');
-      if (!isParent) {
+      const isAllowed =
+        roleStr === 'USER' ||
+        roleStr === 'PARENT' ||
+        roleStr.includes('PARENT') ||
+        roleStr === 'STAFF' ||
+        roleStr.includes('STAFF') ||
+        roleStr === 'ADMIN';
+      if (!isAllowed) {
         await AsyncStorage.multiRemove([
           STORAGE_KEYS.ACCESS_TOKEN,
           STORAGE_KEYS.REFRESH_TOKEN,
         ]);
-        throw new Error('Chỉ phụ huynh mới được phép đăng nhập vào ứng dụng này.');
+        throw new Error('Tài khoản không được phép đăng nhập ứng dụng này.');
       }
       
       // Save user info to AsyncStorage

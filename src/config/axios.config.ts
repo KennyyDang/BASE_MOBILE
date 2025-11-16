@@ -1,6 +1,6 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL, NODE_ENV } from '@env';
+import { API_BASE_URL, NODE_ENV} from '@env';
 
 // Storage keys
 export const STORAGE_KEYS = {
@@ -10,12 +10,23 @@ export const STORAGE_KEYS = {
 } as const;
 
 
+const sanitizeBaseUrl = (url?: string | null) => {
+  if (!url) return url;
+  const trimmed = url.trim();
+  // Remove trailing slash to avoid double slashes on requests
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+};
+
 const getBaseURL = () => {
-  if (API_BASE_URL) {
-    return API_BASE_URL;
+  const envUrlRaw = API_BASE_URL || '';
+  const envUrl = sanitizeBaseUrl(envUrlRaw);
+
+  // If API_BASE_URL is provided and not localhost, use it
+  if (envUrl && !/^(http:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?/i.test(envUrl)) {
+    return envUrl;
   }
-  // Fallback to old hardcoded values
-  return __DEV__ ? 'http://172.20.10.2:5160' : 'http://172.20.10.2:5160';
+  
+  return 'http://192.168.2.7:5160';
 };
 
 // Create axios instance with base configuration
@@ -26,6 +37,12 @@ const axiosInstance: AxiosInstance = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
+if (__DEV__) {
+  // Helpful log to confirm which baseURL is used at runtime
+  // eslint-disable-next-line no-console
+  console.log('[Axios] baseURL =', getBaseURL(), '| NODE_ENV =', NODE_ENV, '| API_BASE_URL =', API_BASE_URL);
+}
 
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {

@@ -46,6 +46,8 @@ const theme = {
 
 // Import screens
 import LoginScreen from '../screens/auth/LoginScreen';
+import StaffHomeScreen from '../screens/staff/StaffHomeScreen';
+import StaffRegisterParentScreen from '../screens/staff/StaffRegisterParentScreen';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ScheduleScreen from '../screens/main/ScheduleScreen';
 import WalletScreen from '../screens/main/WalletScreen';
@@ -59,6 +61,7 @@ import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 
 const Stack = createStackNavigator<RootStackParamList>();
+const StaffStack = createStackNavigator<any>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 // Main Tab Navigator for authenticated users
@@ -257,15 +260,47 @@ const AppNavigator = () => {
             }}
           />
         ) : (
+          // Authenticated area
           <>
-            {/* Main App Stack */}
-            <Stack.Screen 
-              name="Main" 
-              component={MainTabNavigator}
-              options={{
-                headerShown: false,
-              }}
-            />
+            {/* Route by role: STAFF -> StaffMain, others -> Main */}
+            {((user?.role || '').toUpperCase().includes('STAFF')) ? (
+              <Stack.Screen
+                name="StaffMain"
+                options={{ headerShown: false }}
+              >
+                {() => (
+                  <StaffStack.Navigator
+                    screenOptions={{
+                      headerStyle: {
+                        backgroundColor: COLORS.PRIMARY,
+                      },
+                      headerTintColor: COLORS.SURFACE,
+                      headerTitleStyle: { fontWeight: 'bold' },
+                      headerTitleAlign: 'center',
+                    }}
+                  >
+                    <StaffStack.Screen
+                      name="StaffHome"
+                      component={StaffHomeScreen}
+                      options={{ title: 'Nhân viên' }}
+                    />
+                    <StaffStack.Screen
+                      name="StaffRegisterParent"
+                      component={StaffRegisterParentScreen}
+                      options={{ title: 'Đăng ký phụ huynh' }}
+                    />
+                  </StaffStack.Navigator>
+                )}
+              </Stack.Screen>
+            ) : (
+              <Stack.Screen 
+                name="Main" 
+                component={MainTabNavigator}
+                options={{
+                  headerShown: false,
+                }}
+              />
+            )}
             <Stack.Screen 
               name="TopUp" 
               component={TopUpScreen}
