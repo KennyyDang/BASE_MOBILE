@@ -15,7 +15,9 @@
     },
     "preview": {
       "distribution": "internal",
-      "android": { "buildType": "apk" },
+      "android": {
+        "gradleCommand": ":app:assembleRelease"
+      },
       "env": {
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
         "EXPO_NODE_VERSION": "20.18.0"
