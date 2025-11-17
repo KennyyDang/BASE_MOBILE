@@ -169,14 +169,19 @@ export interface UserMembership {
 export interface Notification {
   id: string;
   userId: string;
-  type: NotificationType;
+  type: NotificationType | string;
   title: string;
   message: string;
   data?: Record<string, any>;
   isRead: boolean;
   scheduledAt?: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
+  priority?: string;
+  channels?: string[] | string;
+  iconName?: string | null;
+  imageUrl?: string | null;
+  actionUrl?: string | null;
 }
 
 export interface NFCCard {
@@ -203,7 +208,7 @@ export interface NFCEvent {
 }
 
 // Enums
-export type UserRole = 'PARENT' | 'TEACHER' | 'ADMIN';
+export type UserRole = 'PARENT' | 'TEACHER' | 'ADMIN' | 'STAFF';
 export type WalletType = 'MAIN' | 'ALLOWANCE';
 export type TransactionType = 'TOP_UP' | 'PAYMENT' | 'REFUND' | 'ALLOWANCE_SPENDING' | 'MEMBERSHIP_PURCHASE';
 export type TransactionStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
@@ -234,15 +239,33 @@ export interface PaginatedResponse<T> {
 // Navigation Types
 export type RootStackParamList = {
   Login: undefined;
-  Register: undefined;
   Main: undefined;
-  ForgotPassword: undefined;
+  StaffMain: undefined;
+  TopUp: undefined;
+  Settings: undefined;
+  Notifications: undefined;
+  StudentPackages: {
+    studentId: string;
+    studentName: string;
+    branchName?: string;
+    studentLevelName?: string;
+  };
+  TransactionHistory: undefined;
+  MySubscriptions: undefined;
+  OrderHistory: undefined;
+};
+
+export type StaffStackParamList = {
+  StaffHome: undefined;
+  StaffRegisterParent: undefined;
 };
 
 export type MainTabParamList = {
   Dashboard: undefined;
   Schedule: undefined;
   Wallet: undefined;
+  Children: undefined;
+  Services: undefined;
   Profile: undefined;
 };
 
@@ -268,21 +291,13 @@ export type ProfileStackParamList = {
   AddChild: undefined;
   EditChild: { childId: string };
   Settings: undefined;
+  Notifications: undefined;
 };
 
 // Form Types
 export interface LoginForm {
   email: string;
   password: string;
-}
-
-export interface RegisterForm {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  password: string;
-  confirmPassword: string;
 }
 
 export interface ChildForm {

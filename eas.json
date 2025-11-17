@@ -1,0 +1,69 @@
+{
+  "cli": { "version": ">= 4.0.0" },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Debug"
+      },
+      "env": {
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_NODE_VERSION": "20.18.0"
+      },
+      "cache": {
+        "disabled": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleRelease"
+      },
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Release"
+      },
+      "env": {
+        "EAS_BUILD_NPM_CI": "0",
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_NODE_VERSION": "20.18.0",
+        "ANDROID_NDK_VERSION": "26.1.10909125",
+        "REANIMATED_DISABLE_CMAKE_BUILD": "1",
+        "REANIMATED_SKIP_CMAKE": "1",
+        "REANIMATED_DISABLE_CMAKE": "1",
+        "ORG_GRADLE_PROJECT_reanimatedDisableCmake": "true",
+        "ORG_GRADLE_PROJECT_reanimated.useCMake": "false",
+        "REANIMATED_USE_CMAKE": "0",
+        "REANIMATED_BUILD_FROM_SOURCE": "0",
+        "EXPO_NEW_ARCH_ENABLED": "0",
+        "ORG_GRADLE_PROJECT_newArchEnabled": "false",
+        "RCT_NEW_ARCH_ENABLED": "0",
+        "REANIMATED_ENABLE_NEW_ARCHITECTURE": "0",
+        "REANIMATED_ENABLE_FABRIC": "0"
+      },
+      "cache": {
+        "disabled": true
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "android": { "gradleCommand": ":app:assembleRelease" },
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "EXPO_NODE_VERSION": "20.18.0",
+        "ANDROID_NDK_VERSION": "26.1.10909125"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": { "track": "internal" }
+    }
+  }
+}

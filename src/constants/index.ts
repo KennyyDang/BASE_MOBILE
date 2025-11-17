@@ -11,20 +11,20 @@ export const APP_CONFIG = {
 };
 
 export const COLORS = {
-  PRIMARY: '#2E7D32', // Green for education theme
-  PRIMARY_DARK: '#1B5E20',
-  PRIMARY_LIGHT: '#4CAF50',
-  SECONDARY: '#FF6F00', // Orange for highlights
-  ACCENT: '#2196F3', // Blue for actions
-  BACKGROUND: '#F5F5F5',
+  PRIMARY: '#1976D2', // Modern Blue 700 - Professional and modern
+  PRIMARY_DARK: '#1565C0', // Blue 800 - For headers and important elements
+  PRIMARY_LIGHT: '#42A5F5', // Blue 400 - For accents and highlights
+  SECONDARY: '#2196F3', // Blue 500 - Secondary actions
+  ACCENT: '#64B5F6', // Blue 300 - Accent color for special elements
+  BACKGROUND: '#F5F7FA', // Slightly cooler background
   SURFACE: '#FFFFFF',
   ERROR: '#F44336',
   WARNING: '#FF9800',
   SUCCESS: '#4CAF50',
-  INFO: '#2196F3',
-  TEXT_PRIMARY: '#212121',
-  TEXT_SECONDARY: '#757575',
-  BORDER: '#E0E0E0',
+  INFO: '#1976D2',
+  TEXT_PRIMARY: '#1A1A1A', // Slightly softer black
+  TEXT_SECONDARY: '#6B7280', // Modern gray
+  BORDER: '#E5E7EB', // Softer border color
   SHADOW: '#000000',
 };
 
@@ -118,24 +118,32 @@ export const NOTIFICATION_TYPES = {
 export const API_ENDPOINTS = {
   // Auth
   LOGIN: '/auth/login',
+  MOBILE_LOGIN: '/api/Auth/mobile-login',
   REGISTER: '/auth/register',
   REFRESH_TOKEN: '/auth/refresh',
   LOGOUT: '/auth/logout',
+  FORGOT_PASSWORD: '/auth/forgot-password',
+  RESET_PASSWORD: '/auth/reset-password',
   
   // User Management
   PROFILE: '/users/profile',
   UPDATE_PROFILE: '/users/profile',
+  CURRENT_USER: '/api/User/current-user',
   
   // Children Management
   CHILDREN: '/children',
   ADD_CHILD: '/children',
   UPDATE_CHILD: '/children/:id',
   DELETE_CHILD: '/children/:id',
+  STUDENT_PAGED_CURRENT_USER: '/api/Student/paged/current-user',
+  STUDENT_MY_CHILDREN: '/api/Student/my-children',
   
   // Wallet
   WALLET_BALANCE: '/wallet/balance',
   WALLET_TRANSACTIONS: '/wallet/transactions',
   TOP_UP_WALLET: '/wallet/top-up',
+  DEPOSIT_CREATE: '/api/Deposit/create',
+  DEPOSIT_WEBHOOK: '/api/Deposit/webhook/payos',
   
   // Schedule
   SCHEDULE: '/schedule',
@@ -148,12 +156,17 @@ export const API_ENDPOINTS = {
   COURSE_DETAILS: '/courses/:id',
   AVAILABLE_COURSES: '/courses/available',
   
+  // Packages
+  STUDENT_SUITABLE_PACKAGES: '/api/Package/student/:studentId/suitable-packages',
+  PACKAGE_BUY_FOR_CHILD: '/api/PackageSubscription/buy-for-child',
+
   // NFC Integration
   NFC_CHECK_IN: '/nfc/check-in',
   NFC_CHECK_OUT: '/nfc/check-out',
   NFC_PAYMENT: '/nfc/payment',
   
   // Notifications
-  NOTIFICATIONS: '/notifications',
-  MARK_NOTIFICATION_READ: '/notifications/:id/read',
+  NOTIFICATIONS: '/api/Notification',
+  MARK_NOTIFICATION_READ: '/api/Notification/:id/mark-read',
+  REGISTER_PUSH_TOKEN: '/api/Notification/register-token',
 };

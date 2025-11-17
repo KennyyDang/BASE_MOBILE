@@ -1,8 +1,36 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING } from '../constants';
 import { Parent } from '../types';
+
+// Inline constants
+const COLORS = {
+  SURFACE: '#FFFFFF',
+  PRIMARY: '#1976D2',
+  PRIMARY_DARK: '#1565C0',
+  PRIMARY_LIGHT: '#42A5F5',
+  SECONDARY: '#2196F3',
+  ACCENT: '#64B5F6',
+  TEXT_PRIMARY: '#1A1A1A',
+  TEXT_SECONDARY: '#6B7280',
+  BACKGROUND: '#F5F7FA',
+  SHADOW: '#000000',
+};
+
+const SPACING = {
+  SM: 8,
+  MD: 16,
+  LG: 24,
+};
+
+const FONTS = {
+  SIZES: {
+    SM: 14,
+    LG: 18,
+    XL: 20,
+    XXL: 24,
+  },
+};
 
 interface ProfileHeaderProps {
   user: Parent;

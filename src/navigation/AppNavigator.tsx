@@ -1,15 +1,31 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { DefaultTheme } from 'react-native-paper';
+import { Linking } from 'react-native';
 
-import { SCREEN_NAMES, COLORS } from '../constants';
 import { RootStackParamList, MainTabParamList } from '../types';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../contexts/AuthContext';
+
+// Inline constants
+const COLORS = {
+  PRIMARY: '#1976D2',
+  PRIMARY_DARK: '#1565C0',
+  PRIMARY_LIGHT: '#42A5F5',
+  SECONDARY: '#2196F3',
+  ACCENT: '#64B5F6',
+  BACKGROUND: '#F5F7FA',
+  SURFACE: '#FFFFFF',
+  ERROR: '#F44336',
+  TEXT_PRIMARY: '#1A1A1A',
+  TEXT_SECONDARY: '#6B7280',
+  BORDER: '#E5E7EB',
+};
+
 
 // Custom theme for React Native Paper
 const theme = {
@@ -30,36 +46,73 @@ const theme = {
   },
 };
 
-// Import screens (will be created later)
+// Import screens
 import LoginScreen from '../screens/auth/LoginScreen';
-import RegisterScreen from '../screens/auth/RegisterScreen';
+import StaffHomeScreen from '../screens/staff/StaffHomeScreen';
+import StaffRegisterParentScreen from '../screens/staff/StaffRegisterParentScreen';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ScheduleScreen from '../screens/main/ScheduleScreen';
 import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
+import ChildrenManagementScreen from '../screens/main/ChildrenManagementScreen';
+import TopUpScreen from '../screens/main/TopUpScreen';
+import SettingsScreen from '../screens/main/SettingsScreen';
+import NotificationScreen from '../screens/main/NotificationScreen';
+import StudentPackagesScreen from '../screens/main/StudentPackagesScreen';
+import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
+import MySubscriptionsScreen from '../screens/main/MySubscriptionsScreen';
+import ServicesScreen from '../screens/main/ServicesScreen';
+import OrderHistoryScreen from '../screens/main/OrderHistoryScreen';
+import NotificationWatcher from '../components/NotificationWatcher';
+import BadgeIcon from '../components/BadgeIcon';
+import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount';
+import { useNavigation } from '@react-navigation/native';
 
 const Stack = createStackNavigator<RootStackParamList>();
+const StaffStack = createStackNavigator<any>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+
+// Component for notification header button with badge
+const NotificationHeaderButton = () => {
+  const navigation = useNavigation<any>();
+  const { unreadCount } = useUnreadNotificationCount();
+
+  return (
+    <BadgeIcon
+      iconName="notifications"
+      badgeCount={unreadCount}
+      onPress={() => navigation.navigate('Notifications')}
+      size={24}
+      color={COLORS.SURFACE}
+    />
+  );
+};
 
 // Main Tab Navigator for authenticated users
 const MainTabNavigator = () => {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={({ route, navigation }) => ({
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: string;
 
           switch (route.name) {
-            case SCREEN_NAMES.DASHBOARD:
+            case 'Dashboard':
               iconName = 'dashboard';
               break;
-            case SCREEN_NAMES.SCHEDULE:
+            case 'Schedule':
               iconName = 'schedule';
               break;
-            case SCREEN_NAMES.WALLET:
+            case 'Wallet':
               iconName = 'account-balance-wallet';
               break;
-            case SCREEN_NAMES.PROFILE:
+            case 'Children':
+              iconName = 'child-care';
+              break;
+            case 'Services':
+              iconName = 'restaurant';
+              break;
+            case 'Profile':
               iconName = 'person';
               break;
             default:
@@ -92,51 +145,110 @@ const MainTabNavigator = () => {
           fontSize: 18,
         },
         headerTitleAlign: 'center',
+        headerRight: () => <NotificationHeaderButton />,
       })}
     >
       <Tab.Screen 
-        name={SCREEN_NAMES.DASHBOARD} 
+        name="Dashboard" 
         component={DashboardScreen}
         options={{
-          title: 'Trang chủ',
-          headerTitle: 'BASE - Trang chủ',
+          title: 'Trang Chủ',
+          headerTitle: 'BASE - Trang Chủ',
         }}
       />
       <Tab.Screen 
-        name={SCREEN_NAMES.SCHEDULE} 
+        name="Schedule" 
         component={ScheduleScreen}
         options={{
-          title: 'Lịch học',
-          headerTitle: 'Lịch học',
+          title: 'Lịch Học',
+          headerTitle: 'Lịch Học',
         }}
       />
       <Tab.Screen 
-        name={SCREEN_NAMES.WALLET} 
+        name="Wallet" 
         component={WalletScreen}
         options={{
-          title: 'Ví tiền',
-          headerTitle: 'Ví tiền',
+          title: 'Ví Tiền',
+          headerTitle: 'Ví Tiền',
         }}
       />
       <Tab.Screen 
-        name={SCREEN_NAMES.PROFILE} 
+        name="Children" 
+        component={ChildrenManagementScreen}
+        options={{
+          title: 'Quản Lý Con',
+          headerTitle: 'Quản Lý Con',
+        }}
+      />
+      <Tab.Screen 
+        name="Services" 
+        component={ServicesScreen}
+        options={{
+          title: 'Dịch Vụ',
+          headerTitle: 'Dịch vụ bổ sung',
+        }}
+      />
+      <Tab.Screen 
+        name="Profile" 
         component={ProfileScreen}
         options={{
-          title: 'Hồ sơ',
-          headerTitle: 'Hồ sơ cá nhân',
+          title: 'Hồ Sơ',
+          headerTitle: 'Hồ Sơ Cá Nhân',
         }}
       />
     </Tab.Navigator>
   );
 };
 
+// Linking configuration for deep links (simplified - using React Native Linking)
+const linking: LinkingOptions<any> = {
+  prefixes: ['baseapp://', 'https://baseapp.com'],
+  config: {
+    screens: {
+      Main: {
+        screens: {
+          Dashboard: 'dashboard',
+          Schedule: 'schedule',
+          Wallet: 'wallet',
+          Profile: 'profile',
+        },
+      },
+      TopUp: 'topup',
+      Login: 'login',
+      PaymentSuccess: 'payment/success',
+      PaymentCancel: 'payment/cancel',
+    },
+  },
+  async getInitialURL() {
+    // Check if app was opened from a deep link
+    const url = await Linking.getInitialURL();
+    if (url != null) {
+      return url;
+    }
+  },
+  subscribe(listener) {
+    // Listen to incoming links from deep linking
+    const onReceiveURL = ({ url }: { url: string }) => {
+      listener(url);
+    };
+
+    // Listen to URL events using React Native Linking
+    const subscription = Linking.addEventListener('url', onReceiveURL);
+
+    return () => {
+      subscription.remove();
+    };
+  },
+};
+
 // Root Navigator
 const AppNavigator = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   return (
     <PaperProvider theme={theme}>
-      <NavigationContainer>
+      <NavigationContainer linking={linking}>
+        {isAuthenticated && <NotificationWatcher enabled />}
         <Stack.Navigator
           screenOptions={{
             headerStyle: {
@@ -175,32 +287,113 @@ const AppNavigator = () => {
         >
         {!isAuthenticated ? (
           // Auth Stack
-          <>
-            <Stack.Screen 
-              name="Login"
-              component={LoginScreen}
-              options={{
-                title: 'Đăng nhập',
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen 
-              name="Register" 
-              component={RegisterScreen}
-              options={{
-                title: 'Đăng ký',
-              }}
-            />
-          </>
-        ) : (
-          // Main App Stack
           <Stack.Screen 
-            name="Main" 
-            component={MainTabNavigator}
+            name="Login"
+            component={LoginScreen}
             options={{
+              title: 'Đăng nhập',
               headerShown: false,
             }}
           />
+        ) : (
+          // Authenticated area
+          <>
+            {/* Route by role: STAFF -> StaffMain, others -> Main */}
+            {((user?.role || '').toUpperCase().includes('STAFF')) ? (
+              <Stack.Screen
+                name="StaffMain"
+                options={{ headerShown: false }}
+              >
+                {() => (
+                  <StaffStack.Navigator
+                    screenOptions={{
+                      headerStyle: {
+                        backgroundColor: COLORS.PRIMARY,
+                      },
+                      headerTintColor: COLORS.SURFACE,
+                      headerTitleStyle: { fontWeight: 'bold' },
+                      headerTitleAlign: 'center',
+                    }}
+                  >
+                    <StaffStack.Screen
+                      name="StaffHome"
+                      component={StaffHomeScreen}
+                      options={{ title: 'Nhân viên' }}
+                    />
+                    <StaffStack.Screen
+                      name="StaffRegisterParent"
+                      component={StaffRegisterParentScreen}
+                      options={{ title: 'Đăng ký phụ huynh' }}
+                    />
+                  </StaffStack.Navigator>
+                )}
+              </Stack.Screen>
+            ) : (
+              <Stack.Screen 
+                name="Main" 
+                component={MainTabNavigator}
+                options={{
+                  headerShown: false,
+                }}
+              />
+            )}
+            <Stack.Screen 
+              name="TopUp" 
+              component={TopUpScreen}
+              options={{
+                title: 'Nạp Tiền',
+                headerTitle: 'Nạp tiền',
+              }}
+            />
+            <Stack.Screen 
+              name="Settings" 
+              component={SettingsScreen}
+              options={{
+                title: 'Cài Đặt',
+                headerTitle: 'Cài Đặt',
+              }}
+            />
+            <Stack.Screen
+              name="Notifications"
+              component={NotificationScreen}
+              options={{
+                title: 'Thông Báo',
+                headerTitle: 'Thông Báo',
+              }}
+            />
+            <Stack.Screen
+              name="StudentPackages"
+              component={StudentPackagesScreen}
+              options={{
+                title: 'Gói học',
+                headerTitle: 'Chọn gói phù hợp',
+              }}
+            />
+            <Stack.Screen
+              name="TransactionHistory"
+              component={TransactionHistoryScreen}
+              options={{
+                title: 'Lịch sử giao dịch',
+                headerTitle: 'Lịch sử giao dịch',
+              }}
+            />
+            <Stack.Screen
+              name="MySubscriptions"
+              component={MySubscriptionsScreen}
+              options={{
+                title: 'Gói đăng ký',
+                headerTitle: 'Gói đăng ký của tôi',
+              }}
+            />
+            <Stack.Screen
+              name="OrderHistory"
+              component={OrderHistoryScreen}
+              options={{
+                title: 'Lịch sử đơn hàng',
+                headerTitle: 'Lịch sử đơn hàng',
+              }}
+            />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>
