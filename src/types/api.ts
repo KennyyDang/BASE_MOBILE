@@ -174,14 +174,29 @@ export interface BookStudentSlotResponse {
 export interface StudentSlotResponse {
   id: string;
   branchSlotId: string;
+  branchSlot?: {
+    id: string;
+    branchName: string;
+  } | null;
   packageSubscriptionId: string;
   date: string;
   status: string;
   parentNote?: string | null;
   roomId: string;
-  // Enriched data (not from API, added by frontend)
-  branchSlot?: BranchSlotResponse | null;
-  room?: BranchSlotRoomResponse | null;
+  room?: {
+    id: string;
+    roomName: string;
+  } | null;
+  studentId: string;
+  studentName: string;
+  parentId: string;
+  parentName: string;
+  timeframe?: {
+    id: string;
+    name: string;
+    startTime: string;
+    endTime: string;
+  } | null;
 }
 
 // Student API Response
@@ -287,6 +302,103 @@ export interface RegisterPackageResponse {
   success: boolean;
   message?: string;
   walletBalance?: number;
+}
+
+// Service/Add-On Types
+export interface AddOnService {
+  serviceId: string;
+  name: string;
+  serviceType: string;
+  isActive: boolean;
+  priceOverride: number | null;
+  effectivePrice: number;
+}
+
+// Order Types
+export interface CreateOrderItem {
+  serviceId: string;
+  quantity: number;
+}
+
+export interface CreateOrderRequest {
+  studentSlotId: string;
+  items: CreateOrderItem[];
+}
+
+export interface OrderItem {
+  serviceId: string;
+  serviceName: string;
+  serviceType: string;
+  serviceImage?: string | null;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export interface OrderTransaction {
+  id: string;
+  amount: number;
+}
+
+export interface CreateOrderResponse {
+  id: string;
+  studentSlotId: string;
+  createdDate: string;
+  totalAmount: number;
+  status: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  slotInfo?: string | null;
+  slotStartTime: string;
+  slotEndTime: string;
+  items: OrderItem[];
+  transactions: OrderTransaction[];
+}
+
+// Pay Order Types
+export type WalletType = 'Student' | 'Parent';
+
+export interface PayOrderRequest {
+  orderId: string;
+  walletType: WalletType;
+}
+
+export interface PayOrderResponse {
+  success: boolean;
+  orderId: string;
+  paidAmount: number;
+  remainingBalance: number;
+  status: string;
+  message: string;
+}
+
+// Order History Types
+export interface OrderHistoryItem {
+  serviceId: string;
+  serviceName: string;
+  serviceType: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  serviceImage?: string | null;
+}
+
+export interface OrderHistory {
+  id: string;
+  studentSlotId: string;
+  createdDate: string;
+  totalAmount: number;
+  status: string;
+  studentId?: string | null;
+  studentName?: string | null;
+  studentEmail?: string | null;
+  slotInfo?: string | null;
+  slotStartTime?: string | null;
+  slotEndTime?: string | null;
+  totalItems: number;
+  items: OrderHistoryItem[];
+  transactions?: OrderTransaction[];
 }
 
 // Transfer Smart API

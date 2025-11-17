@@ -26,9 +26,11 @@ export interface CurrentUserResponse {
   roleName: string;
   branchId: string | null;
   branchName: string | null;
+  phoneNumber: string | null;
   profilePictureUrl: string | null;
   isActive: boolean;
   createdAt: string;
+  identityCardPublicId: string | null;
 }
 
 const parentProfileService = {
@@ -99,6 +101,68 @@ const parentProfileService = {
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to update parent profile';
+    }
+  },
+
+  /**
+   * Upload profile picture
+   * Endpoint: POST /api/User/upload-profile-picture
+   * @param fileUri - Local file URI from image picker
+   * @param fileName - File name (optional)
+   * @param mimeType - MIME type (e.g., 'image/jpeg', 'image/png')
+   * @returns Updated current user with new profilePictureUrl
+   */
+  uploadProfilePicture: async (
+    fileUri: string,
+    fileName?: string,
+    mimeType: string = 'image/jpeg'
+  ): Promise<CurrentUserResponse> => {
+    try {
+      // Create FormData for multipart/form-data
+      const formData = new FormData();
+      
+      // Extract filename from URI if not provided
+      const fileExtension = mimeType.split('/')[1] || 'jpg';
+      const defaultFileName = fileName || `profile_${Date.now()}.${fileExtension}`;
+      
+      // Append file to FormData
+      // @ts-ignore - FormData type issue with React Native
+      formData.append('file', {
+        uri: fileUri,
+        type: mimeType,
+        name: defaultFileName,
+      } as any);
+
+      const response = await axiosInstance.post<CurrentUserResponse>(
+        '/api/User/upload-profile-picture',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      
+      return response.data;
+    } catch (error: any) {
+      // Extract detailed error message
+      const errorData = error?.response?.data;
+      let errorMessage = 'Không thể upload ảnh profile';
+      
+      if (errorData) {
+        // Handle API error response structure
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
     }
   },
 };

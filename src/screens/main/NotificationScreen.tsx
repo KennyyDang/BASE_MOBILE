@@ -14,15 +14,19 @@ import { MaterialIcons } from '@expo/vector-icons';
 import notificationService from '../../services/notificationService';
 import pushNotificationService from '../../services/pushNotificationService';
 import { Notification } from '../../types';
+import { useUnreadNotificationCount } from '../../hooks/useUnreadNotificationCount';
 
 const COLORS = {
-  PRIMARY: '#2E7D32',
+  PRIMARY: '#1976D2',
+  PRIMARY_DARK: '#1565C0',
+  PRIMARY_LIGHT: '#42A5F5',
   SECONDARY: '#2196F3',
-  BACKGROUND: '#F5F5F5',
+  ACCENT: '#64B5F6',
+  BACKGROUND: '#F5F7FA',
   SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#212121',
-  TEXT_SECONDARY: '#757575',
-  BORDER: '#E0E0E0',
+  TEXT_PRIMARY: '#1A1A1A',
+  TEXT_SECONDARY: '#6B7280',
+  BORDER: '#E5E7EB',
   ERROR: '#F44336',
 };
 
@@ -99,11 +103,14 @@ const NotificationScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { refresh: refreshUnreadCount } = useUnreadNotificationCount();
 
   const updateBadgeCount = useCallback((items: NotificationItem[]) => {
     const unread = items.filter((item) => !item.isRead).length;
     pushNotificationService.setBadgeCount(unread).catch(() => {});
-  }, []);
+    // Refresh unread count in header badge
+    refreshUnreadCount();
+  }, [refreshUnreadCount]);
 
   const fetchNotifications = async (opts?: { refresh?: boolean }) => {
     const { refresh } = opts || {};
@@ -167,7 +174,8 @@ const NotificationScreen: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       fetchNotifications();
-    }, [])
+      refreshUnreadCount();
+    }, [refreshUnreadCount])
   );
 
   useEffect(() => {

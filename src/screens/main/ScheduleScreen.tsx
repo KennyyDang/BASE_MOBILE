@@ -25,15 +25,16 @@ import {
 import packageService from '../../services/packageService';
 
 const COLORS = {
-  PRIMARY: '#2E7D32',
-  PRIMARY_LIGHT: '#4CAF50',
-  SECONDARY: '#FF6F00',
-  ACCENT: '#2196F3',
-  BACKGROUND: '#F5F5F5',
+  PRIMARY: '#1976D2',
+  PRIMARY_DARK: '#1565C0',
+  PRIMARY_LIGHT: '#42A5F5',
+  SECONDARY: '#2196F3',
+  ACCENT: '#64B5F6',
+  BACKGROUND: '#F5F7FA',
   SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#212121',
-  TEXT_SECONDARY: '#757575',
-  BORDER: '#E0E0E0',
+  TEXT_PRIMARY: '#1A1A1A',
+  TEXT_SECONDARY: '#6B7280',
+  BORDER: '#E5E7EB',
   SUCCESS_BG: '#E8F5E9',
   ERROR: '#F44336',
   WARNING_BG: '#FFF3E0',
@@ -251,16 +252,23 @@ const ScheduleScreen: React.FC = () => {
       setSubscriptionsError(null);
       try {
         const data = await packageService.getStudentSubscriptions(studentId);
-        setSubscriptions(data);
+        // Filter out cancelled and refunded subscriptions - only show Active packages
+        const activeData = data.filter((sub) => {
+          if (!sub.status) return false;
+          const status = sub.status.trim().toUpperCase();
+          // Only show packages with Active status (case-insensitive)
+          return status === 'ACTIVE';
+        });
+        setSubscriptions(activeData);
 
-        const currentValid = data.find((sub) => sub.id === selectedSubscriptionId);
+        const currentValid = activeData.find((sub) => sub.id === selectedSubscriptionId);
         if (currentValid) {
           setSelectedSubscriptionId(currentValid.id);
         } else {
           const defaultSubscription =
-            data.find((sub) => sub.status === 'Active' && (computeRemainingSlots(sub) ?? 1) > 0) ||
-            data.find((sub) => sub.status === 'Active') ||
-            data[0];
+            activeData.find((sub) => sub.status === 'Active' && (computeRemainingSlots(sub) ?? 1) > 0) ||
+            activeData.find((sub) => sub.status === 'Active') ||
+            activeData[0];
           setSelectedSubscriptionId(defaultSubscription ? defaultSubscription.id : null);
         }
       } catch (error: any) {
@@ -384,7 +392,13 @@ const ScheduleScreen: React.FC = () => {
 
       try {
         const response = await branchSlotService.getRoomsBySlot(slotId, page, ROOM_PAGE_SIZE);
-        const items = response?.items ?? [];
+        
+        // Validate response
+        if (!response) {
+          throw new Error('Invalid response from server');
+        }
+        
+        const items = Array.isArray(response.items) ? response.items : [];
 
         setSlotRoomsState((prev) => {
           const existing = prev[slotId] ? { ...prev[slotId] } : createDefaultSlotRoomsState();
@@ -400,11 +414,11 @@ const ScheduleScreen: React.FC = () => {
               ...existing,
               rooms: mergedRooms,
               pagination: {
-                pageIndex: response.pageIndex,
-                totalPages: response.totalPages,
-                totalCount: response.totalCount,
-                pageSize: response.pageSize,
-                hasNextPage: response.hasNextPage,
+                pageIndex: response.pageIndex ?? page,
+                totalPages: response.totalPages ?? 0,
+                totalCount: response.totalCount ?? 0,
+                pageSize: response.pageSize ?? ROOM_PAGE_SIZE,
+                hasNextPage: response.hasNextPage ?? false,
               },
               loading: false,
               error: null,
@@ -414,9 +428,11 @@ const ScheduleScreen: React.FC = () => {
         });
       } catch (error: any) {
         const message =
+          typeof error === 'string' ? error :
           error?.message ||
           error?.response?.data?.message ||
           error?.response?.data?.error ||
+          error?.response?.data?.title ||
           'Không thể tải danh sách phòng. Vui lòng thử lại.';
 
         setSlotRoomsState((prev) => {
@@ -427,6 +443,8 @@ const ScheduleScreen: React.FC = () => {
               ...existing,
               loading: false,
               error: message,
+              // Keep existing rooms if append failed, otherwise clear
+              rooms: append ? existing.rooms : [],
             },
           };
         });

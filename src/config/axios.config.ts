@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { API_BASE_URL, NODE_ENV} from '@env';
 
 // Storage keys
@@ -18,7 +19,25 @@ const sanitizeBaseUrl = (url?: string | null) => {
 };
 
 const getBaseURL = () => {
-  const envUrlRaw = API_BASE_URL || '';
+  // Try to get from @env first (works in development)
+  let envUrlRaw = API_BASE_URL || '';
+  
+  // Fallback to Constants.expoConfig.extra (works in production builds)
+  if (!envUrlRaw) {
+    const fromConstants = Constants.expoConfig?.extra?.apiBaseUrl;
+    if (fromConstants) {
+      envUrlRaw = fromConstants;
+    }
+  }
+  
+  // Also try Constants.manifest?.extra (for older Expo versions)
+  if (!envUrlRaw) {
+    const fromManifest = (Constants as any).manifest?.extra?.apiBaseUrl;
+    if (fromManifest) {
+      envUrlRaw = fromManifest;
+    }
+  }
+  
   const envUrl = sanitizeBaseUrl(envUrlRaw);
 
   // If API_BASE_URL is provided and not localhost, use it
@@ -26,6 +45,7 @@ const getBaseURL = () => {
     return envUrl;
   }
   
+  // Default fallback
   return 'http://192.168.2.7:5160';
 };
 
@@ -38,21 +58,28 @@ const axiosInstance: AxiosInstance = axios.create({
   },
 });
 
-if (__DEV__) {
-  // Helpful log to confirm which baseURL is used at runtime
-  // eslint-disable-next-line no-console
-  console.log('[Axios] baseURL =', getBaseURL(), '| NODE_ENV =', NODE_ENV, '| API_BASE_URL =', API_BASE_URL);
-}
+// Export function to get current base URL (for debugging/verification)
+export const getCurrentBaseURL = () => getBaseURL();
 
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     try {
       const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       if (token && config.headers) {
-        (config.headers as any).Authorization = `Bearer ${token}`;
+        // Trim token to remove any whitespace
+        const trimmedToken = token.trim();
+        // Validate token format before using
+        if (trimmedToken.split('.').length === 3) {
+          (config.headers as any).Authorization = `Bearer ${trimmedToken}`;
+        } else if (__DEV__) {
+          console.warn('[Axios] Invalid token format detected, skipping Authorization header');
+        }
       }
       return config;
-    } catch {
+    } catch (error) {
+      if (__DEV__) {
+        console.error('[Axios] Error getting token in request interceptor:', error);
+      }
       return config;
     }
   },
@@ -71,27 +98,36 @@ axiosInstance.interceptors.response.use(
       try {
         // Try to refresh token
         const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-        if (refreshToken) {
+        if (refreshToken && refreshToken.trim()) {
           const response = await axiosInstance.post('/api/Auth/refresh', {
-            refreshToken: refreshToken
+            refreshToken: refreshToken.trim()
           });
           
-          if (response.data.access_token) {
-            const newToken = response.data.access_token;
-            await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newToken);
+          if (response.data?.access_token) {
+            const newToken = response.data.access_token.trim();
             
-            // Update refresh token if provided
-            if (response.data.refresh_token) {
-              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.data.refresh_token);
+            // Validate new token format
+            if (newToken.split('.').length === 3) {
+              await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newToken);
+              
+              // Update refresh token if provided
+              if (response.data.refresh_token) {
+                await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.data.refresh_token.trim());
+              }
+              
+              // Retry original request with new token
+              originalRequest.headers.Authorization = `Bearer ${newToken}`;
+              return axiosInstance(originalRequest);
+            } else if (__DEV__) {
+              console.error('[Axios] Invalid token format received from refresh endpoint');
             }
-            
-            // Retry original request with new token
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
-            return axiosInstance(originalRequest);
           }
         }
       } catch (refreshError) {
         // Refresh failed, clear all tokens and redirect to login
+        if (__DEV__) {
+          console.error('[Axios] Token refresh failed:', refreshError);
+        }
         await AsyncStorage.multiRemove([
           STORAGE_KEYS.ACCESS_TOKEN,
           STORAGE_KEYS.REFRESH_TOKEN,

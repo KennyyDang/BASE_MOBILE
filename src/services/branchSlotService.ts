@@ -54,9 +54,32 @@ class BranchSlotService {
           },
         }
       );
-      return response.data;
+      
+      // Validate response structure
+      if (!response || !response.data) {
+        throw new Error('Invalid response from server');
+      }
+      
+      // Ensure items is always an array
+      const data = response.data;
+      if (!Array.isArray(data.items)) {
+        return {
+          ...data,
+          items: [],
+        };
+      }
+      
+      return data;
     } catch (error: any) {
-      throw error.response?.data || error.message || 'Failed to fetch rooms';
+      
+      // Extract error message
+      const errorMessage = 
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        'Failed to fetch rooms';
+      
+      throw new Error(errorMessage);
     }
   }
 

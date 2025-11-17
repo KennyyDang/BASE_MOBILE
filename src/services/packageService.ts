@@ -45,6 +45,18 @@ class PackageService {
     }
     return [];
   }
+
+  /**
+   * Refund a package subscription
+   * Endpoint: POST /api/PackageSubscription/{id}/refund
+   * @param subscriptionId Package subscription ID (UUID)
+   * @returns Refunded subscription details
+   */
+  async refundSubscription(subscriptionId: string): Promise<StudentPackageSubscription> {
+    const endpoint = `/api/PackageSubscription/${subscriptionId}/refund`;
+    const response = await axiosInstance.post<StudentPackageSubscription>(endpoint);
+    return response.data;
+  }
 }
 
 export const packageService = new PackageService();

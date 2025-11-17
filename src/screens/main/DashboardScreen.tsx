@@ -18,22 +18,22 @@ import { useMyChildren } from '../../hooks/useChildrenApi';
 import studentSlotService from '../../services/studentSlotService';
 import branchSlotService from '../../services/branchSlotService';
 import walletService from '../../services/walletService';
-import { StudentSlotResponse, BranchSlotResponse, BranchSlotRoomResponse, DepositResponse } from '../../types/api';
+import { StudentSlotResponse, BranchSlotRoomResponse, DepositResponse } from '../../types/api';
 
 // Inline constants
 const COLORS = {
-  PRIMARY: '#2E7D32',
-  PRIMARY_LIGHT: '#4CAF50',
-  SECONDARY: '#FF6F00',
-  BACKGROUND: '#F5F5F5',
+  PRIMARY: '#1976D2',
+  PRIMARY_LIGHT: '#42A5F5',
+  SECONDARY: '#2196F3',
+  BACKGROUND: '#F5F7FA',
   SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#212121',
-  TEXT_SECONDARY: '#757575',
-  BORDER: '#E0E0E0',
+  TEXT_PRIMARY: '#1A1A1A',
+  TEXT_SECONDARY: '#6B7280',
+  BORDER: '#E5E7EB',
   SUCCESS: '#4CAF50',
   WARNING: '#FF9800',
   ERROR: '#F44336',
-  ACCENT: '#2196F3',
+  ACCENT: '#64B5F6',
   SHADOW: '#000000',
 };
 
@@ -63,9 +63,10 @@ const DashboardScreen: React.FC = () => {
   const { data: studentWallets, loading: studentWalletsLoading } = useStudentWallets();
   const { students } = useMyChildren();
   
-  const [upcomingSlots, setUpcomingSlots] = useState<(StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse })[]>([]);
+  const [upcomingSlots, setUpcomingSlots] = useState<StudentSlotResponse[]>([]);
+  const [allUpcomingSlots, setAllUpcomingSlots] = useState<StudentSlotResponse[]>([]); // Store all slots for counting
   const [slotsLoading, setSlotsLoading] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<(StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<StudentSlotResponse | null>(null);
   const [slotDetailModalVisible, setSlotDetailModalVisible] = useState(false);
   const [recentTransactions, setRecentTransactions] = useState<DepositResponse[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
@@ -105,7 +106,7 @@ const DashboardScreen: React.FC = () => {
     setSlotsLoading(true);
     try {
       const now = new Date();
-      const allUpcomingSlots: (StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse })[] = [];
+      const allUpcomingSlots: StudentSlotResponse[] = [];
 
       // Fetch slots for all students
       for (const student of students) {
@@ -113,7 +114,7 @@ const DashboardScreen: React.FC = () => {
           const response = await studentSlotService.getStudentSlots({
             studentId: student.id,
             pageIndex: 1,
-            pageSize: 20,
+            pageSize: 100, // Increase to get more slots for accurate counting
             upcomingOnly: true,
             status: 'Booked',
           });
@@ -139,10 +140,26 @@ const DashboardScreen: React.FC = () => {
                   }
                 }
 
+                // Map branchSlot to match StudentSlotResponse structure
+                const mappedBranchSlot = branchSlot && branchSlot.branch?.branchName
+                  ? {
+                      id: branchSlot.id,
+                      branchName: branchSlot.branch.branchName,
+                    }
+                  : undefined;
+
+                // Map room to match StudentSlotResponse structure
+                const mappedRoom = room
+                  ? {
+                      id: room.id,
+                      roomName: room.roomName,
+                    }
+                  : undefined;
+
                 allUpcomingSlots.push({
                   ...slot,
-                  branchSlot: branchSlot || undefined,
-                  room: room || undefined,
+                  branchSlot: mappedBranchSlot,
+                  room: mappedRoom,
                 });
               } catch (err) {
                 // If enrichment fails, still add the slot without extra info
@@ -159,8 +176,11 @@ const DashboardScreen: React.FC = () => {
         }
       }
 
-      // Sort by date and take top 5
+      // Sort by date
       const sorted = allUpcomingSlots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      // Store all slots for counting
+      setAllUpcomingSlots(sorted);
+      // Display only top 5 for the list
       setUpcomingSlots(sorted.slice(0, 5));
     } catch (error: any) {
       // Error handled silently, slots will remain empty
@@ -228,24 +248,24 @@ const DashboardScreen: React.FC = () => {
     return COLORS.PRIMARY;
   };
 
-  const handleViewSlotDetail = (slot: StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) => {
+  const handleViewSlotDetail = (slot: StudentSlotResponse) => {
     setSelectedSlot(slot);
     setSlotDetailModalVisible(true);
   };
 
-  const getClassTimeRange = (slot: StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) => {
-    if (slot.branchSlot?.timeframe?.startTime && slot.branchSlot?.timeframe?.endTime) {
-      return `${formatTime(slot.branchSlot.timeframe.startTime)} - ${formatTime(slot.branchSlot.timeframe.endTime)}`;
+  const getClassTimeRange = (slot: StudentSlotResponse) => {
+    if (slot.timeframe?.startTime && slot.timeframe?.endTime) {
+      return `${formatTime(slot.timeframe.startTime)} - ${formatTime(slot.timeframe.endTime)}`;
     }
     // Fallback to booking date time if no timeframe
     return formatDateTime(slot.date).time;
   };
 
-  const getClassName = (slot: StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) => {
-    return slot.branchSlot?.timeframe?.name || slot.branchSlot?.slotType?.name || 'Lớp học';
+  const getClassName = (slot: StudentSlotResponse) => {
+    return slot.timeframe?.name || 'Lớp học';
   };
 
-  const getRoomName = (slot: StudentSlotResponse & { branchSlot?: BranchSlotResponse; room?: BranchSlotRoomResponse }) => {
+  const getRoomName = (slot: StudentSlotResponse) => {
     return slot.room?.roomName || 'Chưa có thông tin phòng';
   };
   
@@ -311,9 +331,13 @@ const DashboardScreen: React.FC = () => {
               <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
             ) : (
               <Text style={styles.statNumber}>
-                {upcomingSlots.filter(slot => {
+                {allUpcomingSlots.filter(slot => {
                   const slotDate = new Date(slot.date);
-                  return slotDate.toDateString() === new Date().toDateString();
+                  const today = new Date();
+                  // Compare only date part (ignore time)
+                  return slotDate.getFullYear() === today.getFullYear() &&
+                         slotDate.getMonth() === today.getMonth() &&
+                         slotDate.getDate() === today.getDate();
                 }).length}
               </Text>
             )}
@@ -321,11 +345,7 @@ const DashboardScreen: React.FC = () => {
           </View>
           
           <View style={styles.statCard}>
-            <MaterialIcons 
-              name={walletData?.type?.toLowerCase() === 'main' ? "account-balance-wallet" : "child-care"} 
-              size={24} 
-              color={walletData?.type?.toLowerCase() === 'main' ? COLORS.SECONDARY : COLORS.ACCENT} 
-            />
+            <MaterialIcons name="sentiment-satisfied" size={24} color={COLORS.SECONDARY} />
             {walletLoading ? (
               <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
             ) : (
@@ -333,17 +353,11 @@ const DashboardScreen: React.FC = () => {
                 {walletData ? walletData.balance.toLocaleString('vi-VN') : '0'}
               </Text>
             )}
-            <Text style={styles.statLabel}>
-              {walletData?.type?.toLowerCase() === 'main' 
-                ? 'VNĐ trong ví chính'
-                : walletData?.type?.toLowerCase() === 'allowance'
-                ? 'VNĐ ví tiêu vặt'
-                : 'VNĐ'}
-            </Text>
+            <Text style={styles.statLabel}>VNĐ</Text>
           </View>
           
           <View style={styles.statCard}>
-            <MaterialIcons name="child-care" size={24} color={COLORS.SECONDARY} />
+            <MaterialIcons name="sentiment-satisfied" size={24} color={COLORS.SECONDARY} />
             {studentWalletsLoading ? (
               <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
             ) : (
@@ -461,8 +475,8 @@ const DashboardScreen: React.FC = () => {
                       {isToday ? ' • Hôm nay' : isTomorrow ? ' • Ngày mai' : ` • ${formatDateTime(slot.date).date.split(',')[0]}`}
                     </Text>
                     <Text style={styles.classRoom}>{getRoomName(slot)}</Text>
-                    {slot.branchSlot?.branch?.branchName && (
-                      <Text style={styles.classBranch}>{slot.branchSlot.branch.branchName}</Text>
+                    {slot.branchSlot?.branchName && (
+                      <Text style={styles.classBranch}>{slot.branchSlot.branchName}</Text>
                     )}
                   </View>
                   <View style={styles.classStatus}>
@@ -584,25 +598,13 @@ const DashboardScreen: React.FC = () => {
                     </View>
                   </View>
 
-                  {selectedSlot.branchSlot?.branch?.branchName && (
+                  {selectedSlot.branchSlot?.branchName && (
                     <View style={styles.slotDetailRow}>
                       <MaterialIcons name="location-on" size={20} color={COLORS.SECONDARY} />
                       <View style={styles.slotDetailContent}>
                         <Text style={styles.slotDetailLabel}>Chi nhánh</Text>
                         <Text style={styles.slotDetailValue}>
-                          {selectedSlot.branchSlot.branch.branchName}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-
-                  {selectedSlot.branchSlot?.slotType?.name && (
-                    <View style={styles.slotDetailRow}>
-                      <MaterialIcons name="category" size={20} color={COLORS.PRIMARY} />
-                      <View style={styles.slotDetailContent}>
-                        <Text style={styles.slotDetailLabel}>Loại lớp</Text>
-                        <Text style={styles.slotDetailValue}>
-                          {selectedSlot.branchSlot.slotType.name}
+                          {selectedSlot.branchSlot.branchName}
                         </Text>
                       </View>
                     </View>

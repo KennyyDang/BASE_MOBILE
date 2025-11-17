@@ -124,9 +124,22 @@ class ChildrenService {
         `/api/Student/${studentId}/parent-update`,
         updateData
       );
+      // API returns StudentResponse directly in response.data
       return response.data;
     } catch (error: any) {
-      throw error.response?.data || error.message || 'Failed to update child information';
+      // Better error handling - extract detailed error message
+      const errorMessage = 
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.response?.data?.title ||
+        error?.message ||
+        'Failed to update child information';
+      
+      // Create error object with message
+      const errorObj: any = new Error(errorMessage);
+      errorObj.response = error?.response;
+      errorObj.data = error?.response?.data;
+      throw errorObj;
     }
   }
 }

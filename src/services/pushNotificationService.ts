@@ -3,10 +3,21 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-// Cấu hình notification handler
+// Check if running in Expo Go
+// Note: Local notifications still work in Expo Go, only push notifications are unavailable
+const isRunningInExpoGo = (): boolean => {
+  if (Constants.executionEnvironment === 'storeClient') {
+    return true;
+  }
+  if (Constants.appOwnership === 'expo') {
+    return true;
+  }
+  return false;
+};
+
+// Cấu hình notification handler (works in both Expo Go and dev builds)
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
@@ -25,11 +36,27 @@ class PushNotificationService {
   private responseListener: Notifications.Subscription | null = null;
 
   /**
+   * Kiểm tra xem có đang chạy trong Expo Go không
+   * Expo Go không hỗ trợ push notifications từ SDK 53+
+   * Nhưng local notifications vẫn hoạt động
+   */
+  private isRunningInExpoGo(): boolean {
+    return isRunningInExpoGo();
+  }
+
+  /**
    * Khởi tạo và đăng ký push notification
    * Trả về Expo Push Token cần gửi lên server
+   * Note: Push notifications không hoạt động trong Expo Go, nhưng method này vẫn có thể được gọi
    */
   async registerForPushNotifications(): Promise<PushNotificationToken | null> {
     try {
+      // Kiểm tra xem có đang chạy trong Expo Go không
+      // Push notifications không hoạt động trong Expo Go
+      if (this.isRunningInExpoGo()) {
+        return null;
+      }
+
       // Kiểm tra xem có phải thiết bị thật không (không hỗ trợ trên simulator)
       if (!Device.isDevice) {
         return null;
@@ -59,12 +86,20 @@ class PushNotificationService {
           ? await Notifications.getExpoPushTokenAsync({ projectId })
           : await Notifications.getExpoPushTokenAsync();
       } catch (error: any) {
-        // Nếu lỗi về projectId, bỏ qua và không đăng ký push notification
-        if (error.message?.includes('projectId')) {
+        // Nếu lỗi về Expo Go hoặc push notifications không hỗ trợ
+        if (
+          error.message?.includes('projectId') ||
+          error.message?.includes('Expo Go') ||
+          error.message?.includes('development build')
+        ) {
           return null;
         }
         // Nếu lỗi khác, throw lại để catch ở ngoài
         throw error;
+      }
+
+      if (!tokenData?.data) {
+        return null;
       }
 
       this.expoPushToken = tokenData.data;
@@ -75,7 +110,7 @@ class PushNotificationService {
           name: 'Thông báo mặc định',
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#2E7D32',
+          lightColor: '#1976D2',
           sound: 'default',
           enableVibrate: true,
           showBadge: true,
@@ -96,7 +131,7 @@ class PushNotificationService {
           name: 'Thông báo thanh toán',
           importance: Notifications.AndroidImportance.HIGH,
           vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#4CAF50',
+          lightColor: '#42A5F5',
           sound: 'default',
           enableVibrate: true,
           showBadge: true,
@@ -109,13 +144,13 @@ class PushNotificationService {
         platform: Platform.OS as 'ios' | 'android' | 'web',
       };
     } catch (error) {
-      console.error('Lỗi khi đăng ký push notification:', error);
       return null;
     }
   }
 
   /**
    * Lắng nghe thông báo đến
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   addNotificationReceivedListener(
     callback: (notification: Notifications.Notification) => void
@@ -125,6 +160,7 @@ class PushNotificationService {
 
   /**
    * Lắng nghe khi user tap vào thông báo
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   addNotificationResponseListener(
     callback: (response: Notifications.NotificationResponse) => void
@@ -149,6 +185,7 @@ class PushNotificationService {
 
   /**
    * Hủy tất cả notifications
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   async cancelAllNotifications(): Promise<void> {
     await Notifications.cancelAllScheduledNotificationsAsync();
@@ -157,6 +194,7 @@ class PushNotificationService {
 
   /**
    * Lấy số lượng badge (số thông báo chưa đọc)
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   async getBadgeCount(): Promise<number> {
     return await Notifications.getBadgeCountAsync();
@@ -164,6 +202,7 @@ class PushNotificationService {
 
   /**
    * Set số lượng badge
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   async setBadgeCount(count: number): Promise<void> {
     await Notifications.setBadgeCountAsync(count);
@@ -178,6 +217,7 @@ class PushNotificationService {
 
   /**
    * Lấy scheduled notifications
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   async getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
     return await Notifications.getAllScheduledNotificationsAsync();
@@ -185,6 +225,7 @@ class PushNotificationService {
 
   /**
    * Hiển thị local notification ngay lập tức
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   async presentLocalNotification(
     title: string,
@@ -199,18 +240,23 @@ class PushNotificationService {
       sound: true,
     };
 
-    if (channelId && Platform.OS === 'android') {
-      content.channelId = channelId;
-    }
-
-    return await Notifications.scheduleNotificationAsync({
+    // For Android, channelId is set in the notification request, not in content
+    const notificationRequest: Notifications.NotificationRequestInput = {
       content,
       trigger: null,
-    });
+    };
+
+    if (channelId && Platform.OS === 'android') {
+      // Set channelId in the request for Android
+      (notificationRequest as any).channelId = channelId;
+    }
+
+    return await Notifications.scheduleNotificationAsync(notificationRequest);
   }
 
   /**
    * Lên lịch local notification
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   async scheduleLocalNotification(
     title: string,
@@ -233,6 +279,7 @@ class PushNotificationService {
 
   /**
    * Hủy scheduled notification
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   async cancelScheduledNotification(notificationId: string): Promise<void> {
     await Notifications.cancelScheduledNotificationAsync(notificationId);
@@ -240,6 +287,7 @@ class PushNotificationService {
 
   /**
    * Kiểm tra quyền notification
+   * Local notifications vẫn hoạt động trong Expo Go
    */
   async checkPermissions(): Promise<Notifications.PermissionStatus> {
     const { status } = await Notifications.getPermissionsAsync();
@@ -256,4 +304,3 @@ class PushNotificationService {
 
 export const pushNotificationService = new PushNotificationService();
 export default pushNotificationService;
-

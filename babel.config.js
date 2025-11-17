@@ -13,9 +13,12 @@ module.exports = function (api) {
           path: '.env',
           safe: false,
           allowUndefined: true,
+          // Ensure env variables are bundled into the app
+          blocklist: null,
+          allowlist: null,
         },
       ],
-      'react-native-reanimated/plugin',
+      // 'react-native-reanimated/plugin',
     ],
   };
 };

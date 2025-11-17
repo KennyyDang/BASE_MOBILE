@@ -2,18 +2,14 @@
   "expo": {
     "name": "BASE Mobile",
     "slug": "base-mobile",
+    "owner": "kennydangg",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "baseapp",
-    "extra": {
-      "eas": {
-        "projectId": "5e1bc2ec-b339-45ac-81b9-91f473e387b8"
-      }
-    },
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#2E7D32"
+      "backgroundColor": "#1976D2"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -22,7 +18,7 @@
       [
         "expo-notifications",
         {
-          "color": "#2E7D32"
+          "color": "#1976D2"
         }
       ]
     ],
@@ -32,14 +28,16 @@
       "infoPlist": {
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["baseapp"]
+            "CFBundleURLSchemes": [
+              "baseapp"
+            ]
           }
         ]
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#2E7D32"
+        "backgroundColor": "#1976D2"
       },
       "package": "com.brightway.base",
       "googleServicesFile": "./google-services.json",
@@ -56,14 +54,22 @@
               "scheme": "baseapp"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
     "notification": {
-      "color": "#2E7D32",
+      "color": "#1976D2",
       "androidMode": "default",
       "androidCollapsedTitle": "#{unread_notifications} thong bao moi"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "6235e5e0-da08-4aaf-935e-1dcb8596059a"
+      }
     }
   }
 }

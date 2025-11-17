@@ -11,20 +11,20 @@ export const APP_CONFIG = {
 };
 
 export const COLORS = {
-  PRIMARY: '#2E7D32', // Green for education theme
-  PRIMARY_DARK: '#1B5E20',
-  PRIMARY_LIGHT: '#4CAF50',
-  SECONDARY: '#FF6F00', // Orange for highlights
-  ACCENT: '#2196F3', // Blue for actions
-  BACKGROUND: '#F5F5F5',
+  PRIMARY: '#1976D2', // Modern Blue 700 - Professional and modern
+  PRIMARY_DARK: '#1565C0', // Blue 800 - For headers and important elements
+  PRIMARY_LIGHT: '#42A5F5', // Blue 400 - For accents and highlights
+  SECONDARY: '#2196F3', // Blue 500 - Secondary actions
+  ACCENT: '#64B5F6', // Blue 300 - Accent color for special elements
+  BACKGROUND: '#F5F7FA', // Slightly cooler background
   SURFACE: '#FFFFFF',
   ERROR: '#F44336',
   WARNING: '#FF9800',
   SUCCESS: '#4CAF50',
-  INFO: '#2196F3',
-  TEXT_PRIMARY: '#212121',
-  TEXT_SECONDARY: '#757575',
-  BORDER: '#E0E0E0',
+  INFO: '#1976D2',
+  TEXT_PRIMARY: '#1A1A1A', // Slightly softer black
+  TEXT_SECONDARY: '#6B7280', // Modern gray
+  BORDER: '#E5E7EB', // Softer border color
   SHADOW: '#000000',
 };
 

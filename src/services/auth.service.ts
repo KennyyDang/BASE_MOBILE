@@ -38,22 +38,48 @@ const authService = {
       const token = response.data.access_token;
       const refreshToken = response.data.refresh_token;
       
+      // Validate token before processing
+      if (!token || typeof token !== 'string') {
+        throw new Error('Token không hợp lệ: Token không tồn tại hoặc không đúng định dạng.');
+      }
+      
+      // Trim whitespace and validate JWT format (should have 3 parts separated by dots)
+      const trimmedToken = token.trim();
+      const tokenParts = trimmedToken.split('.');
+      
+      if (tokenParts.length !== 3) {
+        if (__DEV__) {
+          console.error('[Auth] Invalid JWT format. Token parts:', tokenParts.length);
+        }
+        throw new Error('Token không hợp lệ: Định dạng token không đúng.');
+      }
+      
       // Save tokens to AsyncStorage
-      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, token);
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, trimmedToken);
       if (refreshToken) {
-        await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+        await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken.trim());
       }
       
       // Decode JWT to extract user info
       let decoded: any;
       try {
-        decoded = jwtDecode<DecodedJWT & Record<string, any>>(token);
-      } catch (decodeError) {
+        decoded = jwtDecode<DecodedJWT & Record<string, any>>(trimmedToken);
+        
+        if (__DEV__) {
+          console.log('[Auth] Token decoded successfully. User ID:', decoded[JWT_CLAIMS.USER_ID] || decoded['sub']);
+        }
+      } catch (decodeError: any) {
         // Clear tokens if JWT is invalid
         await AsyncStorage.multiRemove([
           STORAGE_KEYS.ACCESS_TOKEN,
           STORAGE_KEYS.REFRESH_TOKEN,
         ]);
+        
+        if (__DEV__) {
+          console.error('[Auth] JWT decode error:', decodeError?.message || decodeError);
+          console.error('[Auth] Token preview (first 50 chars):', trimmedToken.substring(0, 50));
+        }
+        
         throw new Error('Token không hợp lệ. Vui lòng thử lại.');
       }
 
@@ -168,27 +194,33 @@ const authService = {
   refreshToken: async (): Promise<string> => {
     try {
       const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-      if (!refreshToken) {
-        throw new Error('No refresh token available');
+      if (!refreshToken || !refreshToken.trim()) {
+        throw new Error('Không có refresh token. Vui lòng đăng nhập lại.');
       }
 
       const response = await axiosInstance.post('/api/Auth/refresh', {
-        refreshToken: refreshToken
+        refreshToken: refreshToken.trim()
       });
 
-      if (response.data.access_token) {
-        const newToken = response.data.access_token;
-        await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newToken);
-        
-        // Update refresh token if provided
-        if (response.data.refresh_token) {
-          await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.data.refresh_token);
-        }
-        
-        return newToken;
+      if (!response.data?.access_token) {
+        throw new Error('Không nhận được token mới từ server.');
       }
       
-      throw new Error('No token received from refresh endpoint');
+      const newToken = response.data.access_token.trim();
+      
+      // Validate new token format
+      if (newToken.split('.').length !== 3) {
+        throw new Error('Token mới không đúng định dạng.');
+      }
+      
+      await AsyncStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newToken);
+      
+      // Update refresh token if provided
+      if (response.data.refresh_token) {
+        await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, response.data.refresh_token.trim());
+      }
+      
+      return newToken;
     } catch (error: any) {
       // If refresh fails, clear all tokens
       await AsyncStorage.multiRemove([
@@ -196,6 +228,11 @@ const authService = {
         STORAGE_KEYS.REFRESH_TOKEN,
         STORAGE_KEYS.USER,
       ]);
+      
+      if (__DEV__) {
+        console.error('[Auth] Refresh token error:', error?.message || error);
+      }
+      
       throw error;
     }
   },
@@ -242,8 +279,24 @@ const authService = {
    */
   getAccessToken: async (): Promise<string | null> => {
     try {
-      return await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+      if (!token) {
+        return null;
+      }
+      
+      // Trim and validate token format
+      const trimmedToken = token.trim();
+      if (trimmedToken.split('.').length !== 3) {
+        // Invalid token format, clear it
+        await AsyncStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+        return null;
+      }
+      
+      return trimmedToken;
     } catch (error) {
+      if (__DEV__) {
+        console.error('[Auth] Error getting access token:', error);
+      }
       return null;
     }
   },

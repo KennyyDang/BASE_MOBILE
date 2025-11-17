@@ -21,10 +21,12 @@ import { useAuth } from '../../contexts/AuthContext';
 
 // Inline constants
 const COLORS = {
-  PRIMARY: '#2E7D32',
-  BACKGROUND: '#F5F5F5',
-  TEXT_PRIMARY: '#212121',
-  TEXT_SECONDARY: '#757575',
+  PRIMARY: '#1976D2',
+  PRIMARY_DARK: '#1565C0',
+  PRIMARY_LIGHT: '#42A5F5',
+  BACKGROUND: '#F5F7FA',
+  TEXT_PRIMARY: '#1A1A1A',
+  TEXT_SECONDARY: '#6B7280',
 };
 
 const SPACING = {
@@ -184,20 +186,6 @@ const LoginScreen: React.FC = () => {
               >
                 {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </Button>
-
-              <View style={styles.registerContainer}>
-                <Text variant="bodyMedium" style={styles.registerText}>
-                  Chưa có tài khoản?{' '}
-                </Text>
-                <Button
-                  mode="text"
-                  onPress={handleRegister}
-                  textColor={theme.colors.primary}
-                  compact
-                >
-                  Đăng ký ngay
-                </Button>
-              </View>
             </Card.Content>
           </Card>
         </ScrollView>

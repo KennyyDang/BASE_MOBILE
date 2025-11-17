@@ -26,18 +26,19 @@ import childrenService from '../../services/childrenService';
 
 // Inline constants
 const COLORS = {
-  PRIMARY: '#2E7D32',
-  PRIMARY_LIGHT: '#4CAF50',
-  SECONDARY: '#FF6F00',
-  BACKGROUND: '#F5F5F5',
+  PRIMARY: '#1976D2',
+  PRIMARY_DARK: '#1565C0',
+  PRIMARY_LIGHT: '#42A5F5',
+  SECONDARY: '#2196F3',
+  ACCENT: '#64B5F6',
+  BACKGROUND: '#F5F7FA',
   SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#212121',
-  TEXT_SECONDARY: '#757575',
-  BORDER: '#E0E0E0',
+  TEXT_PRIMARY: '#1A1A1A',
+  TEXT_SECONDARY: '#6B7280',
+  BORDER: '#E5E7EB',
   SUCCESS: '#4CAF50',
   WARNING: '#FF9800',
   ERROR: '#F44336',
-  ACCENT: '#2196F3',
   SHADOW: '#000000',
 };
 
@@ -101,6 +102,7 @@ const ChildrenManagementScreen: React.FC = () => {
     return date.toLocaleDateString('vi-VN');
   };
 
+
   const handleAddChild = () => {
     Alert.alert(
       'Thêm con',
@@ -158,9 +160,13 @@ const ChildrenManagementScreen: React.FC = () => {
       setModalVisible(false);
       refetch();
     } catch (error: any) {
+      // Better error message extraction
       const message =
-        error?.response?.data?.message ||
         error?.message ||
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.response?.data?.title ||
+        JSON.stringify(error?.response?.data) ||
         'Không thể cập nhật thông tin con. Vui lòng thử lại.';
       Alert.alert('Lỗi', message);
     } finally {
@@ -219,10 +225,18 @@ const ChildrenManagementScreen: React.FC = () => {
 
     try {
       const data = await packageService.getStudentSubscriptions(studentId);
+      // Filter out cancelled and refunded subscriptions - only show Active packages
+      const activeData = data.filter((sub) => {
+        if (!sub.status) return false;
+        const status = sub.status.trim().toUpperCase();
+        // Only show packages with Active status (case-insensitive)
+        return status === 'ACTIVE';
+      });
+      
       setStudentPackages((prev) => ({
         ...prev,
         [studentId]: {
-          data,
+          data: activeData,
           loading: false,
           error: null,
         },

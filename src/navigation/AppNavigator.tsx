@@ -13,15 +13,17 @@ import { useAuth } from '../contexts/AuthContext';
 
 // Inline constants
 const COLORS = {
-  PRIMARY: '#2E7D32',
-  SECONDARY: '#FF6F00',
-  ACCENT: '#2196F3',
-  BACKGROUND: '#F5F5F5',
+  PRIMARY: '#1976D2',
+  PRIMARY_DARK: '#1565C0',
+  PRIMARY_LIGHT: '#42A5F5',
+  SECONDARY: '#2196F3',
+  ACCENT: '#64B5F6',
+  BACKGROUND: '#F5F7FA',
   SURFACE: '#FFFFFF',
   ERROR: '#F44336',
-  TEXT_PRIMARY: '#212121',
-  TEXT_SECONDARY: '#757575',
-  BORDER: '#E0E0E0',
+  TEXT_PRIMARY: '#1A1A1A',
+  TEXT_SECONDARY: '#6B7280',
+  BORDER: '#E5E7EB',
 };
 
 
@@ -58,17 +60,39 @@ import SettingsScreen from '../screens/main/SettingsScreen';
 import NotificationScreen from '../screens/main/NotificationScreen';
 import StudentPackagesScreen from '../screens/main/StudentPackagesScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
+import MySubscriptionsScreen from '../screens/main/MySubscriptionsScreen';
+import ServicesScreen from '../screens/main/ServicesScreen';
+import OrderHistoryScreen from '../screens/main/OrderHistoryScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
+import BadgeIcon from '../components/BadgeIcon';
+import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount';
+import { useNavigation } from '@react-navigation/native';
 
 const Stack = createStackNavigator<RootStackParamList>();
 const StaffStack = createStackNavigator<any>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+// Component for notification header button with badge
+const NotificationHeaderButton = () => {
+  const navigation = useNavigation<any>();
+  const { unreadCount } = useUnreadNotificationCount();
+
+  return (
+    <BadgeIcon
+      iconName="notifications"
+      badgeCount={unreadCount}
+      onPress={() => navigation.navigate('Notifications')}
+      size={24}
+      color={COLORS.SURFACE}
+    />
+  );
+};
+
 // Main Tab Navigator for authenticated users
 const MainTabNavigator = () => {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={({ route, navigation }) => ({
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: string;
 
@@ -84,6 +108,9 @@ const MainTabNavigator = () => {
               break;
             case 'Children':
               iconName = 'child-care';
+              break;
+            case 'Services':
+              iconName = 'restaurant';
               break;
             case 'Profile':
               iconName = 'person';
@@ -118,6 +145,7 @@ const MainTabNavigator = () => {
           fontSize: 18,
         },
         headerTitleAlign: 'center',
+        headerRight: () => <NotificationHeaderButton />,
       })}
     >
       <Tab.Screen 
@@ -150,6 +178,14 @@ const MainTabNavigator = () => {
         options={{
           title: 'Quản Lý Con',
           headerTitle: 'Quản Lý Con',
+        }}
+      />
+      <Tab.Screen 
+        name="Services" 
+        component={ServicesScreen}
+        options={{
+          title: 'Dịch Vụ',
+          headerTitle: 'Dịch vụ bổ sung',
         }}
       />
       <Tab.Screen 
@@ -339,6 +375,22 @@ const AppNavigator = () => {
               options={{
                 title: 'Lịch sử giao dịch',
                 headerTitle: 'Lịch sử giao dịch',
+              }}
+            />
+            <Stack.Screen
+              name="MySubscriptions"
+              component={MySubscriptionsScreen}
+              options={{
+                title: 'Gói đăng ký',
+                headerTitle: 'Gói đăng ký của tôi',
+              }}
+            />
+            <Stack.Screen
+              name="OrderHistory"
+              component={OrderHistoryScreen}
+              options={{
+                title: 'Lịch sử đơn hàng',
+                headerTitle: 'Lịch sử đơn hàng',
               }}
             />
           </>

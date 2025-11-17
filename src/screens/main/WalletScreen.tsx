@@ -9,29 +9,36 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCurrentUserWallet, useStudentWallets } from '../../hooks/useWalletApi';
+import { useMyChildren } from '../../hooks/useChildrenApi';
 import { walletService } from '../../services/walletService';
 import { TransferSmartRequest, DepositResponse } from '../../types/api';
 import { MainTabParamList, RootStackParamList } from '../../types';
 
 // Inline constants
 const COLORS = {
-  PRIMARY: '#2E7D32',
-  SECONDARY: '#FF6F00',
-  BACKGROUND: '#F5F5F5',
+  PRIMARY: '#1976D2',
+  PRIMARY_DARK: '#1565C0',
+  PRIMARY_LIGHT: '#42A5F5',
+  SECONDARY: '#2196F3',
+  ACCENT: '#64B5F6',
+  BACKGROUND: '#F5F7FA',
   SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#212121',
-  TEXT_SECONDARY: '#757575',
-  BORDER: '#E0E0E0',
+  TEXT_PRIMARY: '#1A1A1A',
+  TEXT_SECONDARY: '#6B7280',
+  BORDER: '#E5E7EB',
   SUCCESS: '#4CAF50',
   WARNING: '#FF9800',
   ERROR: '#F44336',
-  ACCENT: '#2196F3',
   SHADOW: '#000000',
 };
 
@@ -69,8 +76,13 @@ const WalletScreen: React.FC = () => {
   const navigation = useNavigation<WalletNavigationProp>();
   const { data: walletData, loading, error, refetch } = useCurrentUserWallet();
   const { data: studentWallets, loading: studentWalletsLoading, error: studentWalletsError, refetch: refetchStudentWallets } = useStudentWallets();
+  const { students } = useMyChildren();
   const [recentTransactions, setRecentTransactions] = useState<DepositResponse[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [topUpModalVisible, setTopUpModalVisible] = useState(false);
+  const [selectedStudentWallet, setSelectedStudentWallet] = useState<any>(null);
+  const [topUpAmount, setTopUpAmount] = useState('');
+  const [topUpLoading, setTopUpLoading] = useState(false);
 
   const navigateToTopUp = React.useCallback(() => {
     let currentNavigator: any = navigation;
@@ -102,6 +114,22 @@ const WalletScreen: React.FC = () => {
     return type || 'Ví';
   };
 
+  // Get student name from students list if not available in wallet
+  const getStudentName = (studentWallet: any) => {
+    // First try to get from wallet data
+    if (studentWallet?.studentName) {
+      return studentWallet.studentName;
+    }
+    // If not available, find from students list by studentId
+    if (studentWallet?.studentId && students.length > 0) {
+      const student = students.find(s => s.id === studentWallet.studentId);
+      if (student?.name) {
+        return student.name;
+      }
+    }
+    return 'Chưa có tên';
+  };
+
   const handleWalletPress = (walletType: string) => {
     // TODO: Navigate to specific wallet screen
   };
@@ -111,69 +139,66 @@ const WalletScreen: React.FC = () => {
   };
 
   const handleTopUpStudent = (studentWallet: any) => {
-    // Show alert to input amount
-    Alert.prompt(
-      'Nạp tiền cho con',
-      `Nhập số tiền muốn nạp cho ${studentWallet.studentName || 'con'}\n\nSố dư ví chính: ${formatCurrency(walletData?.balance || 0)}`,
-      [
-        {
-          text: 'Hủy',
-          style: 'cancel',
-        },
-        {
-          text: 'Nạp tiền',
-          onPress: async (amountText: string | undefined) => {
-            if (!amountText || !amountText.trim()) {
-              Alert.alert('Lỗi', 'Vui lòng nhập số tiền');
-              return;
-            }
+    setSelectedStudentWallet(studentWallet);
+    setTopUpAmount('');
+    setTopUpModalVisible(true);
+  };
 
-            const amount = parseInt(amountText.replace(/[^\d]/g, ''));
-            
-            if (isNaN(amount) || amount <= 0) {
-              Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
-              return;
-            }
+  const handleConfirmTopUp = async () => {
+    if (!selectedStudentWallet) return;
 
-            if (amount < 10000) {
-              Alert.alert('Lỗi', 'Số tiền nạp tối thiểu là 10,000 VNĐ');
-              return;
-            }
+    if (!topUpAmount || !topUpAmount.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số tiền');
+      return;
+    }
 
-            if (walletData && walletData.balance < amount) {
-              Alert.alert('Lỗi', 'Số dư ví chính không đủ để chuyển');
-              return;
-            }
+    const amount = parseInt(topUpAmount.replace(/[^\d]/g, ''));
+    
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+      return;
+    }
 
-            try {
-              // Call transfer-smart API
-              const transferData: TransferSmartRequest = {
-                toStudentId: studentWallet.studentId,
-                amount: amount,
-                note: `Nạp tiền cho ${studentWallet.studentName || 'con'}`,
-              };
+    if (amount < 10000) {
+      Alert.alert('Lỗi', 'Số tiền nạp tối thiểu là 10,000 VNĐ');
+      return;
+    }
 
-              await walletService.transferSmartToStudent(transferData);
-              
-              // Refresh wallets
-              refetch();
-              refetchStudentWallets();
+    if (walletData && walletData.balance < amount) {
+      Alert.alert('Lỗi', 'Số dư ví chính không đủ để chuyển');
+      return;
+    }
 
-              Alert.alert(
-                'Thành công',
-                `Đã nạp ${formatCurrency(amount)} vào ví của ${studentWallet.studentName || 'con'} thành công!`,
-                [{ text: 'OK' }]
-              );
-            } catch (err: any) {
-              const errorMessage = err.response?.data?.message || err.message || 'Không thể nạp tiền cho con';
-              Alert.alert('Lỗi', errorMessage);
-            }
-          },
-        },
-      ],
-      'plain-text',
-      ''
-    );
+    setTopUpLoading(true);
+    try {
+      // Call transfer-smart API
+      const transferData: TransferSmartRequest = {
+        toStudentId: selectedStudentWallet.studentId,
+        amount: amount,
+        note: `Nạp tiền cho ${selectedStudentWallet.studentName || 'con'}`,
+      };
+
+      await walletService.transferSmartToStudent(transferData);
+      
+      // Refresh wallets
+      refetch();
+      refetchStudentWallets();
+
+      setTopUpModalVisible(false);
+      setTopUpAmount('');
+      setSelectedStudentWallet(null);
+
+      Alert.alert(
+        'Thành công',
+        `Đã nạp ${formatCurrency(amount)} vào ví của ${selectedStudentWallet.studentName || 'con'} thành công!`,
+        [{ text: 'OK' }]
+      );
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || 'Không thể nạp tiền cho con';
+      Alert.alert('Lỗi', errorMessage);
+    } finally {
+      setTopUpLoading(false);
+    }
   };
 
   const handleTransactionHistory = () => {
@@ -375,14 +400,14 @@ const WalletScreen: React.FC = () => {
                   <View style={styles.walletHeader}>
                     <View style={[styles.walletIcon, { backgroundColor: COLORS.SECONDARY }]}>
                       <MaterialIcons 
-                        name="child-care" 
+                        name="sentiment-satisfied" 
                         size={32} 
                         color={COLORS.SURFACE} 
                       />
                     </View>
                     <View style={styles.walletInfo}>
                       <Text style={styles.walletTitle}>
-                        {studentWallet.studentName || 'Chưa có tên'}
+                        {getStudentName(studentWallet)}
                       </Text>
                       <Text style={styles.walletDescription}>
                         Ví tiêu vặt của con
@@ -541,6 +566,100 @@ const WalletScreen: React.FC = () => {
           </View>
         </View>
       </ScrollView>
+
+      {/* Top Up Modal for Student Wallet */}
+      <Modal
+        visible={topUpModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          if (!topUpLoading) {
+            setTopUpModalVisible(false);
+            setTopUpAmount('');
+            setSelectedStudentWallet(null);
+          }
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                Nạp tiền cho {selectedStudentWallet?.studentName || 'con'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (!topUpLoading) {
+                    setTopUpModalVisible(false);
+                    setTopUpAmount('');
+                    setSelectedStudentWallet(null);
+                  }
+                }}
+                disabled={topUpLoading}
+              >
+                <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.modalLabel}>
+                Số dư ví chính: {formatCurrency(walletData?.balance || 0)}
+              </Text>
+              
+              <Text style={styles.modalLabel}>Nhập số tiền muốn nạp (VNĐ)</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={topUpAmount}
+                onChangeText={(text) => {
+                  // Only allow numbers
+                  const numericText = text.replace(/[^\d]/g, '');
+                  setTopUpAmount(numericText);
+                }}
+                placeholder="Nhập số tiền (tối thiểu 10,000 VNĐ)"
+                placeholderTextColor={COLORS.TEXT_SECONDARY}
+                keyboardType="numeric"
+                editable={!topUpLoading}
+              />
+              
+              {topUpAmount && !isNaN(parseInt(topUpAmount)) && (
+                <Text style={styles.modalPreview}>
+                  Số tiền: {formatCurrency(parseInt(topUpAmount))}
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  if (!topUpLoading) {
+                    setTopUpModalVisible(false);
+                    setTopUpAmount('');
+                    setSelectedStudentWallet(null);
+                  }
+                }}
+                disabled={topUpLoading}
+              >
+                <Text style={[styles.modalButtonText, styles.modalButtonCancelText]}>Hủy</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, topUpLoading && styles.modalButtonDisabled]}
+                onPress={handleConfirmTopUp}
+                disabled={topUpLoading}
+              >
+                {topUpLoading ? (
+                  <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                ) : (
+                  <Text style={styles.modalButtonText}>Nạp tiền</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -829,15 +948,92 @@ const styles = StyleSheet.create({
     color: COLORS.SURFACE,
     fontWeight: '600',
   },
-  loadingText: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    marginLeft: SPACING.MD,
-  },
   emptyText: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
     marginLeft: SPACING.MD,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 16,
+    padding: SPACING.LG,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.LG,
+  },
+  modalTitle: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  modalBody: {
+    marginBottom: SPACING.LG,
+  },
+  modalLabel: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.SM,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_PRIMARY,
+    backgroundColor: COLORS.SURFACE,
+    marginBottom: SPACING.SM,
+  },
+  modalPreview: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+    marginTop: SPACING.XS,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: SPACING.MD,
+  },
+  modalButton: {
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.LG,
+    borderRadius: 8,
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: SPACING.SM,
+  },
+  modalButtonCancel: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    marginLeft: 0,
+  },
+  modalButtonCancelText: {
+    color: COLORS.TEXT_PRIMARY,
+  },
+  modalButtonDisabled: {
+    opacity: 0.6,
+  },
+  modalButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
   },
 });
 

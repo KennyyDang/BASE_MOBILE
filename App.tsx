@@ -17,6 +17,7 @@ export default function App() {
   const responseListener = useRef<Notifications.Subscription | undefined>(undefined);
 
   useEffect(() => {
+    // Local notifications work in both Expo Go and dev builds
     notificationListener.current = Notifications.addNotificationReceivedListener(
       (notification) => {
         // Handle notification when app is in foreground

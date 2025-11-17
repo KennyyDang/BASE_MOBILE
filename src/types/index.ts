@@ -251,6 +251,8 @@ export type RootStackParamList = {
     studentLevelName?: string;
   };
   TransactionHistory: undefined;
+  MySubscriptions: undefined;
+  OrderHistory: undefined;
 };
 
 export type StaffStackParamList = {
@@ -263,6 +265,7 @@ export type MainTabParamList = {
   Schedule: undefined;
   Wallet: undefined;
   Children: undefined;
+  Services: undefined;
   Profile: undefined;
 };
 

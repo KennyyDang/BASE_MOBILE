@@ -78,13 +78,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Ignore push token errors, proceed with login
       }
 
-      let deviceName = Device.deviceName ?? Device.modelName ?? Platform.OS;
-      if (!deviceName) {
-        try {
-          deviceName = await Device.getDeviceNameAsync();
-        } catch {
-          deviceName = Platform.OS;
+      // Get device name - use available properties or fallback to Platform.OS
+      let deviceName: string = Platform.OS;
+      try {
+        // Try to get device name from Device properties
+        if (Device.deviceName) {
+          deviceName = Device.deviceName;
+        } else if (Device.modelName) {
+          deviceName = Device.modelName;
+        } else if (Device.brand && Device.modelName) {
+          deviceName = `${Device.brand} ${Device.modelName}`;
+        } else if (Device.brand) {
+          deviceName = Device.brand;
         }
+      } catch {
+        // Fallback to Platform.OS if any error occurs
+        deviceName = Platform.OS;
       }
 
       const payload: MobileLoginRequest = {
