@@ -48,13 +48,14 @@ const theme = {
 
 // Import screens
 import LoginScreen from '../screens/auth/LoginScreen';
-import StaffHomeScreen from '../screens/staff/StaffHomeScreen';
-import StaffRegisterParentScreen from '../screens/staff/StaffRegisterParentScreen';
+import ManagerHomeScreen from '../screens/staff/ManagerHomeScreen';
+import ManagerRegisterParentScreen from '../screens/staff/ManagerRegisterParentScreen';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ScheduleScreen from '../screens/main/ScheduleScreen';
 import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import ChildrenManagementScreen from '../screens/main/ChildrenManagementScreen';
+import SchoolsScreen from '../screens/main/SchoolsScreen';
 import TopUpScreen from '../screens/main/TopUpScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import NotificationScreen from '../screens/main/NotificationScreen';
@@ -298,8 +299,8 @@ const AppNavigator = () => {
         ) : (
           // Authenticated area
           <>
-            {/* Route by role: STAFF -> StaffMain, others -> Main */}
-            {((user?.role || '').toUpperCase().includes('STAFF')) ? (
+            {/* Route by role: MANAGER -> StaffMain, others -> Main */}
+            {((user?.role || '').toUpperCase().includes('MANAGER')) ? (
               <Stack.Screen
                 name="StaffMain"
                 options={{ headerShown: false }}
@@ -316,13 +317,13 @@ const AppNavigator = () => {
                     }}
                   >
                     <StaffStack.Screen
-                      name="StaffHome"
-                      component={StaffHomeScreen}
-                      options={{ title: 'Nhân viên' }}
+                      name="ManagerHome"
+                      component={ManagerHomeScreen}
+                      options={{ title: 'Quản lý' }}
                     />
                     <StaffStack.Screen
-                      name="StaffRegisterParent"
-                      component={StaffRegisterParentScreen}
+                      name="ManagerRegisterParent"
+                      component={ManagerRegisterParentScreen}
                       options={{ title: 'Đăng ký phụ huynh' }}
                     />
                   </StaffStack.Navigator>
@@ -337,6 +338,14 @@ const AppNavigator = () => {
                 }}
               />
             )}
+            <Stack.Screen 
+              name="Schools" 
+              component={SchoolsScreen}
+              options={{
+                title: 'Danh sách trường học',
+                headerTitle: 'Danh sách trường học',
+              }}
+            />
             <Stack.Screen 
               name="TopUp" 
               component={TopUpScreen}

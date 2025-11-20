@@ -137,6 +137,7 @@ export const API_ENDPOINTS = {
   DELETE_CHILD: '/children/:id',
   STUDENT_PAGED_CURRENT_USER: '/api/Student/paged/current-user',
   STUDENT_MY_CHILDREN: '/api/Student/my-children',
+  STUDENT_DELETE: '/api/Student/:id',
   
   // Wallet
   WALLET_BALANCE: '/wallet/balance',
@@ -169,4 +170,13 @@ export const API_ENDPOINTS = {
   NOTIFICATIONS: '/api/Notification',
   MARK_NOTIFICATION_READ: '/api/Notification/:id/mark-read',
   REGISTER_PUSH_TOKEN: '/api/Notification/register-token',
+  
+  // Schools
+  SCHOOL_PAGED: '/api/School/paged',
+  
+  // Student Levels
+  STUDENT_LEVEL_PAGED: '/api/StudentLevel/paged',
+  
+  // Register Child
+  STUDENT_REGISTER_CHILD: '/api/Student/register-child',
 };

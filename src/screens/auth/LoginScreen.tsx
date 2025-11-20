@@ -46,7 +46,7 @@ const LoginScreen: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'PARENT' | 'STAFF'>('PARENT');
+  const [selectedRole, setSelectedRole] = useState<'PARENT' | 'MANAGER'>('PARENT');
 
   const handleLogin = async () => {
     if (!formData.email || !formData.password) {
@@ -125,12 +125,12 @@ const LoginScreen: React.FC = () => {
                     Phụ huynh
                   </Button>
                   <Button
-                    mode={selectedRole === 'STAFF' ? 'contained' : 'outlined'}
-                    onPress={() => setSelectedRole('STAFF')}
-                    style={[styles.roleButton, selectedRole === 'STAFF' && styles.roleButtonActive]}
+                    mode={selectedRole === 'MANAGER' ? 'contained' : 'outlined'}
+                    onPress={() => setSelectedRole('MANAGER')}
+                    style={[styles.roleButton, selectedRole === 'MANAGER' && styles.roleButtonActive]}
                     compact
                   >
-                    Nhân viên
+                    Quản lý
                   </Button>
                 </View>
                 <Text variant="labelSmall" style={styles.roleHint}>
