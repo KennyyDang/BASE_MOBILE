@@ -64,6 +64,14 @@ export const getCurrentBaseURL = () => getBaseURL();
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     try {
+      // Handle FormData: remove default Content-Type to let axios set it with boundary
+      if (config.data instanceof FormData) {
+        if (config.headers) {
+          // Remove the default 'application/json' Content-Type for FormData
+          delete (config.headers as any)['Content-Type'];
+        }
+      }
+
       const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
       if (token && config.headers) {
         // Trim token to remove any whitespace

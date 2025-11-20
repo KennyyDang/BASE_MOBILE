@@ -122,14 +122,14 @@ const authService = {
         role: normalizedRole || 'USER',
       };
 
-      // Allow parents and staff to sign in
+      // Allow parents and managers to sign in
       const roleStr = (userInfo.role || '').toUpperCase();
       const isAllowed =
         roleStr === 'USER' ||
         roleStr === 'PARENT' ||
         roleStr.includes('PARENT') ||
-        roleStr === 'STAFF' ||
-        roleStr.includes('STAFF') ||
+        roleStr === 'MANAGER' ||
+        roleStr.includes('MANAGER') ||
         roleStr === 'ADMIN';
       if (!isAllowed) {
         await AsyncStorage.multiRemove([

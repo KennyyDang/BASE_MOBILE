@@ -4,17 +4,17 @@ import { Button, Text } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 
-const StaffHomeScreen: React.FC = () => {
+const ManagerHomeScreen: React.FC = () => {
 	const navigation = useNavigation<any>();
 	const { logout } = useAuth();
 
 	return (
 		<View style={styles.container}>
-			<Text variant="titleLarge" style={styles.title}>Trang nhân viên</Text>
+			<Text variant="titleLarge" style={styles.title}>Trang quản lý</Text>
 			<Text style={styles.subtitle}>Tạo tài khoản phụ huynh bằng OCR CCCD</Text>
 			<Button
 				mode="contained"
-				onPress={() => navigation.navigate('StaffRegisterParent')}
+				onPress={() => navigation.navigate('ManagerRegisterParent')}
 				style={styles.btn}
 			>
 				Quét CCCD và tạo tài khoản phụ huynh
@@ -49,6 +49,5 @@ const styles = StyleSheet.create({
 	},
 });
 
-export default StaffHomeScreen;
-
+export default ManagerHomeScreen;
 

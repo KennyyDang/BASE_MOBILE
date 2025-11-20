@@ -5,6 +5,9 @@
  * @format
  */
 
+// Suppress expo-notifications warnings before importing
+import './src/utils/suppressNotificationsWarnings';
+
 import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

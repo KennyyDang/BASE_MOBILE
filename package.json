@@ -43,8 +43,8 @@
   "resolutions": {},
   "devDependencies": {
     "@babel/core": "^7.20.0",
-    "@babel/plugin-proposal-optional-chaining": "^7.18.0",
     "@babel/plugin-proposal-nullish-coalescing-operator": "^7.18.0",
+    "@babel/plugin-proposal-optional-chaining": "^7.18.0",
     "@babel/plugin-transform-template-literals": "^7.18.0",
     "@types/jest": "^29.5.5",
     "@types/react": "~19.1.10",

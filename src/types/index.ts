@@ -208,7 +208,7 @@ export interface NFCEvent {
 }
 
 // Enums
-export type UserRole = 'PARENT' | 'TEACHER' | 'ADMIN' | 'STAFF';
+export type UserRole = 'PARENT' | 'TEACHER' | 'ADMIN' | 'MANAGER';
 export type WalletType = 'MAIN' | 'ALLOWANCE';
 export type TransactionType = 'TOP_UP' | 'PAYMENT' | 'REFUND' | 'ALLOWANCE_SPENDING' | 'MEMBERSHIP_PURCHASE';
 export type TransactionStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
@@ -253,11 +253,12 @@ export type RootStackParamList = {
   TransactionHistory: undefined;
   MySubscriptions: undefined;
   OrderHistory: undefined;
+  Schools: undefined;
 };
 
 export type StaffStackParamList = {
-  StaffHome: undefined;
-  StaffRegisterParent: undefined;
+  ManagerHome: undefined;
+  ManagerRegisterParent: undefined;
 };
 
 export type MainTabParamList = {
