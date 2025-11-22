@@ -60,6 +60,7 @@ import TopUpScreen from '../screens/main/TopUpScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 import NotificationScreen from '../screens/main/NotificationScreen';
 import StudentPackagesScreen from '../screens/main/StudentPackagesScreen';
+import StudentClassesScreen from '../screens/main/StudentClassesScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import MySubscriptionsScreen from '../screens/main/MySubscriptionsScreen';
 import ServicesScreen from '../screens/main/ServicesScreen';
@@ -376,6 +377,14 @@ const AppNavigator = () => {
               options={{
                 title: 'Gói học',
                 headerTitle: 'Chọn gói phù hợp',
+              }}
+            />
+            <Stack.Screen
+              name="StudentClasses"
+              component={StudentClassesScreen}
+              options={{
+                title: 'Lớp học',
+                headerTitle: 'Lớp học đã đặt',
               }}
             />
             <Stack.Screen

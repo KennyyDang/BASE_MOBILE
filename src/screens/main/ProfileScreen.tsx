@@ -11,6 +11,11 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -64,6 +69,10 @@ const ProfileScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhoneNumber, setEditPhoneNumber] = useState('');
+  const [updating, setUpdating] = useState(false);
 
   const fetchCurrentUser = useCallback(async () => {
     try {
@@ -89,7 +98,55 @@ const ProfileScreen: React.FC = () => {
   }, [fetchCurrentUser]);
 
   const handleEditProfile = () => {
-    Alert.alert('Chỉnh sửa hồ sơ', 'Tính năng đang được phát triển');
+    if (currentUser) {
+      setEditName(currentUser.name || '');
+      setEditPhoneNumber(currentUser.phoneNumber || '');
+      setEditing(true);
+    }
+  };
+
+  const handleCloseEdit = () => {
+    setEditing(false);
+    setEditName('');
+    setEditPhoneNumber('');
+    setError(null);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập tên');
+      return;
+    }
+
+    if (!editPhoneNumber.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số điện thoại');
+      return;
+    }
+
+    // Validate phone number format (basic check)
+    const phoneRegex = /^[0-9]{10,11}$/;
+    if (!phoneRegex.test(editPhoneNumber.trim())) {
+      Alert.alert('Lỗi', 'Số điện thoại không hợp lệ. Vui lòng nhập 10-11 chữ số');
+      return;
+    }
+
+    try {
+      setUpdating(true);
+      setError(null);
+      const updatedUser = await parentProfileService.updateMyProfile(
+        editName.trim(),
+        editPhoneNumber.trim()
+      );
+      setCurrentUser(updatedUser);
+      setEditing(false);
+      Alert.alert('Thành công', 'Đã cập nhật thông tin profile thành công!');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.message || err?.message || 'Không thể cập nhật profile';
+      setError(errorMessage);
+      Alert.alert('Lỗi', errorMessage);
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handlePickImage = async () => {
@@ -377,6 +434,94 @@ const ProfileScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Edit Profile Modal */}
+      <Modal
+        visible={editing}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={handleCloseEdit}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Chỉnh sửa hồ sơ</Text>
+                    <TouchableOpacity onPress={handleCloseEdit} disabled={updating}>
+                      <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+                    {error && (
+                      <View style={styles.errorContainer}>
+                        <MaterialIcons name="error" size={20} color={COLORS.ERROR} />
+                        <Text style={styles.errorText}>{error}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Tên *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        value={editName}
+                        onChangeText={setEditName}
+                        placeholder="Nhập tên của bạn"
+                        placeholderTextColor={COLORS.TEXT_SECONDARY}
+                        editable={!updating}
+                        autoCapitalize="words"
+                        returnKeyType="next"
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Số điện thoại *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        value={editPhoneNumber}
+                        onChangeText={setEditPhoneNumber}
+                        placeholder="Nhập số điện thoại (10-11 chữ số)"
+                        placeholderTextColor={COLORS.TEXT_SECONDARY}
+                        keyboardType="phone-pad"
+                        editable={!updating}
+                        maxLength={11}
+                        returnKeyType="done"
+                        onSubmitEditing={handleSaveProfile}
+                      />
+                    </View>
+                  </ScrollView>
+
+                  <View style={styles.modalFooter}>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.cancelButton]}
+                      onPress={handleCloseEdit}
+                      disabled={updating}
+                    >
+                      <Text style={styles.cancelButtonText}>Hủy</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.saveButton, updating && styles.disabledButton]}
+                      onPress={handleSaveProfile}
+                      disabled={updating}
+                    >
+                      {updating ? (
+                        <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                      ) : (
+                        <Text style={styles.saveButtonText}>Lưu</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -552,6 +697,89 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     color: COLORS.TEXT_PRIMARY,
     marginLeft: SPACING.MD,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.SURFACE,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: Platform.OS === 'ios' ? SPACING.XL : SPACING.MD,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  modalTitle: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  modalBody: {
+    padding: SPACING.MD,
+    maxHeight: 400,
+  },
+  inputGroup: {
+    marginBottom: SPACING.MD,
+  },
+  inputLabel: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.SM,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_PRIMARY,
+    backgroundColor: COLORS.BACKGROUND,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: SPACING.MD,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.BORDER,
+    gap: SPACING.SM,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: SPACING.MD,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  cancelButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  saveButton: {
+    backgroundColor: COLORS.PRIMARY,
+  },
+  saveButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 });
 

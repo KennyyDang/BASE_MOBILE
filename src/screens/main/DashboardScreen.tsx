@@ -116,15 +116,21 @@ const DashboardScreen: React.FC = () => {
             pageIndex: 1,
             pageSize: 100, // Increase to get more slots for accurate counting
             upcomingOnly: true,
-            status: 'Booked',
+            // Bỏ filter status để lấy tất cả các slot đã đặt (Booked, Confirmed, Active, etc.)
           });
 
           const studentSlots = response.items || [];
           
           // Enrich with branch slot and room info
           for (const slot of studentSlots) {
+            // Parse date và so sánh chính xác hơn (bỏ thời gian, chỉ so sánh ngày)
             const slotDate = new Date(slot.date);
-            if (slotDate >= now) {
+            slotDate.setHours(0, 0, 0, 0);
+            const today = new Date(now);
+            today.setHours(0, 0, 0, 0);
+            
+            // Chỉ lấy các slot từ hôm nay trở đi (bao gồm cả hôm nay)
+            if (slotDate >= today) {
               try {
                 // Fetch branch slot details
                 const branchSlot = await branchSlotService.getBranchSlotById(slot.branchSlotId, student.id);

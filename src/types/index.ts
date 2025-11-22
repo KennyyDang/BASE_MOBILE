@@ -250,6 +250,10 @@ export type RootStackParamList = {
     branchName?: string;
     studentLevelName?: string;
   };
+  StudentClasses: {
+    studentId: string;
+    studentName: string;
+  };
   TransactionHistory: undefined;
   MySubscriptions: undefined;
   OrderHistory: undefined;

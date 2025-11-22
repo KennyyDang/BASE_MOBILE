@@ -830,11 +830,10 @@ const ChildrenManagementScreen: React.FC = () => {
   };
 
   const handleClasses = (child: StudentResponse) => {
-    Alert.alert(
-      'Lớp học',
-      `${child.name}\nTrường: ${child.schoolName || 'Chưa có'}\nCấp độ: ${child.studentLevelName || 'Chưa có'}`,
-      [{ text: 'Đóng', style: 'default' }]
-    );
+    navigation.navigate('StudentClasses', {
+      studentId: child.id,
+      studentName: child.name,
+    });
   };
 
   const handleViewPackages = (child: StudentResponse) => {

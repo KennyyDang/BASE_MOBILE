@@ -105,6 +105,28 @@ const parentProfileService = {
   },
 
   /**
+   * Update my profile (Name + PhoneNumber)
+   * Endpoint: PUT /api/User/my-profile
+   * @param name - User name
+   * @param phoneNumber - User phone number
+   * @returns Updated current user information
+   */
+  updateMyProfile: async (name: string, phoneNumber: string): Promise<CurrentUserResponse> => {
+    try {
+      const response = await axiosInstance.put<CurrentUserResponse>(
+        '/api/User/my-profile',
+        {
+          name,
+          phoneNumber,
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to update profile';
+    }
+  },
+
+  /**
    * Upload profile picture
    * Endpoint: POST /api/User/upload-profile-picture
    * @param fileUri - Local file URI from image picker

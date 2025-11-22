@@ -21,6 +21,7 @@ import {
   BranchSlotRoomResponse,
   StudentPackageSubscription,
   StudentResponse,
+  StudentSlotResponse,
 } from '../../types/api';
 import packageService from '../../services/packageService';
 
@@ -64,6 +65,7 @@ const FONTS = {
 const PAGE_SIZE = 20;
 const ROOM_PAGE_SIZE = 10;
 type WeekdayKey = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+// Hiển thị tất cả các ngày trong tuần (Thứ 2 - Chủ nhật)
 const WEEKDAY_ORDER: WeekdayKey[] = [1, 2, 3, 4, 5, 6, 0];
 const WEEKDAY_LABELS: Record<WeekdayKey, { title: string; subtitle: string }> = {
   0: { title: 'Chủ nhật', subtitle: 'Ngày nghỉ / Chủ động đăng ký thêm' },
@@ -160,30 +162,49 @@ const createDefaultSlotRoomsState = (): SlotRoomsStateEntry => ({
   bookingLoading: false,
 });
 
-const computeSlotDateISO = (slot: BranchSlotResponse): string => {
-  const targetDay = normalizeWeekDate(slot.weekDate);
+// Tính toán ngày cho mỗi thứ trong tuần (có thể là tuần trước, tuần hiện tại, hoặc tuần sau)
+// weekOffset: 0 = tuần hiện tại, -1 = tuần trước, 1 = tuần sau, ...
+const getWeekDate = (weekOffset: number, targetWeekday: WeekdayKey): Date => {
   const now = new Date();
-  const currentDay = now.getDay();
-
-  const slotDate = new Date(now);
-  slotDate.setHours(0, 0, 0, 0);
-
-  let diff = targetDay - currentDay;
-  if (diff < 0) {
-    diff += 7;
+  const currentDay = now.getDay(); // 0=Chủ nhật, 1=Thứ 2, ..., 6=Thứ 7
+  
+  // Lấy ngày đầu tuần hiện tại (Thứ 2 - Monday)
+  const currentMonday = new Date(now);
+  const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1; // Chủ nhật = 6 ngày từ thứ 2
+  currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
+  currentMonday.setHours(0, 0, 0, 0);
+  
+  // Tính ngày đầu tuần của tuần được chọn
+  const targetMonday = new Date(currentMonday);
+  targetMonday.setDate(targetMonday.getDate() + (weekOffset * 7));
+  
+  // Tính ngày cho thứ mục tiêu trong tuần được chọn
+  const targetDate = new Date(targetMonday);
+  if (targetWeekday === 0) {
+    // Chủ nhật = ngày thứ 7 trong tuần (6 ngày sau thứ 2)
+    targetDate.setDate(targetMonday.getDate() + 6);
+  } else {
+    // Các thứ khác: thứ 2 = 1, thứ 3 = 2, ..., thứ 7 = 6
+    targetDate.setDate(targetMonday.getDate() + (targetWeekday - 1));
   }
+  
+  return targetDate;
+};
 
-  slotDate.setDate(slotDate.getDate() + diff);
+// Format ngày hiển thị: dd/MM/yyyy
+const formatDateDisplay = (date: Date): string => {
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
 
-  if (diff === 0 && slot.timeframe?.startTime) {
-    const [slotHour = '00', slotMinute = '00'] = slot.timeframe.startTime.split(':');
-    const slotStartToday = new Date(slotDate);
-    slotStartToday.setHours(Number(slotHour), Number(slotMinute), 0, 0);
-    if (slotStartToday <= now) {
-      slotDate.setDate(slotDate.getDate() + 7);
-    }
-  }
+// Tính toán ngày ISO cho slot (theo tuần offset)
+const computeSlotDateISO = (slot: BranchSlotResponse, weekOffset: number): string => {
+  const targetDay = normalizeWeekDate(slot.weekDate);
+  const slotDate = getWeekDate(weekOffset, targetDay);
 
+  // Thêm giờ từ timeframe nếu có
   if (slot.timeframe?.startTime) {
     const [hours = '0', minutes = '0', seconds = '0'] = slot.timeframe.startTime.split(':');
     slotDate.setHours(Number(hours), Number(minutes), Number(seconds || 0), 0);
@@ -212,6 +233,9 @@ const ScheduleScreen: React.FC = () => {
   const [subscriptionsLoading, setSubscriptionsLoading] = useState(false);
   const [subscriptionsError, setSubscriptionsError] = useState<string | null>(null);
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
+  const [weekOffset, setWeekOffset] = useState<number>(0); // 0 = tuần hiện tại, -1 = tuần trước, 1 = tuần sau
+  const [bookedSlots, setBookedSlots] = useState<StudentSlotResponse[]>([]);
+  const [bookedSlotsLoading, setBookedSlotsLoading] = useState(false);
 
   useEffect(() => {
     if (students.length && !selectedStudentId) {
@@ -373,6 +397,7 @@ const ScheduleScreen: React.FC = () => {
     [selectedStudentId]
   );
 
+
   const fetchSlotRooms = useCallback(
     async (slotId: string, { page = 1, append = false }: { page?: number; append?: boolean } = {}) => {
       setSlotRoomsState((prev) => {
@@ -443,7 +468,6 @@ const ScheduleScreen: React.FC = () => {
               ...existing,
               loading: false,
               error: message,
-              // Keep existing rooms if append failed, otherwise clear
               rooms: append ? existing.rooms : [],
             },
           };
@@ -550,74 +574,172 @@ const ScheduleScreen: React.FC = () => {
         return;
       }
 
-      const payload = {
-        studentId: selectedStudentId,
-        branchSlotId: slot.id,
-        packageSubscriptionId,
-        roomId: entry.selectedRoomId,
-        date: computeSlotDateISO(slot),
-        parentNote: entry.parentNote?.trim() || undefined,
-      };
+      // Tính ngày cụ thể cho slot theo tuần đang xem
+      const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+      const slotDateDisplay = formatDateDisplay(slotDate);
+      const selectedRoom = entry.rooms.find((room) => room.id === entry.selectedRoomId);
 
-      setSlotRoomsState((prev) => {
-        const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
-        return {
-          ...prev,
-          [slot.id]: {
-            ...existing,
-            bookingLoading: true,
+      // Xác nhận với người dùng
+      Alert.alert(
+        'Xác nhận đặt lịch',
+        `Bạn có chắc muốn đặt lịch cho con vào:\n\n${WEEKDAY_LABELS[normalizeWeekDate(slot.weekDate)].title} - ${slotDateDisplay}\n${formatTimeRange(slot.timeframe)}\nPhòng: ${selectedRoom?.roomName || 'Đang cập nhật'}`,
+        [
+          {
+            text: 'Hủy',
+            style: 'cancel',
           },
-        };
-      });
+          {
+            text: 'Đặt lịch',
+            onPress: async () => {
+              const payload = {
+                studentId: selectedStudentId,
+                branchSlotId: slot.id,
+                packageSubscriptionId,
+                roomId: entry.selectedRoomId,
+                date: computeSlotDateISO(slot, weekOffset), // Date theo tuần đang xem
+                parentNote: entry.parentNote?.trim() || undefined,
+              };
 
+              setSlotRoomsState((prev) => {
+                const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
+                return {
+                  ...prev,
+                  [slot.id]: {
+                    ...existing,
+                    bookingLoading: true,
+                  },
+                };
+              });
+
+              try {
+                const response = await studentSlotService.bookSlot(payload);
+                Alert.alert('Thành công', response?.message || 'Đặt slot cho con thành công.');
+                setSlotRoomsState((prev) => {
+                  const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
+                  return {
+                    ...prev,
+                    [slot.id]: {
+                      ...existing,
+                      bookingLoading: false,
+                      parentNote: '',
+                    },
+                  };
+                });
+                // Refresh slots, subscriptions, and booked slots after successful booking
+                fetchSubscriptions(selectedStudentId);
+                fetchSlots({ page: 1, silent: true });
+                fetchBookedSlots(selectedStudentId);
+              } catch (error: any) {
+                const message =
+                  error?.response?.data?.message ||
+                  error?.response?.data?.error ||
+                  error?.message ||
+                  'Không thể đặt slot cho con. Vui lòng thử lại sau.';
+                Alert.alert('Lỗi', message);
+                setSlotRoomsState((prev) => {
+                  const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
+                  return {
+                    ...prev,
+                    [slot.id]: {
+                      ...existing,
+                      bookingLoading: false,
+                    },
+                  };
+                });
+              }
+            },
+          },
+        ]
+      );
+    },
+    [selectedStudentId, slotRoomsState, resolvePackageSubscriptionId, fetchSubscriptions, fetchSlots, weekOffset]
+  );
+
+  // Điều hướng tuần
+  const handlePreviousWeek = useCallback(() => {
+    setWeekOffset((prev) => prev - 1);
+  }, []);
+
+  const handleNextWeek = useCallback(() => {
+    setWeekOffset((prev) => prev + 1);
+  }, []);
+
+  const handleGoToCurrentWeek = useCallback(() => {
+    setWeekOffset(0);
+  }, []);
+
+  // Tính phạm vi tuần đang xem
+  const getWeekRange = useCallback((): { startDate: Date; endDate: Date; displayText: string } => {
+    const monday = getWeekDate(weekOffset, 1);
+    const sunday = getWeekDate(weekOffset, 0);
+    return {
+      startDate: monday,
+      endDate: sunday,
+      displayText: `${formatDateDisplay(monday)} - ${formatDateDisplay(sunday)}`,
+    };
+  }, [weekOffset]);
+
+  // Fetch danh sách slot đã đặt
+  const fetchBookedSlots = useCallback(
+    async (studentId: string) => {
+      setBookedSlotsLoading(true);
       try {
-        const response = await studentSlotService.bookSlot(payload);
-        Alert.alert('Thành công', response?.message || 'Đặt slot cho con thành công.');
-        setSlotRoomsState((prev) => {
-          const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
-          return {
-            ...prev,
-            [slot.id]: {
-              ...existing,
-              bookingLoading: false,
-              parentNote: '',
-            },
-          };
+        const response = await studentSlotService.getStudentSlots({
+          studentId,
+          pageIndex: 1,
+          pageSize: 100, // Fetch nhiều để có đủ dữ liệu
         });
-        // Refresh slots and subscriptions after successful booking
-        fetchSubscriptions(selectedStudentId);
-        fetchSlots({ page: 1, silent: true });
+        setBookedSlots(response.items || []);
       } catch (error: any) {
-        const message =
-          error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          error?.message ||
-          'Không thể đặt slot cho con. Vui lòng thử lại sau.';
-        Alert.alert('Lỗi', message);
-        setSlotRoomsState((prev) => {
-          const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
-          return {
-            ...prev,
-            [slot.id]: {
-              ...existing,
-              bookingLoading: false,
-            },
-          };
-        });
+        // Không hiển thị lỗi, chỉ log để debug
+        console.warn('Failed to fetch booked slots:', error?.message || error);
+        setBookedSlots([]);
+      } finally {
+        setBookedSlotsLoading(false);
       }
     },
-    [selectedStudentId, slotRoomsState, resolvePackageSubscriptionId, fetchSubscriptions, fetchSlots]
+    []
+  );
+
+  // Kiểm tra xem slot đã được đặt chưa
+  const isSlotBooked = useCallback(
+    (slot: BranchSlotResponse): StudentSlotResponse | null => {
+      const slotDate = computeSlotDateISO(slot, weekOffset);
+      const slotDateObj = new Date(slotDate);
+      slotDateObj.setHours(0, 0, 0, 0);
+
+      return (
+        bookedSlots.find((booked) => {
+          if (booked.branchSlotId !== slot.id) {
+            return false;
+          }
+          const bookedDate = new Date(booked.date);
+          bookedDate.setHours(0, 0, 0, 0);
+          return bookedDate.getTime() === slotDateObj.getTime();
+        }) || null
+      );
+    },
+    [bookedSlots, weekOffset]
   );
 
   useEffect(() => {
     setSlotRoomsState({});
     if (selectedStudentId) {
       fetchSlots({ page: 1 });
+      fetchBookedSlots(selectedStudentId);
     } else {
       setSlots([]);
       setPagination(null);
+      setBookedSlots([]);
     }
-  }, [selectedStudentId, fetchSlots]);
+  }, [selectedStudentId, fetchSlots, fetchBookedSlots]);
+
+  // Refresh booked slots khi weekOffset thay đổi
+  useEffect(() => {
+    if (selectedStudentId) {
+      fetchBookedSlots(selectedStudentId);
+    }
+  }, [weekOffset, selectedStudentId, fetchBookedSlots]);
 
   const handleRefreshSlots = useCallback(() => {
     if (!selectedStudentId) {
@@ -625,7 +747,8 @@ const ScheduleScreen: React.FC = () => {
     }
     setSlotsRefreshing(true);
     fetchSlots({ page: 1, silent: true });
-  }, [selectedStudentId, fetchSlots]);
+    fetchBookedSlots(selectedStudentId);
+  }, [selectedStudentId, fetchSlots, fetchBookedSlots]);
 
   const handleRetrySlots = useCallback(() => {
     if (!selectedStudentId) {
@@ -653,9 +776,13 @@ const ScheduleScreen: React.FC = () => {
       6: [],
     };
 
+    // Lọc slots theo weekDate
     slots.forEach((slot) => {
       const day = normalizeWeekDate(slot.weekDate);
-      groups[day].push(slot);
+      // Thêm vào groups nếu là thứ trong WEEKDAY_ORDER (Thứ 2 - Chủ nhật)
+      if (WEEKDAY_ORDER.includes(day)) {
+        groups[day].push(slot);
+      }
     });
 
     return groups;
@@ -880,12 +1007,14 @@ const ScheduleScreen: React.FC = () => {
         {WEEKDAY_ORDER.map((day) => {
           const daySlots = groupedSlots[day];
           const { title, subtitle } = WEEKDAY_LABELS[day];
+          const dayDate = getWeekDate(weekOffset, day);
+          const dayDateDisplay = formatDateDisplay(dayDate);
 
           return (
             <View key={day} style={styles.daySection}>
               <View style={styles.dayHeader}>
                 <View>
-                  <Text style={styles.dayTitle}>{title}</Text>
+                  <Text style={styles.dayTitle}>{title} - {dayDateDisplay}</Text>
                   <Text style={styles.daySubtitle}>{subtitle}</Text>
               </View>
                 <View style={styles.dayBadge}>
@@ -906,6 +1035,8 @@ const ScheduleScreen: React.FC = () => {
                   const roomState = slotRoomsState[slot.id];
                   const roomsCount = roomState?.rooms?.length ?? 0;
                   const isExpanded = roomState?.expanded ?? false;
+                  const bookedSlot = isSlotBooked(slot);
+                  const isBooked = !!bookedSlot;
                   const packageSubscriptionId = resolvePackageSubscriptionId(slot);
                   const packageName =
                     slot.packageSubscription?.name ||
@@ -934,6 +1065,7 @@ const ScheduleScreen: React.FC = () => {
                     (!effectiveSubscription && Boolean(packageSubscriptionId));
                   const hasRemaining = computedRemaining === undefined || computedRemaining > 0;
                   const canBook =
+                    !isBooked &&
                     Boolean(packageSubscriptionId && roomState?.selectedRoomId && roomsCount > 0) &&
                     isSubscriptionActive &&
                     hasRemaining;
@@ -958,19 +1090,33 @@ const ScheduleScreen: React.FC = () => {
                           </Text>
                         </View>
                         <View
-                          style={[styles.statusTag, { backgroundColor: statusStyle.backgroundColor }]}
+                          style={[
+                            styles.statusTag,
+                            {
+                              backgroundColor: isBooked
+                                ? COLORS.SUCCESS_BG
+                                : statusStyle.backgroundColor,
+                            },
+                          ]}
                         >
                           <MaterialIcons
-                            name={statusStyle.icon as any}
+                            name={
+                              isBooked
+                                ? 'check-circle'
+                                : (statusStyle.icon as any)
+                            }
                             size={18}
-                            color={statusStyle.textColor}
+                            color={isBooked ? COLORS.PRIMARY : statusStyle.textColor}
                           />
                           <Text
-                            style={[styles.statusTagText, { color: statusStyle.textColor }]}
+                            style={[
+                              styles.statusTagText,
+                              { color: isBooked ? COLORS.PRIMARY : statusStyle.textColor },
+                            ]}
                           >
-                            {statusStyle.label}
+                            {isBooked ? 'Đã đặt' : statusStyle.label}
                           </Text>
-            </View>
+                        </View>
           </View>
 
                       <View style={styles.slotMetaRow}>
@@ -1020,159 +1166,172 @@ const ScheduleScreen: React.FC = () => {
                         </View>
                       ) : null}
 
-              <TouchableOpacity 
-                        style={styles.roomsToggleButton}
-                        onPress={() => handleToggleRooms(slot.id)}
-                        activeOpacity={0.85}
-                      >
-                        <MaterialIcons
-                          name={isExpanded ? 'expand-less' : 'meeting-room'}
-                          size={20}
-                          color={COLORS.PRIMARY}
-                        />
-                        <Text style={styles.roomsToggleText}>
-                          {isExpanded ? 'Thu gọn danh sách phòng' : 'Xem phòng khả dụng'}
-                        </Text>
-                        {roomsCount > 0 ? (
-                          <View style={styles.roomsCountBadge}>
-                            <Text style={styles.roomsCountText}>{roomsCount}</Text>
-            </View>
-                        ) : null}
-                      </TouchableOpacity>
-
-                      {isExpanded ? (
-                        <View style={styles.roomsContainer}>
-                          {roomState?.loading && roomsCount === 0 ? (
-                            <View style={styles.roomsStateRow}>
-                              <ActivityIndicator size="small" color={COLORS.PRIMARY} />
-                              <Text style={styles.roomsStateText}>Đang tải danh sách phòng...</Text>
-            </View>
-                          ) : null}
-
-                          {roomState?.error ? (
-                            <View style={styles.roomsStateColumn}>
-                              <View style={styles.roomsStateRow}>
-                                <MaterialIcons name="error-outline" size={20} color={COLORS.ERROR} />
-                                <Text style={[styles.roomsStateText, { color: COLORS.ERROR }]}>
-                                  {roomState.error}
-                                </Text>
-              </View>
-              <TouchableOpacity 
-                                style={styles.roomsRetryButton}
-                                onPress={() => handleRetryRooms(slot.id)}
-              >
-                                <Text style={styles.roomsRetryButtonText}>Thử lại</Text>
-              </TouchableOpacity>
-            </View>
-                          ) : null}
-
-                          {!roomState?.loading && !roomState?.error && roomsCount === 0 ? (
-                            <View style={styles.roomsStateRow}>
-                              <MaterialIcons
-                                name="meeting-room"
-                                size={20}
-                                color={COLORS.TEXT_SECONDARY}
-                              />
-                              <Text style={styles.roomsStateText}>
-                                Chưa có phòng phù hợp cho khung giờ này. Vui lòng liên hệ trung tâm.
-                              </Text>
-          </View>
-                          ) : null}
-
-                          {roomState?.rooms.map((room) => (
-                            <TouchableOpacity
-                              key={room.id}
-                              style={[
-                                styles.roomCard,
-                                roomState.selectedRoomId === room.id && styles.roomCardSelected,
-                              ]}
-                              onPress={() => handleSelectRoom(slot.id, room.id)}
-                              activeOpacity={0.85}
-                            >
-                              <View style={styles.roomCardHeader}>
-                                <Text style={styles.roomTitle}>{room.roomName}</Text>
-                                {roomState.selectedRoomId === room.id ? (
-                                  <MaterialIcons name="check-circle" size={20} color={COLORS.PRIMARY} />
-                                ) : null}
+                      {isBooked ? (
+                        <View style={styles.bookedSlotInfo}>
+                          <MaterialIcons name="event-available" size={20} color={COLORS.PRIMARY} />
+                          <Text style={styles.bookedSlotText}>
+                            Đã đặt lịch cho ngày {formatDateDisplay(getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate)))}
+                            {bookedSlot?.room?.roomName && ` • Phòng: ${bookedSlot.room.roomName}`}
+                            {bookedSlot?.status && ` • Trạng thái: ${bookedSlot.status}`}
+                          </Text>
+                        </View>
+                      ) : (
+                        <>
+                          <TouchableOpacity 
+                            style={styles.roomsToggleButton}
+                            onPress={() => handleToggleRooms(slot.id)}
+                            activeOpacity={0.85}
+                          >
+                            <MaterialIcons
+                              name={isExpanded ? 'expand-less' : 'meeting-room'}
+                              size={20}
+                              color={COLORS.PRIMARY}
+                            />
+                            <Text style={styles.roomsToggleText}>
+                              {isExpanded ? 'Thu gọn danh sách phòng' : 'Xem phòng khả dụng'}
+                            </Text>
+                            {roomsCount > 0 ? (
+                              <View style={styles.roomsCountBadge}>
+                                <Text style={styles.roomsCountText}>{roomsCount}</Text>
                               </View>
-                              {room.branchName || slot.branch?.branchName ? (
-                                <View style={styles.roomMetaRow}>
-                                  <MaterialIcons name="domain" size={18} color={COLORS.SECONDARY} />
-                                  <Text style={styles.roomMetaText}>
-                                    {room.branchName || slot.branch?.branchName || 'Chi nhánh đang cập nhật'}
-                                  </Text>
-                                </View>
-                              ) : null}
-                              {room.facilityName ? (
-                                <View style={styles.roomMetaRow}>
-                                  <MaterialIcons name="business" size={18} color={COLORS.ACCENT} />
-                                  <Text style={styles.roomMetaText}>{room.facilityName}</Text>
-                                </View>
-                              ) : null}
-                              {typeof room.capacity === 'number' ? (
-                                <View style={styles.roomMetaRow}>
-                                  <MaterialIcons name="event-seat" size={18} color={COLORS.PRIMARY} />
-                                  <Text style={styles.roomMetaText}>
-                                    Sức chứa tối đa: {room.capacity}
-                                  </Text>
-                                </View>
-                              ) : null}
-                            </TouchableOpacity>
-                          ))}
+                            ) : null}
+                          </TouchableOpacity>
 
-                          {roomState?.pagination?.hasNextPage ? (
-                            <TouchableOpacity
-                              style={styles.roomLoadMoreButton}
-                              onPress={() => handleLoadMoreRooms(slot.id)}
-                              disabled={roomState.loading}
-                              activeOpacity={0.85}
-                            >
-                              {roomState.loading ? (
-                                <ActivityIndicator size="small" color={COLORS.PRIMARY} />
-                              ) : (
+                          {isExpanded ? (
+                            <View style={styles.roomsContainer}>
+                              {roomState?.loading && roomsCount === 0 ? (
+                                <View style={styles.roomsStateRow}>
+                                  <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                                  <Text style={styles.roomsStateText}>Đang tải danh sách phòng...</Text>
+                                </View>
+                              ) : null}
+
+                              {roomState?.error ? (
+                                <View style={styles.roomsStateColumn}>
+                                  <View style={styles.roomsStateRow}>
+                                    <MaterialIcons name="error-outline" size={20} color={COLORS.ERROR} />
+                                    <Text style={[styles.roomsStateText, { color: COLORS.ERROR }]}>
+                                      {roomState.error}
+                                    </Text>
+                                  </View>
+                                  <TouchableOpacity 
+                                    style={styles.roomsRetryButton}
+                                    onPress={() => handleRetryRooms(slot.id)}
+                                  >
+                                    <Text style={styles.roomsRetryButtonText}>Thử lại</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ) : null}
+
+                              {!roomState?.loading && !roomState?.error && roomsCount === 0 ? (
+                                <View style={styles.roomsStateRow}>
+                                  <MaterialIcons
+                                    name="meeting-room"
+                                    size={20}
+                                    color={COLORS.TEXT_SECONDARY}
+                                  />
+                                  <Text style={styles.roomsStateText}>
+                                    Chưa có phòng phù hợp cho khung giờ này. Vui lòng liên hệ trung tâm.
+                                  </Text>
+                                </View>
+                              ) : null}
+
+                              {roomState?.rooms.map((room) => (
+                                <TouchableOpacity
+                                  key={room.id}
+                                  style={[
+                                    styles.roomCard,
+                                    roomState.selectedRoomId === room.id && styles.roomCardSelected,
+                                  ]}
+                                  onPress={() => handleSelectRoom(slot.id, room.id)}
+                                  activeOpacity={0.85}
+                                >
+                                  <View style={styles.roomCardHeader}>
+                                    <Text style={styles.roomTitle}>{room.roomName}</Text>
+                                    {roomState.selectedRoomId === room.id ? (
+                                      <MaterialIcons name="check-circle" size={20} color={COLORS.PRIMARY} />
+                                    ) : null}
+                                  </View>
+                                  {room.branchName || slot.branch?.branchName ? (
+                                    <View style={styles.roomMetaRow}>
+                                      <MaterialIcons name="domain" size={18} color={COLORS.SECONDARY} />
+                                      <Text style={styles.roomMetaText}>
+                                        {room.branchName || slot.branch?.branchName || 'Chi nhánh đang cập nhật'}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                  {room.facilityName ? (
+                                    <View style={styles.roomMetaRow}>
+                                      <MaterialIcons name="business" size={18} color={COLORS.ACCENT} />
+                                      <Text style={styles.roomMetaText}>{room.facilityName}</Text>
+                                    </View>
+                                  ) : null}
+                                  {typeof room.capacity === 'number' ? (
+                                    <View style={styles.roomMetaRow}>
+                                      <MaterialIcons name="event-seat" size={18} color={COLORS.PRIMARY} />
+                                      <Text style={styles.roomMetaText}>
+                                        Sức chứa tối đa: {room.capacity}
+                                      </Text>
+                                    </View>
+                                  ) : null}
+                                </TouchableOpacity>
+                              ))}
+
+                              {roomState?.pagination?.hasNextPage ? (
+                                <TouchableOpacity
+                                  style={styles.roomLoadMoreButton}
+                                  onPress={() => handleLoadMoreRooms(slot.id)}
+                                  disabled={roomState.loading}
+                                  activeOpacity={0.85}
+                                >
+                                  {roomState.loading ? (
+                                    <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                                  ) : (
+                                    <>
+                                      <MaterialIcons name="expand-more" size={20} color={COLORS.PRIMARY} />
+                                      <Text style={styles.roomLoadMoreText}>Xem thêm phòng</Text>
+                                    </>
+                                  )}
+                                </TouchableOpacity>
+                              ) : null}
+
+                              {roomsCount > 0 ? (
                                 <>
-                                  <MaterialIcons name="expand-more" size={20} color={COLORS.PRIMARY} />
-                                  <Text style={styles.roomLoadMoreText}>Xem thêm phòng</Text>
+                                  <TextInput
+                                    style={styles.noteInput}
+                                    placeholder="Ghi chú cho trung tâm (không bắt buộc)"
+                                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                                    multiline
+                                    value={roomState?.parentNote ?? ''}
+                                    onChangeText={(text) => handleChangeParentNote(slot.id, text)}
+                                  />
+                                  {subscriptionWarning ? (
+                                    <Text style={styles.packageWarning}>{subscriptionWarning}</Text>
+                                  ) : null}
+                                  <TouchableOpacity
+                                    style={[
+                                      styles.bookButton,
+                                      (!canBook || roomState?.bookingLoading) && styles.bookButtonDisabled,
+                                    ]}
+                                    onPress={() => handleBookSlot(slot)}
+                                    disabled={!canBook || roomState?.bookingLoading}
+                                    activeOpacity={0.85}
+                                  >
+                                    {roomState?.bookingLoading ? (
+                                      <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                                    ) : (
+                                      <>
+                                        <MaterialIcons name="event-available" size={20} color={COLORS.SURFACE} />
+                                        <Text style={styles.bookButtonText}>Đặt lịch cho con</Text>
+                                      </>
+                                    )}
+                                  </TouchableOpacity>
                                 </>
-                              )}
-                            </TouchableOpacity>
-                          ) : null}
-
-                          {roomsCount > 0 ? (
-                            <>
-                              <TextInput
-                                style={styles.noteInput}
-                                placeholder="Ghi chú cho trung tâm (không bắt buộc)"
-                                placeholderTextColor={COLORS.TEXT_SECONDARY}
-                                multiline
-                                value={roomState?.parentNote ?? ''}
-                                onChangeText={(text) => handleChangeParentNote(slot.id, text)}
-                              />
-                              {subscriptionWarning ? (
-                                <Text style={styles.packageWarning}>{subscriptionWarning}</Text>
                               ) : null}
-                              <TouchableOpacity
-                                style={[
-                                  styles.bookButton,
-                                  (!canBook || roomState?.bookingLoading) && styles.bookButtonDisabled,
-                                ]}
-                                onPress={() => handleBookSlot(slot)}
-                                disabled={!canBook || roomState?.bookingLoading}
-                                activeOpacity={0.85}
-                              >
-                                {roomState?.bookingLoading ? (
-                                  <ActivityIndicator size="small" color={COLORS.SURFACE} />
-                                ) : (
-                                  <>
-                                    <MaterialIcons name="event-available" size={20} color={COLORS.SURFACE} />
-                                    <Text style={styles.bookButtonText}>Đặt slot cho con</Text>
-                                  </>
-                                )}
-                              </TouchableOpacity>
-                            </>
+                            </View>
                           ) : null}
-              </View>
-                      ) : null}
+                        </>
+                      )}
             </View>
                   );
                 })
@@ -1221,6 +1380,42 @@ const ScheduleScreen: React.FC = () => {
           <Text style={styles.headerSubtitle}>
             Theo dõi và lựa chọn khung giờ tại trung tâm phù hợp với nhịp sinh hoạt của con
           </Text>
+        </View>
+
+        {/* Điều hướng tuần */}
+        <View style={[styles.sectionCard, styles.sectionSpacing]}>
+          <View style={styles.weekNavigator}>
+            <TouchableOpacity
+              style={styles.weekNavButton}
+              onPress={handlePreviousWeek}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="chevron-left" size={24} color={COLORS.PRIMARY} />
+              <Text style={styles.weekNavButtonText}>Tuần trước</Text>
+            </TouchableOpacity>
+
+            <View style={styles.weekInfo}>
+              <Text style={styles.weekRangeText}>{getWeekRange().displayText}</Text>
+              {weekOffset !== 0 && (
+                <TouchableOpacity
+                  style={styles.goToCurrentWeekButton}
+                  onPress={handleGoToCurrentWeek}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.goToCurrentWeekText}>Về tuần này</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={styles.weekNavButton}
+              onPress={handleNextWeek}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.weekNavButtonText}>Tuần sau</Text>
+              <MaterialIcons name="chevron-right" size={24} color={COLORS.PRIMARY} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {studentsLoading && !students.length ? (
@@ -1646,6 +1841,12 @@ const styles = StyleSheet.create({
     color: COLORS.PRIMARY,
     fontWeight: '600',
   },
+  bookingSection: {
+    marginTop: SPACING.MD,
+    paddingTop: SPACING.MD,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.BORDER,
+  },
   noteInput: {
     marginTop: SPACING.SM,
     borderWidth: 1,
@@ -1798,6 +1999,68 @@ const styles = StyleSheet.create({
   subscriptionChipMeta: {
     fontSize: FONTS.SIZES.XS,
     color: COLORS.TEXT_SECONDARY,
+  },
+  weekNavigator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  weekNavButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    borderRadius: 12,
+    backgroundColor: COLORS.INFO_BG,
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY_LIGHT,
+  },
+  weekNavButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.PRIMARY,
+    marginHorizontal: SPACING.XS,
+  },
+  weekInfo: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: SPACING.MD,
+  },
+  weekRangeText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+  },
+  goToCurrentWeekButton: {
+    marginTop: SPACING.XS,
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    borderRadius: 8,
+    backgroundColor: COLORS.PRIMARY,
+  },
+  goToCurrentWeekText: {
+    fontSize: FONTS.SIZES.XS,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
+  },
+  bookedSlotInfo: {
+    marginTop: SPACING.SM,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.SUCCESS_BG,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY_LIGHT,
+  },
+  bookedSlotText: {
+    flex: 1,
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+    lineHeight: 20,
   },
 });
 
