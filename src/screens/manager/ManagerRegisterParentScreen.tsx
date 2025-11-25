@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
 		backgroundColor: '#F3F4F6',
 	},
 	datePickerModalButtonConfirm: {
-		backgroundColor: '#1976D2',
+		backgroundColor: '#5cbdb9',
 	},
 	datePickerModalButtonCancelText: {
 		color: '#6B7280',

@@ -16,23 +16,9 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import packageService from '../../services/packageService';
 import { RootStackParamList } from '../../types';
 import { StudentPackageResponse } from '../../types/api';
+import { COLORS } from '../../constants';
 
 type StudentPackagesRouteProp = RouteProp<RootStackParamList, 'StudentPackages'>;
-
-const COLORS = {
-  PRIMARY: '#1976D2',
-  PRIMARY_DARK: '#1565C0',
-  PRIMARY_LIGHT: '#42A5F5',
-  SECONDARY: '#2196F3',
-  ACCENT: '#64B5F6',
-  BACKGROUND: '#F5F7FA',
-  SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#1A1A1A',
-  TEXT_SECONDARY: '#6B7280',
-  BORDER: '#E5E7EB',
-  ERROR: '#F44336',
-  SHADOW: '#000000',
-};
 
 const SPACING = {
   XS: 6,

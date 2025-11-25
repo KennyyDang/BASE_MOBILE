@@ -7,6 +7,7 @@ import {
   Platform,
   Alert,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import {
   Text,
@@ -16,20 +17,21 @@ import {
   Surface,
   useTheme,
 } from 'react-native-paper';
+import { MaterialIcons } from '@expo/vector-icons';
 import { LoginForm } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-
-// Inline constants
-const COLORS = {
-  PRIMARY: '#1976D2',
-  PRIMARY_DARK: '#1565C0',
-  PRIMARY_LIGHT: '#42A5F5',
-  BACKGROUND: '#F5F7FA',
-  TEXT_PRIMARY: '#1A1A1A',
-  TEXT_SECONDARY: '#6B7280',
-};
+import { COLORS } from '../../constants';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../../types';
+import authService from '../../services/auth.service';
+import pushNotificationService from '../../services/pushNotificationService';
+import * as Device from 'expo-device';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from '../../config/axios.config';
 
 const SPACING = {
+  XS: 4,
   SM: 8,
   MD: 16,
   LG: 24,
@@ -37,16 +39,53 @@ const SPACING = {
   XXL: 48,
 };
 
+const FONTS = {
+  SIZES: {
+    XS: 10,
+    SM: 12,
+    MD: 14,
+    LG: 16,
+    XL: 18,
+    XXL: 24,
+  },
+};
+
 const LoginScreen: React.FC = () => {
-  const { login } = useAuth();
+  const { login, logout, user } = useAuth();
   const theme = useTheme();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [formData, setFormData] = useState<LoginForm>({
     email: '',
     password: '',
   });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'PARENT' | 'MANAGER'>('PARENT');
+  const [selectedRole, setSelectedRole] = useState<'PARENT' | 'STAFF' | 'MANAGER'>('PARENT');
+
+  const getRoleDisplayName = (role: string): string => {
+    const roleUpper = role.toUpperCase();
+    if (roleUpper.includes('PARENT') || roleUpper === 'USER') return 'Phụ huynh';
+    if (roleUpper.includes('STAFF')) return 'Nhân viên';
+    if (roleUpper.includes('MANAGER') || roleUpper === 'ADMIN') return 'Quản lý';
+    return role;
+  };
+
+  const validateRole = (actualRole: string, expectedRole: string): boolean => {
+    const actual = actualRole.toUpperCase();
+    const expected = expectedRole.toUpperCase();
+    
+    // Map role names for comparison
+    const roleMapping: Record<string, string[]> = {
+      'PARENT': ['PARENT', 'USER'],
+      'STAFF': ['STAFF'],
+      'MANAGER': ['MANAGER', 'ADMIN'],
+    };
+    
+    const expectedRoles = roleMapping[expected] || [expected];
+    return expectedRoles.some(role => 
+      actual.includes(role) || actual === role
+    );
+  };
 
   const handleLogin = async () => {
     if (!formData.email || !formData.password) {
@@ -56,13 +95,80 @@ const LoginScreen: React.FC = () => {
 
     setLoading(true);
     try {
-      // Call actual login API
+      // Prepare login payload (same as AuthContext does)
+      let pushToken = null;
+      let firebaseToken: string | undefined;
+      try {
+        pushToken = await pushNotificationService.registerForPushNotifications();
+        firebaseToken = pushToken?.token;
+      } catch {
+        // Ignore push token errors
+      }
+
+      let deviceName: string = Platform.OS;
+      try {
+        if (Device.deviceName) {
+          deviceName = Device.deviceName;
+        } else if (Device.modelName) {
+          deviceName = Device.modelName;
+        } else if (Device.brand && Device.modelName) {
+          deviceName = `${Device.brand} ${Device.modelName}`;
+        } else if (Device.brand) {
+          deviceName = Device.brand;
+        }
+      } catch {
+        deviceName = Platform.OS;
+      }
+
+      // Call authService.login directly to get user info before setting state
+      const loginResponse = await authService.login({
+        email: formData.email,
+        password: formData.password,
+        firebaseToken,
+        deviceName,
+      });
+      
+      // Validate role immediately from login response, before setting authenticated state
+      const actualRole = (loginResponse.user.role || '').toUpperCase();
+      const expectedRole = selectedRole.toUpperCase();
+      
+      if (!validateRole(actualRole, expectedRole)) {
+        // Role doesn't match - clear tokens that were saved by authService.login
+        await AsyncStorage.multiRemove([
+          STORAGE_KEYS.ACCESS_TOKEN,
+          STORAGE_KEYS.REFRESH_TOKEN,
+          STORAGE_KEYS.USER,
+        ]);
+        
+        Alert.alert(
+          'Vai trò không khớp',
+          `Tài khoản này có vai trò "${getRoleDisplayName(actualRole)}" nhưng bạn đã chọn "${getRoleDisplayName(expectedRole)}".\n\nVui lòng chọn lại vai trò đúng và đăng nhập lại.`,
+          [{ text: 'OK' }]
+        );
+        setLoading(false);
+        return; // Don't proceed with login - user stays on login screen
+      }
+      
+      // Role matches - proceed with normal login flow via context
+      // The tokens are already saved by authService.login, so we just need to set user state
       await login({
         email: formData.email,
         password: formData.password,
       });
+      
       // Navigation will happen automatically via AuthContext
     } catch (error: any) {
+      // If error occurred, make sure to clear any tokens that might have been saved
+      try {
+        await AsyncStorage.multiRemove([
+          STORAGE_KEYS.ACCESS_TOKEN,
+          STORAGE_KEYS.REFRESH_TOKEN,
+          STORAGE_KEYS.USER,
+        ]);
+      } catch {
+        // Ignore cleanup errors
+      }
+      
       let errorMessage = 'Đăng nhập thất bại. Vui lòng thử lại.';
       
       if (error?.response?.data?.message) {
@@ -84,7 +190,7 @@ const LoginScreen: React.FC = () => {
   };
 
   const handleForgotPassword = () => {
-    // TODO: Navigate to forgot password screen
+    navigation.navigate('ForgotPassword');
   };
 
   return (
@@ -115,23 +221,123 @@ const LoginScreen: React.FC = () => {
                 <Text variant="bodyMedium" style={styles.roleLabel}>
                   Chọn vai trò đăng nhập
                 </Text>
-                <View style={styles.roleButtons}>
-                  <Button
-                    mode={selectedRole === 'PARENT' ? 'contained' : 'outlined'}
+                <View style={styles.roleCardsContainer}>
+                  {/* Phụ huynh */}
+                  <TouchableOpacity
+                    style={[
+                      styles.roleCard,
+                      selectedRole === 'PARENT' && styles.roleCardActive,
+                    ]}
                     onPress={() => setSelectedRole('PARENT')}
-                    style={[styles.roleButton, selectedRole === 'PARENT' && styles.roleButtonActive]}
-                    compact
+                    activeOpacity={0.7}
                   >
-                    Phụ huynh
-                  </Button>
-                  <Button
-                    mode={selectedRole === 'MANAGER' ? 'contained' : 'outlined'}
+                    <View
+                      style={[
+                        styles.roleIconContainer,
+                        selectedRole === 'PARENT' && styles.roleIconContainerActive,
+                      ]}
+                    >
+                      <MaterialIcons
+                        name="family-restroom"
+                        size={28}
+                        color={selectedRole === 'PARENT' ? COLORS.SURFACE : COLORS.PRIMARY}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.roleCardTitle,
+                        selectedRole === 'PARENT' && styles.roleCardTitleActive,
+                      ]}
+                    >
+                      Phụ huynh
+                    </Text>
+                    <Text style={styles.roleCardDescription}>
+                      Quản lý con và lịch học
+                    </Text>
+                    {selectedRole === 'PARENT' && (
+                      <View style={styles.roleCheckmark}>
+                        <MaterialIcons name="check-circle" size={20} color={COLORS.SURFACE} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Nhân viên */}
+                  <TouchableOpacity
+                    style={[
+                      styles.roleCard,
+                      selectedRole === 'STAFF' && styles.roleCardActive,
+                    ]}
+                    onPress={() => setSelectedRole('STAFF')}
+                    activeOpacity={0.7}
+                  >
+                    <View
+                      style={[
+                        styles.roleIconContainer,
+                        selectedRole === 'STAFF' && styles.roleIconContainerActive,
+                      ]}
+                    >
+                      <MaterialIcons
+                        name="work"
+                        size={28}
+                        color={selectedRole === 'STAFF' ? COLORS.SURFACE : COLORS.PRIMARY}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.roleCardTitle,
+                        selectedRole === 'STAFF' && styles.roleCardTitleActive,
+                      ]}
+                    >
+                      Nhân viên
+                    </Text>
+                    <Text style={styles.roleCardDescription}>
+                      Xem lịch và điểm danh
+                    </Text>
+                    {selectedRole === 'STAFF' && (
+                      <View style={styles.roleCheckmark}>
+                        <MaterialIcons name="check-circle" size={20} color={COLORS.SURFACE} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Quản lý */}
+                  <TouchableOpacity
+                    style={[
+                      styles.roleCard,
+                      selectedRole === 'MANAGER' && styles.roleCardActive,
+                    ]}
                     onPress={() => setSelectedRole('MANAGER')}
-                    style={[styles.roleButton, selectedRole === 'MANAGER' && styles.roleButtonActive]}
-                    compact
+                    activeOpacity={0.7}
                   >
-                    Quản lý
-                  </Button>
+                    <View
+                      style={[
+                        styles.roleIconContainer,
+                        selectedRole === 'MANAGER' && styles.roleIconContainerActive,
+                      ]}
+                    >
+                      <MaterialIcons
+                        name="admin-panel-settings"
+                        size={28}
+                        color={selectedRole === 'MANAGER' ? COLORS.SURFACE : COLORS.PRIMARY}
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.roleCardTitle,
+                        selectedRole === 'MANAGER' && styles.roleCardTitleActive,
+                      ]}
+                    >
+                      Quản lý
+                    </Text>
+                    <Text style={styles.roleCardDescription}>
+                      Quản lý hệ thống
+                    </Text>
+                    {selectedRole === 'MANAGER' && (
+                      <View style={styles.roleCheckmark}>
+                        <MaterialIcons name="check-circle" size={20} color={COLORS.SURFACE} />
+                      </View>
+                    )}
+                  </TouchableOpacity>
                 </View>
                 <Text variant="labelSmall" style={styles.roleHint}>
                   Lưu ý: Quyền truy cập sẽ dựa trên role thật trong tài khoản của bạn.
@@ -237,23 +443,79 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.LG,
   },
   roleLabel: {
-    marginBottom: SPACING.SM,
+    marginBottom: SPACING.MD,
     color: COLORS.TEXT_PRIMARY,
+    fontWeight: '600',
+    textAlign: 'center',
   },
-  roleButtons: {
+  roleCardsContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: SPACING.SM,
     marginBottom: SPACING.SM,
-  } as any,
-  roleButton: {
-    flex: 1,
-    borderRadius: 8,
+    justifyContent: 'space-between',
   },
-  roleButtonActive: {
+  roleCard: {
+    flex: 1,
+    minWidth: '30%',
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    borderWidth: 2,
+    borderColor: COLORS.BORDER,
+    alignItems: 'center',
+    position: 'relative',
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  roleCardActive: {
     borderColor: COLORS.PRIMARY,
+    backgroundColor: COLORS.PRIMARY,
+    shadowColor: COLORS.PRIMARY,
+    shadowOpacity: 0.3,
+    elevation: 4,
+  },
+  roleIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.PRIMARY + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  roleIconContainerActive: {
+    backgroundColor: COLORS.SURFACE + '40',
+  },
+  roleCardTitle: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS,
+    textAlign: 'center',
+  },
+  roleCardTitleActive: {
+    color: COLORS.SURFACE,
+  },
+  roleCardDescription: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  roleCheckmark: {
+    position: 'absolute',
+    top: SPACING.XS,
+    right: SPACING.XS,
   },
   roleHint: {
     color: COLORS.TEXT_SECONDARY,
+    textAlign: 'center',
+    marginTop: SPACING.SM,
+    fontSize: 11,
   },
   input: {
     marginBottom: SPACING.MD,

@@ -95,6 +95,30 @@ class StudentSlotService {
       return null;
     }
   }
+
+  /**
+   * Get staff slots (slots assigned to current staff)
+   * Endpoint: GET /api/StudentSlot/staff-slots
+   * @param params Query parameters: pageIndex, pageSize, branchSlotId, date, upcomingOnly
+   * @returns Paginated response with student slot items assigned to staff
+   */
+  async getStaffSlots(params?: {
+    pageIndex?: number;
+    pageSize?: number;
+    branchSlotId?: string;
+    date?: string;
+    upcomingOnly?: boolean;
+  }): Promise<PaginatedResponse<StudentSlotResponse>> {
+    try {
+      const response = await axiosInstance.get<PaginatedResponse<StudentSlotResponse>>(
+        '/api/StudentSlot/staff-slots',
+        { params }
+      );
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch staff slots';
+    }
+  }
 }
 
 export const studentSlotService = new StudentSlotService();

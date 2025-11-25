@@ -29,24 +29,7 @@ import childrenService from '../../services/childrenService';
 import studentLevelService from '../../services/studentLevelService';
 import schoolService, { SchoolResponse } from '../../services/schoolService';
 import parentProfileService, { CurrentUserResponse } from '../../services/parentProfileService';
-
-// Inline constants
-const COLORS = {
-  PRIMARY: '#1976D2',
-  PRIMARY_DARK: '#1565C0',
-  PRIMARY_LIGHT: '#42A5F5',
-  SECONDARY: '#2196F3',
-  ACCENT: '#64B5F6',
-  BACKGROUND: '#F5F7FA',
-  SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#1A1A1A',
-  TEXT_SECONDARY: '#6B7280',
-  BORDER: '#E5E7EB',
-  SUCCESS: '#4CAF50',
-  WARNING: '#FF9800',
-  ERROR: '#F44336',
-  SHADOW: '#000000',
-};
+import { COLORS } from '../../constants';
 
 const SPACING = {
   XS: 4,
@@ -830,11 +813,10 @@ const ChildrenManagementScreen: React.FC = () => {
   };
 
   const handleClasses = (child: StudentResponse) => {
-    Alert.alert(
-      'Lớp học',
-      `${child.name}\nTrường: ${child.schoolName || 'Chưa có'}\nCấp độ: ${child.studentLevelName || 'Chưa có'}`,
-      [{ text: 'Đóng', style: 'default' }]
-    );
+    navigation.navigate('StudentClasses', {
+      studentId: child.id,
+      studentName: child.name,
+    });
   };
 
   const handleViewPackages = (child: StudentResponse) => {

@@ -122,12 +122,14 @@ const authService = {
         role: normalizedRole || 'USER',
       };
 
-      // Allow parents and managers to sign in
+      // Allow 3 roles: USER (Parent), STAFF, MANAGER
       const roleStr = (userInfo.role || '').toUpperCase();
       const isAllowed =
         roleStr === 'USER' ||
         roleStr === 'PARENT' ||
         roleStr.includes('PARENT') ||
+        roleStr === 'STAFF' ||
+        roleStr.includes('STAFF') ||
         roleStr === 'MANAGER' ||
         roleStr.includes('MANAGER') ||
         roleStr === 'ADMIN';
@@ -311,6 +313,112 @@ const authService = {
       return !!token;
     } catch (error) {
       return false;
+    }
+  },
+
+  /**
+   * Send reset code to email
+   * @param email - User email address
+   * @returns Success message
+   */
+  sendResetCode: async (email: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const response = await axiosInstance.post('/api/Auth/send-reset-code', {
+        email: email.trim(),
+      });
+
+      return {
+        success: true,
+        message: response.data?.message || 'Mã đặt lại mật khẩu đã được gửi đến email của bạn.',
+      };
+    } catch (error: any) {
+      let errorMessage = 'Không thể gửi mã đặt lại mật khẩu. Vui lòng thử lại.';
+      
+      if (error.response) {
+        const errorData = error.response.data;
+        
+        if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData?.message) {
+          errorMessage = errorData.message;
+        } else if (errorData?.error) {
+          errorMessage = errorData.error;
+        } else if (errorData?.title) {
+          errorMessage = errorData.title;
+        }
+        
+        if (error.response.status === 404) {
+          errorMessage = 'Email không tồn tại trong hệ thống.';
+        } else if (error.response.status === 400) {
+          errorMessage = errorMessage || 'Email không hợp lệ.';
+        } else if (error.response.status >= 500) {
+          errorMessage = 'Lỗi server. Vui lòng thử lại sau.';
+        }
+      } else if (error.request) {
+        errorMessage = 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Reset password using code
+   * @param email - User email address
+   * @param code - 5-character reset code
+   * @param newPassword - New password
+   * @returns Success message
+   */
+  resetPasswordWithCode: async (
+    email: string,
+    code: string,
+    newPassword: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const response = await axiosInstance.post('/api/Auth/reset-password-with-code', {
+        email: email.trim(),
+        code: code.trim(),
+        newPassword: newPassword.trim(),
+      });
+
+      return {
+        success: true,
+        message: response.data?.message || 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.',
+      };
+    } catch (error: any) {
+      let errorMessage = 'Không thể đặt lại mật khẩu. Vui lòng thử lại.';
+      
+      if (error.response) {
+        const errorData = error.response.data;
+        
+        if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData?.message) {
+          errorMessage = errorData.message;
+        } else if (errorData?.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData?.title) {
+          errorMessage = errorData.title;
+        } else if (errorData?.error) {
+          errorMessage = errorData.error;
+        }
+        
+        if (error.response.status === 400) {
+          errorMessage = errorMessage || 'Mã đặt lại không đúng hoặc đã hết hạn. Vui lòng thử lại.';
+        } else if (error.response.status === 404) {
+          errorMessage = 'Email không tồn tại trong hệ thống.';
+        } else if (error.response.status >= 500) {
+          errorMessage = 'Lỗi server. Vui lòng thử lại sau.';
+        }
+      } else if (error.request) {
+        errorMessage = 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
     }
   },
 };

@@ -239,8 +239,11 @@ export interface PaginatedResponse<T> {
 // Navigation Types
 export type RootStackParamList = {
   Login: undefined;
+  ForgotPassword: undefined;
   Main: undefined;
   StaffMain: undefined;
+  ManagerHome: undefined;
+  ManagerRegisterParent: undefined;
   TopUp: undefined;
   Settings: undefined;
   Notifications: undefined;
@@ -250,15 +253,36 @@ export type RootStackParamList = {
     branchName?: string;
     studentLevelName?: string;
   };
+  StudentClasses: {
+    studentId: string;
+    studentName: string;
+  };
+  StudentActivities: {
+    studentId: string;
+    studentName: string;
+    studentSlotId: string;
+    slotDate?: string;
+    slotTimeframe?: string;
+  };
   TransactionHistory: undefined;
   MySubscriptions: undefined;
   OrderHistory: undefined;
   Schools: undefined;
+  CreateActivity: {
+    studentSlotId: string;
+    studentName: string;
+    slotDate?: string;
+    slotTimeframe?: string;
+  };
+  EditActivity: {
+    activityId: string;
+  };
 };
 
 export type StaffStackParamList = {
   ManagerHome: undefined;
   ManagerRegisterParent: undefined;
+  StaffSchedule: undefined;
 };
 
 export type MainTabParamList = {
@@ -268,6 +292,12 @@ export type MainTabParamList = {
   Children: undefined;
   Services: undefined;
   Profile: undefined;
+};
+
+export type StaffTabParamList = {
+  ActivityTypes: undefined;
+  Activities: undefined;
+  StaffSchedule: undefined;
 };
 
 export type WalletStackParamList = {

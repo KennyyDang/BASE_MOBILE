@@ -40,7 +40,7 @@ module.exports = {
     scheme: "baseapp",
     splash: {
       resizeMode: "contain",
-      backgroundColor: "#03A9F4"
+      backgroundColor: "#5cbdb9"
     },
     assetBundlePatterns: [
       "**/*"
@@ -49,7 +49,7 @@ module.exports = {
       [
         "expo-notifications",
         {
-          color: "#03A9F4"
+          color: "#5cbdb9"
         }
       ]
     ],
@@ -68,7 +68,7 @@ module.exports = {
     },
     android: {
       adaptiveIcon: {
-        backgroundColor: "#03A9F4"
+        backgroundColor: "#5cbdb9"
       },
       package: "com.brightway.base",
       googleServicesFile: "./google-services.json",
@@ -93,7 +93,7 @@ module.exports = {
       ]
     },
     notification: {
-      color: "#03A9F4",
+      color: "#5cbdb9",
       androidMode: "default",
       androidCollapsedTitle: "#{unread_notifications} thong bao moi"
     },

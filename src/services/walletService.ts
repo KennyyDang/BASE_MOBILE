@@ -112,6 +112,69 @@ class WalletService {
       throw error.response?.data || error.message || 'Failed to fetch deposits';
     }
   }
+
+  /**
+   * Get deposit detail by ID
+   * Endpoint: GET /api/Deposit/{id}
+   * @param depositId Deposit ID (UUID)
+   * @returns Deposit detail with checkoutUrl if pending
+   */
+  async getDepositById(depositId: string): Promise<DepositResponse> {
+    try {
+      const response = await axiosInstance.get<DepositResponse>(`/api/Deposit/${depositId}`);
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch deposit detail';
+    }
+  }
+
+  /**
+   * Cancel a pending deposit
+   * Endpoint: POST /api/Deposit/{id}/cancel
+   * @param depositId Deposit ID (UUID)
+   * @returns Success response
+   */
+  async cancelDeposit(depositId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const response = await axiosInstance.post(`/api/Deposit/${depositId}/cancel`);
+      return {
+        success: true,
+        message: response.data?.message || 'Đã hủy giao dịch thành công',
+      };
+    } catch (error: any) {
+      let errorMessage = 'Không thể hủy giao dịch. Vui lòng thử lại.';
+      
+      if (error.response) {
+        const errorData = error.response.data;
+        
+        if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData?.message) {
+          errorMessage = errorData.message;
+        } else if (errorData?.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData?.title) {
+          errorMessage = errorData.title;
+        }
+        
+        if (error.response.status === 400) {
+          errorMessage = errorMessage || 'Không thể hủy giao dịch này.';
+        } else if (error.response.status === 404) {
+          errorMessage = 'Không tìm thấy giao dịch.';
+        } else if (error.response.status === 401) {
+          errorMessage = 'Bạn không có quyền hủy giao dịch này.';
+        } else if (error.response.status >= 500) {
+          errorMessage = 'Lỗi server. Vui lòng thử lại sau.';
+        }
+      } else if (error.request) {
+        errorMessage = 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
+    }
+  }
 }
 
 export const walletService = new WalletService();
