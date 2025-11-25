@@ -6,25 +6,11 @@ import { createDrawerNavigator } from '@react-navigation/drawer';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { DefaultTheme } from 'react-native-paper';
-import { Linking } from 'react-native';
+import { Linking, TouchableOpacity, Alert } from 'react-native';
 
-import { RootStackParamList, MainTabParamList } from '../types';
+import { RootStackParamList, MainTabParamList, StaffTabParamList } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-
-// Inline constants
-const COLORS = {
-  PRIMARY: '#1976D2',
-  PRIMARY_DARK: '#1565C0',
-  PRIMARY_LIGHT: '#42A5F5',
-  SECONDARY: '#2196F3',
-  ACCENT: '#64B5F6',
-  BACKGROUND: '#F5F7FA',
-  SURFACE: '#FFFFFF',
-  ERROR: '#F44336',
-  TEXT_PRIMARY: '#1A1A1A',
-  TEXT_SECONDARY: '#6B7280',
-  BORDER: '#E5E7EB',
-};
+import { COLORS } from '../constants';
 
 
 // Custom theme for React Native Paper
@@ -48,8 +34,14 @@ const theme = {
 
 // Import screens
 import LoginScreen from '../screens/auth/LoginScreen';
-import ManagerHomeScreen from '../screens/staff/ManagerHomeScreen';
-import ManagerRegisterParentScreen from '../screens/staff/ManagerRegisterParentScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ManagerHomeScreen from '../screens/manager/ManagerHomeScreen';
+import ManagerRegisterParentScreen from '../screens/manager/ManagerRegisterParentScreen';
+import StaffScheduleScreen from '../screens/staff/StaffScheduleScreen';
+import ActivityTypesScreen from '../screens/staff/ActivityTypesScreen';
+import ActivitiesScreen from '../screens/staff/ActivitiesScreen';
+import CreateActivityScreen from '../screens/staff/CreateActivityScreen';
+import EditActivityScreen from '../screens/staff/EditActivityScreen';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ScheduleScreen from '../screens/main/ScheduleScreen';
 import WalletScreen from '../screens/main/WalletScreen';
@@ -61,6 +53,7 @@ import SettingsScreen from '../screens/main/SettingsScreen';
 import NotificationScreen from '../screens/main/NotificationScreen';
 import StudentPackagesScreen from '../screens/main/StudentPackagesScreen';
 import StudentClassesScreen from '../screens/main/StudentClassesScreen';
+import StudentActivityScreen from '../screens/main/StudentActivityScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import MySubscriptionsScreen from '../screens/main/MySubscriptionsScreen';
 import ServicesScreen from '../screens/main/ServicesScreen';
@@ -73,6 +66,7 @@ import { useNavigation } from '@react-navigation/native';
 const Stack = createStackNavigator<RootStackParamList>();
 const StaffStack = createStackNavigator<any>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const StaffTab = createBottomTabNavigator<StaffTabParamList>();
 
 // Component for notification header button with badge
 const NotificationHeaderButton = () => {
@@ -87,6 +81,128 @@ const NotificationHeaderButton = () => {
       size={24}
       color={COLORS.SURFACE}
     />
+  );
+};
+
+// Component for logout header button
+const LogoutHeaderButton = () => {
+  const { logout } = useAuth();
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Xác nhận đăng xuất',
+      'Bạn có chắc chắn muốn đăng xuất?',
+      [
+        {
+          text: 'Hủy',
+          style: 'cancel',
+        },
+        {
+          text: 'Đăng xuất',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+            } catch (error) {
+              Alert.alert('Lỗi', 'Không thể đăng xuất. Vui lòng thử lại.');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={handleLogout}
+      style={{
+        marginRight: 16,
+        padding: 8,
+      }}
+      activeOpacity={0.7}
+    >
+      <MaterialIcons name="logout" size={24} color={COLORS.SURFACE} />
+    </TouchableOpacity>
+  );
+};
+
+// Staff Tab Navigator for staff and managers
+const StaffTabNavigator = () => {
+  return (
+    <StaffTab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName: string;
+
+          switch (route.name) {
+            case 'ActivityTypes':
+              iconName = 'category';
+              break;
+            case 'Activities':
+              iconName = 'event-note';
+              break;
+            case 'StaffSchedule':
+              iconName = 'schedule';
+              break;
+            default:
+              iconName = 'help-outline';
+          }
+
+          return <MaterialIcons name={iconName as any} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: COLORS.PRIMARY,
+        tabBarInactiveTintColor: COLORS.TEXT_SECONDARY,
+        tabBarStyle: {
+          backgroundColor: COLORS.SURFACE,
+          borderTopColor: COLORS.BORDER,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '600',
+        },
+        headerStyle: {
+          backgroundColor: COLORS.PRIMARY,
+          elevation: 4,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
+        },
+        headerTintColor: COLORS.SURFACE,
+        headerTitleStyle: {
+          fontWeight: 'bold',
+          fontSize: 18,
+        },
+        headerTitleAlign: 'center',
+        headerRight: () => <LogoutHeaderButton />,
+      })}
+    >
+      <StaffTab.Screen
+        name="ActivityTypes"
+        component={ActivityTypesScreen}
+        options={{
+          title: 'Loại Hoạt Động',
+          headerTitle: 'Loại Hoạt Động',
+        }}
+      />
+      <StaffTab.Screen
+        name="Activities"
+        component={ActivitiesScreen}
+        options={{
+          title: 'Hoạt Động',
+          headerTitle: 'Hoạt Động',
+        }}
+      />
+      <StaffTab.Screen
+        name="StaffSchedule"
+        component={StaffScheduleScreen}
+        options={{
+          title: 'Lịch Làm Việc',
+          headerTitle: 'Lịch Làm Việc',
+        }}
+      />
+    </StaffTab.Navigator>
   );
 };
 
@@ -289,56 +405,92 @@ const AppNavigator = () => {
         >
         {!isAuthenticated ? (
           // Auth Stack
-          <Stack.Screen 
-            name="Login"
-            component={LoginScreen}
-            options={{
-              title: 'Đăng nhập',
-              headerShown: false,
-            }}
-          />
+          <>
+            <Stack.Screen 
+              name="Login"
+              component={LoginScreen}
+              options={{
+                title: 'Đăng nhập',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen 
+              name="ForgotPassword"
+              component={ForgotPasswordScreen}
+              options={{
+                title: 'Quên mật khẩu',
+                headerShown: false,
+              }}
+            />
+          </>
         ) : (
           // Authenticated area
           <>
-            {/* Route by role: MANAGER -> StaffMain, others -> Main */}
-            {((user?.role || '').toUpperCase().includes('MANAGER')) ? (
-              <Stack.Screen
-                name="StaffMain"
-                options={{ headerShown: false }}
-              >
-                {() => (
-                  <StaffStack.Navigator
-                    screenOptions={{
-                      headerStyle: {
-                        backgroundColor: COLORS.PRIMARY,
-                      },
-                      headerTintColor: COLORS.SURFACE,
-                      headerTitleStyle: { fontWeight: 'bold' },
-                      headerTitleAlign: 'center',
-                    }}
-                  >
-                    <StaffStack.Screen
+            {/* Route by role: STAFF -> StaffMain, MANAGER -> ManagerHome, USER/PARENT -> Main */}
+            {(() => {
+              const userRole = (user?.role || '').toUpperCase();
+              const isManager = userRole.includes('MANAGER') || userRole === 'ADMIN';
+              const isStaff = userRole.includes('STAFF') && !isManager;
+              const isParent = userRole.includes('PARENT') || userRole.includes('USER');
+              
+              if (isManager) {
+                // Manager chỉ có quyền tạo tài khoản qua CCCD
+                return (
+                  <>
+                    <Stack.Screen
                       name="ManagerHome"
                       component={ManagerHomeScreen}
-                      options={{ title: 'Quản lý' }}
+                      options={{ 
+                        title: 'Quản lý',
+                        headerStyle: {
+                          backgroundColor: COLORS.PRIMARY,
+                        },
+                        headerTintColor: COLORS.SURFACE,
+                        headerTitleStyle: { fontWeight: 'bold' },
+                        headerTitleAlign: 'center',
+                      }}
                     />
-                    <StaffStack.Screen
+                    <Stack.Screen
                       name="ManagerRegisterParent"
                       component={ManagerRegisterParentScreen}
-                      options={{ title: 'Đăng ký phụ huynh' }}
+                      options={{ 
+                        title: 'Đăng ký phụ huynh',
+                        headerStyle: {
+                          backgroundColor: COLORS.PRIMARY,
+                        },
+                        headerTintColor: COLORS.SURFACE,
+                        headerTitleStyle: { fontWeight: 'bold' },
+                        headerTitleAlign: 'center',
+                      }}
                     />
-                  </StaffStack.Navigator>
-                )}
-              </Stack.Screen>
-            ) : (
-              <Stack.Screen 
-                name="Main" 
-                component={MainTabNavigator}
-                options={{
-                  headerShown: false,
-                }}
-              />
-            )}
+                  </>
+                );
+              } else if (isStaff) {
+                // Staff có quyền truy cập các chức năng làm việc
+                return (
+                  <>
+                    <Stack.Screen
+                      name="StaffMain"
+                      options={{ headerShown: false }}
+                    >
+                      {() => <StaffTabNavigator />}
+                    </Stack.Screen>
+                  </>
+                );
+              } else if (isParent) {
+                // Parent có quyền truy cập các chức năng phụ huynh
+                return (
+                  <Stack.Screen 
+                    name="Main" 
+                    component={MainTabNavigator}
+                    options={{
+                      headerShown: false,
+                    }}
+                  />
+                );
+              }
+              return null;
+            })()}
             <Stack.Screen 
               name="Schools" 
               component={SchoolsScreen}
@@ -388,6 +540,14 @@ const AppNavigator = () => {
               }}
             />
             <Stack.Screen
+              name="StudentActivities"
+              component={StudentActivityScreen}
+              options={{
+                title: 'Hoạt động',
+                headerTitle: 'Hoạt động của con',
+              }}
+            />
+            <Stack.Screen
               name="TransactionHistory"
               component={TransactionHistoryScreen}
               options={{
@@ -409,6 +569,22 @@ const AppNavigator = () => {
               options={{
                 title: 'Lịch sử đơn hàng',
                 headerTitle: 'Lịch sử đơn hàng',
+              }}
+            />
+            <Stack.Screen
+              name="CreateActivity"
+              component={CreateActivityScreen}
+              options={{
+                title: 'Tạo hoạt động',
+                headerTitle: 'Tạo hoạt động cho học sinh',
+              }}
+            />
+            <Stack.Screen
+              name="EditActivity"
+              component={EditActivityScreen}
+              options={{
+                title: 'Chỉnh sửa hoạt động',
+                headerTitle: 'Chỉnh sửa hoạt động',
               }}
             />
           </>

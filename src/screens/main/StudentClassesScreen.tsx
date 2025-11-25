@@ -17,25 +17,9 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import studentSlotService from '../../services/studentSlotService';
 import { RootStackParamList } from '../../types';
 import { StudentSlotResponse } from '../../types/api';
+import { COLORS } from '../../constants';
 
 type StudentClassesRouteProp = RouteProp<RootStackParamList, 'StudentClasses'>;
-
-const COLORS = {
-  PRIMARY: '#1976D2',
-  PRIMARY_DARK: '#1565C0',
-  PRIMARY_LIGHT: '#42A5F5',
-  SECONDARY: '#2196F3',
-  ACCENT: '#64B5F6',
-  BACKGROUND: '#F5F7FA',
-  SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#1A1A1A',
-  TEXT_SECONDARY: '#6B7280',
-  BORDER: '#E5E7EB',
-  SUCCESS: '#4CAF50',
-  WARNING: '#FF9800',
-  ERROR: '#F44336',
-  SHADOW: '#000000',
-};
 
 const SPACING = {
   XS: 4,
@@ -217,16 +201,13 @@ const StudentClassesScreen: React.FC = () => {
   }, [fetchClasses, pagination, loadingMore]);
 
   const handleViewDetail = (classItem: StudentSlotResponse) => {
-    Alert.alert(
-      'Chi tiết lớp học',
-      `Lớp học: ${classItem.timeframe?.name || 'Chưa có tên'}\n` +
-        `Thời gian: ${formatTime(classItem.timeframe?.startTime)} - ${formatTime(classItem.timeframe?.endTime)}\n` +
-        `Ngày: ${formatDateDisplay(classItem.date)}\n` +
-        `Phòng: ${classItem.room?.roomName || 'Chưa có thông tin'}\n` +
-        `Chi nhánh: ${classItem.branchSlot?.branchName || 'Chưa có thông tin'}\n` +
-        `Trạng thái: ${getStatusLabel(classItem.status)}${classItem.parentNote ? `\nGhi chú: ${classItem.parentNote}` : ''}`,
-      [{ text: 'Đóng', style: 'default' }]
-    );
+    navigation.navigate('StudentActivities', {
+      studentId,
+      studentName,
+      studentSlotId: classItem.id,
+      slotDate: formatDateDisplay(classItem.date),
+      slotTimeframe: classItem.timeframe?.name || undefined,
+    });
   };
 
   // Sắp xếp: lớp sắp tới trước, đã qua sau

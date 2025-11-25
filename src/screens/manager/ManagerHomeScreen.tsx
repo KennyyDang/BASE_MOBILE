@@ -6,11 +6,16 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const ManagerHomeScreen: React.FC = () => {
 	const navigation = useNavigation<any>();
-	const { logout } = useAuth();
+	const { logout, user } = useAuth();
+	
+	const userRole = (user?.role || '').toUpperCase();
+	const isManager = userRole.includes('MANAGER') || userRole === 'ADMIN';
 
 	return (
 		<View style={styles.container}>
-			<Text variant="titleLarge" style={styles.title}>Trang quản lý</Text>
+			<Text variant="titleLarge" style={styles.title}>
+				Trang quản lý
+			</Text>
 			<Text style={styles.subtitle}>Tạo tài khoản phụ huynh bằng OCR CCCD</Text>
 			<Button
 				mode="contained"

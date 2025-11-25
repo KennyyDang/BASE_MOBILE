@@ -24,24 +24,7 @@ import {
   StudentSlotResponse,
 } from '../../types/api';
 import packageService from '../../services/packageService';
-
-const COLORS = {
-  PRIMARY: '#1976D2',
-  PRIMARY_DARK: '#1565C0',
-  PRIMARY_LIGHT: '#42A5F5',
-  SECONDARY: '#2196F3',
-  ACCENT: '#64B5F6',
-  BACKGROUND: '#F5F7FA',
-  SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#1A1A1A',
-  TEXT_SECONDARY: '#6B7280',
-  BORDER: '#E5E7EB',
-  SUCCESS_BG: '#E8F5E9',
-  ERROR: '#F44336',
-  WARNING_BG: '#FFF3E0',
-  INFO_BG: '#E3F2FD',
-  SHADOW: '#000000',
-};
+import { COLORS } from '../../constants';
 
 const SPACING = {
   XS: 4,
@@ -1158,11 +1141,36 @@ const ScheduleScreen: React.FC = () => {
                       ) : null}
 
                       {staffCount > 0 ? (
-                        <View style={styles.staffBadge}>
-                          <MaterialIcons name="groups" size={18} color={COLORS.SECONDARY} />
-                          <Text style={styles.staffBadgeText}>
-                            {staffCount} nhân sự phụ trách
-                          </Text>
+                        <View style={styles.staffSection}>
+                          <View style={styles.staffHeader}>
+                            <MaterialIcons name="groups" size={18} color={COLORS.SECONDARY} />
+                            <Text style={styles.staffHeaderText}>
+                              Nhân viên phụ trách ({staffCount})
+                            </Text>
+                          </View>
+                          {slot.staff?.map((staff, index) => {
+                            const staffName = staff.staffName || staff.fullName || 'Chưa có tên';
+                            const staffRole = staff.staffRole || staff.role || 'Chưa có vai trò';
+                            const roomName = staff.roomName || null;
+                            
+                            return (
+                              <View key={staff.staffId || staff.id || index} style={styles.staffItem}>
+                                <View style={styles.staffItemContent}>
+                                  <MaterialIcons name="person" size={16} color={COLORS.PRIMARY} />
+                                  <View style={styles.staffItemInfo}>
+                                    <Text style={styles.staffItemName}>{staffName}</Text>
+                                    <Text style={styles.staffItemRole}>{staffRole}</Text>
+                                    {roomName && (
+                                      <View style={styles.staffItemRoom}>
+                                        <MaterialIcons name="meeting-room" size={14} color={COLORS.TEXT_SECONDARY} />
+                                        <Text style={styles.staffItemRoomText}>{roomName}</Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                </View>
+                              </View>
+                            );
+                          })}
                         </View>
                       ) : null}
 
@@ -1709,21 +1717,55 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: SPACING.SM,
   },
-  staffBadge: {
-    alignSelf: 'flex-start',
+  staffSection: {
+    marginTop: SPACING.SM,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.BORDER,
+    paddingTop: SPACING.SM,
+  },
+  staffHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.WARNING_BG,
-    paddingHorizontal: SPACING.SM,
-    paddingVertical: SPACING.XS,
-    borderRadius: 14,
-    marginTop: SPACING.SM,
+    marginBottom: SPACING.SM,
   },
-  staffBadgeText: {
+  staffHeaderText: {
     fontSize: FONTS.SIZES.SM,
-    color: COLORS.SECONDARY,
+    color: COLORS.TEXT_PRIMARY,
     fontWeight: '600',
     marginLeft: SPACING.XS,
+  },
+  staffItem: {
+    marginBottom: SPACING.SM,
+    paddingLeft: SPACING.MD,
+  },
+  staffItemContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  staffItemInfo: {
+    flex: 1,
+    marginLeft: SPACING.SM,
+  },
+  staffItemName: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    fontWeight: '600',
+  },
+  staffItemRole: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: 2,
+  },
+  staffItemRoom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  staffItemRoomText: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginLeft: 4,
+    fontStyle: 'italic',
   },
   roomsToggleButton: {
     marginTop: SPACING.SM,

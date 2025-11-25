@@ -98,6 +98,12 @@ export interface BranchSlotTypeResponse {
 }
 
 export interface BranchSlotStaffResponse {
+  staffId?: string;
+  staffName?: string | null;
+  staffRole?: string | null;
+  roomId?: string | null;
+  roomName?: string | null;
+  // Legacy fields for backward compatibility
   id?: string;
   fullName?: string | null;
   role?: string | null;
@@ -255,6 +261,8 @@ export interface DepositResponse {
   payOSTransactionId?: string | null;
   userEmail?: string | null;
   userName?: string | null;
+  checkoutUrl?: string | null; // URL để tiếp tục thanh toán nếu status là Pending
+  qrCodeUrl?: string | null; // QR code URL nếu có
 }
 
 // Packages
@@ -412,4 +420,28 @@ export interface TransferSmartResponse {
   success: boolean;
   message: string;
 }
+
+// Activity Types
+export interface ActivityType {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface ActivityResponse {
+  id: string;
+  note: string;
+  imageUrl: string;
+  createdDate: string;
+  createdById: string;
+  staffName: string;
+  activityTypeId: string;
+  activityType: ActivityType;
+  studentSlotId: string;
+  isViewed: boolean;
+  viewedTime: string | null;
+  createdTime: string;
+}
+
+export interface MyChildrenActivitiesResponse extends PaginatedResponse<ActivityResponse> {}
 

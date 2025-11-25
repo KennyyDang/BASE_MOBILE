@@ -11,20 +11,59 @@ export const APP_CONFIG = {
 };
 
 export const COLORS = {
-  PRIMARY: '#1976D2', // Modern Blue 700 - Professional and modern
-  PRIMARY_DARK: '#1565C0', // Blue 800 - For headers and important elements
-  PRIMARY_LIGHT: '#42A5F5', // Blue 400 - For accents and highlights
-  SECONDARY: '#2196F3', // Blue 500 - Secondary actions
-  ACCENT: '#64B5F6', // Blue 300 - Accent color for special elements
-  BACKGROUND: '#F5F7FA', // Slightly cooler background
-  SURFACE: '#FFFFFF',
-  ERROR: '#F44336',
-  WARNING: '#FF9800',
-  SUCCESS: '#4CAF50',
-  INFO: '#1976D2',
-  TEXT_PRIMARY: '#1A1A1A', // Slightly softer black
-  TEXT_SECONDARY: '#6B7280', // Modern gray
-  BORDER: '#E5E7EB', // Softer border color
+  // Primary Color Palette - Teal/Mint Green (Main Brand Color) - Đồng bộ với web
+  PRIMARY: '#5cbdb9', // Teal/Mint Green - Main brand color
+  PRIMARY_DARK: '#4a9a96', // Darker teal for important elements
+  PRIMARY_LIGHT: '#7dd3cf', // Light teal for accents and highlights
+  PRIMARY_50: '#ebf6f5', // Very light teal background
+  PRIMARY_100: '#d4edea', // Light teal background
+  
+  // Secondary Color Palette - Pink (Accent Only) - Đồng bộ với web
+  SECONDARY: '#f5a8b8', // Pink - Secondary actions and buttons
+  SECONDARY_DARK: '#e88a9f', // Darker pink
+  SECONDARY_LIGHT: '#fbc4d0', // Light pink
+  SECONDARY_50: '#fbe3e8', // Very light pink background
+  
+  // Accent Color - Teal Green (same as primary)
+  ACCENT: '#f5a8b8', // Pink for top-up button (đồng bộ với web - secondary color)
+  
+  // Background Colors - Đồng bộ với web
+  BACKGROUND: '#ebf6f5', // Light teal background (--bg-tertiary)
+  BACKGROUND_SECONDARY: '#fafafa', // Light gray background (--bg-secondary)
+  SURFACE: '#FFFFFF', // White surface (--bg-primary)
+  
+  // Semantic Colors
+  ERROR: '#ef4444', // Red for errors
+  ERROR_LIGHT: '#f87171',
+  ERROR_DARK: '#dc2626',
+  WARNING: '#f59e0b', // Orange for warnings
+  WARNING_LIGHT: '#fbbf24',
+  WARNING_DARK: '#d97706',
+  SUCCESS: '#5cbdb9', // Teal for success (same as primary)
+  SUCCESS_LIGHT: '#7dd3cf',
+  SUCCESS_DARK: '#4a9a96',
+  INFO: '#5cbdb9', // Teal for info (same as primary)
+  INFO_LIGHT: '#7dd3cf',
+  INFO_DARK: '#4a9a96',
+  
+  // Background colors for semantic states
+  SUCCESS_BG: '#d4edea', // Light teal background for success states
+  INFO_BG: '#d4edea', // Light teal background for info states
+  WARNING_BG: '#fff3e0', // Light orange background for warning states
+  ERROR_BG: '#ffebee', // Light red background for error states
+  
+  // Text Colors - Đồng bộ với web
+  TEXT_PRIMARY: '#2d2d2d', // Dark gray for primary text
+  TEXT_SECONDARY: '#616161', // Medium gray for secondary text
+  TEXT_TERTIARY: '#9e9e9e', // Light gray for tertiary text
+  TEXT_INVERSE: '#ffffff', // White text on dark backgrounds
+  
+  // Border Colors - Đồng bộ với web
+  BORDER: '#ebf6f5', // Light teal border (--border-light)
+  BORDER_MEDIUM: '#e0e0e0', // Medium gray border
+  BORDER_DARK: '#c0c0c0', // Dark gray border
+  
+  // Shadow
   SHADOW: '#000000',
 };
 

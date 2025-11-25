@@ -23,24 +23,7 @@ import { useMyChildren } from '../../hooks/useChildrenApi';
 import { walletService } from '../../services/walletService';
 import { TransferSmartRequest, DepositResponse } from '../../types/api';
 import { MainTabParamList, RootStackParamList } from '../../types';
-
-// Inline constants
-const COLORS = {
-  PRIMARY: '#1976D2',
-  PRIMARY_DARK: '#1565C0',
-  PRIMARY_LIGHT: '#42A5F5',
-  SECONDARY: '#2196F3',
-  ACCENT: '#64B5F6',
-  BACKGROUND: '#F5F7FA',
-  SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#1A1A1A',
-  TEXT_SECONDARY: '#6B7280',
-  BORDER: '#E5E7EB',
-  SUCCESS: '#4CAF50',
-  WARNING: '#FF9800',
-  ERROR: '#F44336',
-  SHADOW: '#000000',
-};
+import { COLORS } from '../../constants';
 
 const SPACING = {
   XS: 4,
@@ -751,7 +734,7 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
   },
   topUpButton: {
-    backgroundColor: COLORS.PRIMARY,
+    backgroundColor: COLORS.ACCENT,
     borderRadius: 8,
     paddingVertical: SPACING.MD,
     paddingHorizontal: SPACING.LG,

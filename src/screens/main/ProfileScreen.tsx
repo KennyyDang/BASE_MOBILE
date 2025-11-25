@@ -24,23 +24,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../../contexts/AuthContext';
 import { RootStackParamList } from '../../types';
 import parentProfileService, { CurrentUserResponse } from '../../services/parentProfileService';
-
-// Inline constants
-const COLORS = {
-  PRIMARY: '#1976D2',
-  PRIMARY_DARK: '#1565C0',
-  PRIMARY_LIGHT: '#42A5F5',
-  SECONDARY: '#2196F3',
-  ACCENT: '#64B5F6',
-  BACKGROUND: '#F5F7FA',
-  SURFACE: '#FFFFFF',
-  TEXT_PRIMARY: '#1A1A1A',
-  TEXT_SECONDARY: '#6B7280',
-  BORDER: '#E5E7EB',
-  ERROR: '#F44336',
-  SUCCESS: '#4CAF50',
-  SHADOW: '#000000',
-};
+import { COLORS } from '../../constants';
 
 const SPACING = {
   XS: 4,

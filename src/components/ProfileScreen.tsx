@@ -4,22 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Parent, Child } from '../types';
 import ProfileHeader from './ProfileHeader';
 import ChildCard from './ChildCard';
-
-// Inline constants
-const COLORS = {
-  SURFACE: '#FFFFFF',
-  PRIMARY: '#1976D2',
-  PRIMARY_DARK: '#1565C0',
-  PRIMARY_LIGHT: '#42A5F5',
-  SECONDARY: '#2196F3',
-  ACCENT: '#64B5F6',
-  TEXT_PRIMARY: '#1A1A1A',
-  TEXT_SECONDARY: '#6B7280',
-  BORDER: '#E5E7EB',
-  ERROR: '#F44336',
-  BACKGROUND: '#F5F7FA',
-  SHADOW: '#000000',
-};
+import { COLORS } from '../constants';
 
 const SPACING = {
   XS: 4,
