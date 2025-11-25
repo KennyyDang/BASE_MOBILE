@@ -33,6 +33,19 @@ export interface CurrentUserResponse {
   identityCardPublicId: string | null;
 }
 
+/**
+ * Family Profile Response from /api/FamilyProfile
+ */
+export interface FamilyProfileResponse {
+  id: string;
+  name: string;
+  phone: string;
+  avatar: string | null;
+  studentRela: string; // Relationship to student (e.g., "Bố", "Mẹ")
+  userId: string;
+  students: any[]; // Array of student objects
+}
+
 const parentProfileService = {
   /**
    * Get current user information
@@ -173,6 +186,200 @@ const parentProfileService = {
       
       if (errorData) {
         // Handle API error response structure
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Get all family profiles of the current user
+   * Endpoint: GET /api/FamilyProfile
+   * @returns Array of family profiles
+   */
+  getFamilyProfiles: async (): Promise<FamilyProfileResponse[]> => {
+    try {
+      const response = await axiosInstance.get<FamilyProfileResponse[]>('/api/FamilyProfile');
+      return response.data || [];
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch family profiles';
+    }
+  },
+
+  /**
+   * Create new family profile for current user
+   * Endpoint: POST /api/FamilyProfile
+   * @param name - Family member name
+   * @param phone - Phone number
+   * @param studentRela - Relationship to student (e.g., "Bố", "Mẹ", "Anh", "Chị")
+   * @param avatarFileUri - Optional avatar image file URI
+   * @returns Created family profile
+   */
+  createFamilyProfile: async (
+    name: string,
+    phone: string,
+    studentRela: string,
+    avatarFileUri?: string
+  ): Promise<FamilyProfileResponse> => {
+    try {
+      const formData = new FormData();
+      
+      formData.append('Name', name);
+      formData.append('Phone', phone);
+      formData.append('StudentRela', studentRela);
+      
+      // Add avatar file if provided
+      if (avatarFileUri) {
+        const fileExtension = avatarFileUri.split('.').pop() || 'jpg';
+        const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
+        const fileName = `family_avatar_${Date.now()}.${fileExtension}`;
+        
+        // @ts-ignore - FormData type issue with React Native
+        formData.append('AvatarFile', {
+          uri: avatarFileUri,
+          type: mimeType,
+          name: fileName,
+        } as any);
+      }
+
+      const response = await axiosInstance.post<FamilyProfileResponse>(
+        '/api/FamilyProfile',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      
+      return response.data;
+    } catch (error: any) {
+      const errorData = error?.response?.data;
+      let errorMessage = 'Không thể tạo family profile';
+      
+      if (errorData) {
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Get family profile by ID
+   * Endpoint: GET /api/FamilyProfile/{id}
+   * @param id - Family profile ID
+   * @returns Family profile details
+   */
+  getFamilyProfileById: async (id: string): Promise<FamilyProfileResponse> => {
+    try {
+      const response = await axiosInstance.get<FamilyProfileResponse>(`/api/FamilyProfile/${id}`);
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch family profile';
+    }
+  },
+
+  /**
+   * Update family profile (only owner can edit)
+   * Endpoint: PUT /api/FamilyProfile/{id}
+   * @param id - Family profile ID
+   * @param name - Family member name
+   * @param phone - Phone number
+   * @param studentRela - Relationship to student
+   * @param avatarFileUri - Optional avatar image file URI
+   * @returns Updated family profile
+   */
+  updateFamilyProfile: async (
+    id: string,
+    name: string,
+    phone: string,
+    studentRela: string,
+    avatarFileUri?: string
+  ): Promise<FamilyProfileResponse> => {
+    try {
+      const formData = new FormData();
+      
+      formData.append('Name', name);
+      formData.append('Phone', phone);
+      formData.append('StudentRela', studentRela);
+      
+      // Add avatar file if provided
+      if (avatarFileUri) {
+        const fileExtension = avatarFileUri.split('.').pop() || 'jpg';
+        const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
+        const fileName = `family_avatar_${Date.now()}.${fileExtension}`;
+        
+        // @ts-ignore - FormData type issue with React Native
+        formData.append('AvatarFile', {
+          uri: avatarFileUri,
+          type: mimeType,
+          name: fileName,
+        } as any);
+      }
+
+      const response = await axiosInstance.put<FamilyProfileResponse>(
+        `/api/FamilyProfile/${id}`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+      
+      return response.data;
+    } catch (error: any) {
+      const errorData = error?.response?.data;
+      let errorMessage = 'Không thể cập nhật family profile';
+      
+      if (errorData) {
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Delete family profile (soft delete)
+   * Endpoint: DELETE /api/FamilyProfile/{id}
+   * @param id - Family profile ID
+   * @returns void
+   */
+  deleteFamilyProfile: async (id: string): Promise<void> => {
+    try {
+      await axiosInstance.delete(`/api/FamilyProfile/${id}`);
+    } catch (error: any) {
+      const errorData = error?.response?.data;
+      let errorMessage = 'Không thể xóa family profile';
+      
+      if (errorData) {
         if (errorData.detail) {
           errorMessage = errorData.detail;
         } else if (errorData.message) {
