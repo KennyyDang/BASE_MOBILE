@@ -17,14 +17,23 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, SPACING, FONTS } from '../../constants';
-import activityService, { StaffActivityResponse } from '../../services/activityService';
+import activityService, { StaffActivityResponse, PagedActivitiesResponse } from '../../services/activityService';
 import studentSlotService from '../../services/studentSlotService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+interface GroupedActivities {
+  studentSlotId: string;
+  studentName: string;
+  studentId: string;
+  slotDate?: string;
+  activities: StaffActivityResponse[];
+}
+
 const ActivitiesScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const [activities, setActivities] = useState<StaffActivityResponse[]>([]);
+  const [groupedActivities, setGroupedActivities] = useState<GroupedActivities[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,19 +42,34 @@ const ActivitiesScreen: React.FC = () => {
   const [deletingActivityId, setDeletingActivityId] = useState<string | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<StaffActivityResponse | null>(null);
+  
+  // Pagination states
+  const [pageIndex, setPageIndex] = useState(1);
+  const [pageSize] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [hasPreviousPage, setHasPreviousPage] = useState(false);
+  
+  // Filter states
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
 
-  const fetchActivities = useCallback(async (silent = false) => {
+  const fetchActivities = useCallback(async (silent = false, page = 1) => {
     if (!silent) {
       setLoading(true);
     }
     setError(null);
 
     try {
-      const data = await activityService.getStaffActivities();
+      const response = await activityService.getPagedActivities({
+        pageIndex: page,
+        pageSize: pageSize,
+        StudentSlotId: selectedSlotId || undefined,
+      });
       
       // Enrich activities with student information if not provided
       const enrichedActivities = await Promise.all(
-        data.map(async (activity) => {
+        response.items.map(async (activity) => {
           // If studentName is already provided, use it
           if (activity.studentName) {
             return activity;
@@ -71,6 +95,61 @@ const ActivitiesScreen: React.FC = () => {
       );
 
       setActivities(enrichedActivities);
+      setPageIndex(response.pageIndex);
+      setTotalPages(response.totalPages);
+      setTotalCount(response.totalCount);
+      setHasNextPage(response.hasNextPage);
+      setHasPreviousPage(response.hasPreviousPage);
+      
+      // Group activities by studentSlotId
+      const grouped: { [key: string]: GroupedActivities } = {};
+      
+      for (const activity of enrichedActivities) {
+        if (!grouped[activity.studentSlotId]) {
+          // Fetch slot info to get student name and date
+          let studentName = activity.studentName || 'Chưa xác định';
+          let studentId = activity.studentId || '';
+          let slotDate: string | undefined;
+          
+          try {
+            const studentSlot = await studentSlotService.getStudentSlotById(activity.studentSlotId);
+            if (studentSlot) {
+              studentName = studentSlot.studentName;
+              studentId = studentSlot.studentId;
+              slotDate = studentSlot.date;
+            }
+          } catch (error) {
+            console.warn('Failed to fetch slot info:', activity.studentSlotId);
+          }
+          
+          grouped[activity.studentSlotId] = {
+            studentSlotId: activity.studentSlotId,
+            studentName,
+            studentId,
+            slotDate,
+            activities: [],
+          };
+        }
+        grouped[activity.studentSlotId].activities.push(activity);
+      }
+      
+      // Sort activities within each group by createdTime (newest first)
+      Object.values(grouped).forEach(group => {
+        group.activities.sort((a, b) => {
+          const timeA = new Date(a.createdTime || a.createdDate).getTime();
+          const timeB = new Date(b.createdTime || b.createdDate).getTime();
+          return timeB - timeA;
+        });
+      });
+      
+      // Convert to array and sort by most recent activity
+      const groupedArray = Object.values(grouped).sort((a, b) => {
+        const latestA = a.activities[0]?.createdTime || a.activities[0]?.createdDate || '';
+        const latestB = b.activities[0]?.createdTime || b.activities[0]?.createdDate || '';
+        return new Date(latestB).getTime() - new Date(latestA).getTime();
+      });
+      
+      setGroupedActivities(groupedArray);
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
@@ -81,24 +160,44 @@ const ActivitiesScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [pageSize, selectedSlotId]);
 
   useEffect(() => {
-    fetchActivities();
-  }, [fetchActivities]);
+    setPageIndex(1);
+    fetchActivities(false, 1);
+  }, [selectedSlotId]);
 
   // Refresh when coming back from edit screen
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      fetchActivities(true);
+      fetchActivities(true, pageIndex);
     });
     return unsubscribe;
-  }, [navigation, fetchActivities]);
+  }, [navigation]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchActivities(true);
-  }, [fetchActivities]);
+    fetchActivities(true, pageIndex);
+  }, [fetchActivities, pageIndex]);
+
+  const handleNextPage = () => {
+    if (hasNextPage) {
+      const nextPage = pageIndex + 1;
+      fetchActivities(false, nextPage);
+    }
+  };
+
+  const handlePreviousPage = () => {
+    if (hasPreviousPage) {
+      const prevPage = pageIndex - 1;
+      fetchActivities(false, prevPage);
+    }
+  };
+
+  const handleClearFilter = () => {
+    setSelectedSlotId(null);
+    setPageIndex(1);
+  };
 
   const formatDate = (dateString: string) => {
     try {
@@ -194,7 +293,7 @@ const ActivitiesScreen: React.FC = () => {
       setDeletingActivityId(activityId);
       await activityService.deleteActivity(activityId);
       Alert.alert('Thành công', 'Đã xóa hoạt động thành công!');
-      fetchActivities(true);
+      fetchActivities(true, pageIndex);
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
@@ -225,10 +324,16 @@ const ActivitiesScreen: React.FC = () => {
           <View style={styles.headerTextContainer}>
             <Text style={styles.headerTitle}>Hoạt Động</Text>
             <Text style={styles.headerSubtitle}>
-              {activities.length} {activities.length === 1 ? 'hoạt động' : 'hoạt động'}
+              {totalCount} {totalCount === 1 ? 'hoạt động' : 'hoạt động'} • {groupedActivities.length} {groupedActivities.length === 1 ? 'slot' : 'slots'}
             </Text>
           </View>
         </View>
+        {selectedSlotId && (
+          <TouchableOpacity style={styles.filterChip} onPress={handleClearFilter}>
+            <Text style={styles.filterChipText}>Đang lọc theo slot</Text>
+            <MaterialIcons name="close" size={16} color={COLORS.PRIMARY} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView
@@ -251,7 +356,7 @@ const ActivitiesScreen: React.FC = () => {
               <Text style={styles.retryButtonText}>Thử lại</Text>
             </TouchableOpacity>
           </View>
-        ) : activities.length === 0 ? (
+        ) : groupedActivities.length === 0 ? (
           <View style={styles.emptyContainer}>
             <MaterialIcons name="event-note" size={64} color={COLORS.TEXT_SECONDARY} />
             <Text style={styles.emptyText}>Chưa có hoạt động nào</Text>
@@ -260,100 +365,161 @@ const ActivitiesScreen: React.FC = () => {
             </Text>
           </View>
         ) : (
-          <View style={styles.listContainer}>
-            {activities.map((activity) => (
-              <TouchableOpacity
-                key={activity.id}
-                style={[
-                  styles.activityCard,
-                  !activity.isViewed && styles.activityCardUnread,
-                ]}
-                onPress={() => handleActivityPress(activity)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.cardContent}>
-                  {/* Card Header */}
-                  <View style={styles.cardHeader}>
-                    <View style={styles.cardLeftSection}>
-                      <View
-                        style={[
-                          styles.cardIconContainer,
-                          !activity.isViewed && styles.cardIconContainerUnread,
-                        ]}
-                      >
-                        <MaterialIcons
-                          name="event-note"
-                          size={20}
-                          color={activity.isViewed ? COLORS.PRIMARY : COLORS.SURFACE}
-                        />
+          <>
+            <View style={styles.listContainer}>
+              {groupedActivities.map((group) => (
+                <View key={group.studentSlotId} style={styles.slotGroup}>
+                  {/* Slot Header */}
+                  <View style={styles.slotHeader}>
+                    <View style={styles.slotHeaderLeft}>
+                      <View style={styles.slotIconContainer}>
+                        <MaterialIcons name="schedule" size={20} color={COLORS.PRIMARY} />
                       </View>
-                      <View style={styles.cardTextSection}>
-                        <Text style={styles.cardTitle} numberOfLines={1}>
-                          {activity.activityType?.name || 'Hoạt động'}
-                        </Text>
-                        <Text style={styles.cardSubtitle} numberOfLines={1}>
-                          {formatShortDate(activity.createdTime || activity.createdDate)}
+                      <View style={styles.slotHeaderText}>
+                        <Text style={styles.slotStudentName}>{group.studentName}</Text>
+                        {group.slotDate && (
+                          <Text style={styles.slotDate}>
+                            {formatDate(group.slotDate)}
+                          </Text>
+                        )}
+                        <Text style={styles.slotActivityCount}>
+                          {group.activities.length} {group.activities.length === 1 ? 'hoạt động' : 'hoạt động'}
                         </Text>
                       </View>
                     </View>
-                    <View style={styles.cardRightSection}>
-                      {!activity.isViewed && (
-                        <View style={styles.newBadge}>
-                          <View style={styles.newBadgeDot} />
-                        </View>
-                      )}
-                      <MaterialIcons
-                        name="chevron-right"
-                        size={20}
-                        color={COLORS.TEXT_SECONDARY}
-                      />
-                    </View>
+                    <TouchableOpacity
+                      style={styles.filterSlotButton}
+                      onPress={() => {
+                        setSelectedSlotId(group.studentSlotId);
+                        setPageIndex(1);
+                      }}
+                    >
+                      <MaterialIcons name="filter-list" size={18} color={COLORS.PRIMARY} />
+                    </TouchableOpacity>
                   </View>
 
-                  {/* Card Body - Note Preview */}
-                  {activity.note && (
-                    <Text style={styles.cardNote} numberOfLines={2}>
-                      {activity.note}
-                    </Text>
-                  )}
+                  {/* Activities in this slot */}
+                  <View style={styles.activitiesInSlot}>
+                    {group.activities.map((activity) => (
+                      <TouchableOpacity
+                        key={activity.id}
+                        style={[
+                          styles.activityCard,
+                          !activity.isViewed && styles.activityCardUnread,
+                        ]}
+                        onPress={() => handleActivityPress(activity)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.cardContent}>
+                          {/* Card Header */}
+                          <View style={styles.cardHeader}>
+                            <View style={styles.cardLeftSection}>
+                              <View
+                                style={[
+                                  styles.cardIconContainer,
+                                  !activity.isViewed && styles.cardIconContainerUnread,
+                                ]}
+                              >
+                                <MaterialIcons
+                                  name="event-note"
+                                  size={20}
+                                  color={activity.isViewed ? COLORS.PRIMARY : COLORS.SURFACE}
+                                />
+                              </View>
+                              <View style={styles.cardTextSection}>
+                                <Text style={styles.cardTitle} numberOfLines={1}>
+                                  {activity.activityType?.name || 'Hoạt động'}
+                                </Text>
+                                <Text style={styles.cardSubtitle} numberOfLines={1}>
+                                  {formatShortDate(activity.createdTime || activity.createdDate)}
+                                </Text>
+                              </View>
+                            </View>
+                            <View style={styles.cardRightSection}>
+                              {!activity.isViewed && (
+                                <View style={styles.newBadge}>
+                                  <View style={styles.newBadgeDot} />
+                                </View>
+                              )}
+                              <MaterialIcons
+                                name="chevron-right"
+                                size={20}
+                                color={COLORS.TEXT_SECONDARY}
+                              />
+                            </View>
+                          </View>
 
-                  {/* Card Footer */}
-                  <View style={styles.cardFooter}>
-                    {activity.studentName && (
-                      <View style={styles.cardFooterItem}>
-                        <MaterialIcons name="child-care" size={14} color={COLORS.ACCENT} />
-                        <Text style={[styles.cardFooterText, styles.studentNameText]} numberOfLines={1}>
-                          {activity.studentName}
-                        </Text>
-                      </View>
-                    )}
-                    <View style={styles.cardFooterItem}>
-                      <MaterialIcons name="person" size={14} color={COLORS.TEXT_SECONDARY} />
-                      <Text style={styles.cardFooterText} numberOfLines={1}>
-                        {activity.staffName}
-                      </Text>
-                    </View>
-                    {activity.imageUrl && (
-                      <View style={styles.cardFooterItem}>
-                        <MaterialIcons name="image" size={14} color={COLORS.PRIMARY} />
-                        <Text style={[styles.cardFooterText, styles.hasImageText]}>
-                          Có ảnh
-                        </Text>
-                      </View>
-                    )}
-                    {activity.isViewed && (
-                      <View style={styles.cardFooterItem}>
-                        <MaterialIcons name="check-circle" size={14} color={COLORS.SUCCESS} />
-                        <Text style={[styles.cardFooterText, styles.viewedText]}>
-                          Đã xem
-                        </Text>
-                      </View>
-                    )}
+                          {/* Card Body - Note Preview */}
+                          {activity.note && (
+                            <Text style={styles.cardNote} numberOfLines={2}>
+                              {activity.note}
+                            </Text>
+                          )}
+
+                          {/* Card Footer */}
+                          <View style={styles.cardFooter}>
+                            <View style={styles.cardFooterItem}>
+                              <MaterialIcons name="person" size={14} color={COLORS.TEXT_SECONDARY} />
+                              <Text style={styles.cardFooterText} numberOfLines={1}>
+                                {activity.staffName}
+                              </Text>
+                            </View>
+                            {activity.imageUrl && (
+                              <View style={styles.cardFooterItem}>
+                                <MaterialIcons name="image" size={14} color={COLORS.PRIMARY} />
+                                <Text style={[styles.cardFooterText, styles.hasImageText]}>
+                                  Có ảnh
+                                </Text>
+                              </View>
+                            )}
+                            {activity.isViewed && (
+                              <View style={styles.cardFooterItem}>
+                                <MaterialIcons name="check-circle" size={14} color={COLORS.SUCCESS} />
+                                <Text style={[styles.cardFooterText, styles.viewedText]}>
+                                  Đã xem
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+              ))}
+            </View>
+
+            {/* Pagination Controls */}
+            {(hasNextPage || hasPreviousPage) && (
+              <View style={styles.paginationContainer}>
+                <TouchableOpacity
+                  style={[styles.paginationButton, !hasPreviousPage && styles.paginationButtonDisabled]}
+                  onPress={handlePreviousPage}
+                  disabled={!hasPreviousPage}
+                >
+                  <MaterialIcons name="chevron-left" size={20} color={hasPreviousPage ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY} />
+                  <Text style={[styles.paginationButtonText, !hasPreviousPage && styles.paginationButtonTextDisabled]}>
+                    Trước
+                  </Text>
+                </TouchableOpacity>
+                
+                <Text style={styles.paginationInfo}>
+                  Trang {pageIndex} / {totalPages}
+                </Text>
+                
+                <TouchableOpacity
+                  style={[styles.paginationButton, !hasNextPage && styles.paginationButtonDisabled]}
+                  onPress={handleNextPage}
+                  disabled={!hasNextPage}
+                >
+                  <Text style={[styles.paginationButtonText, !hasNextPage && styles.paginationButtonTextDisabled]}>
+                    Sau
+                  </Text>
+                  <MaterialIcons name="chevron-right" size={20} color={hasNextPage ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -880,6 +1046,115 @@ const styles = StyleSheet.create({
   imageViewerImage: {
     width: '100%',
     height: '80%',
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    borderRadius: 20,
+    marginTop: SPACING.SM,
+    gap: SPACING.XS,
+    alignSelf: 'flex-start',
+  },
+  filterChipText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  slotGroup: {
+    marginBottom: SPACING.LG,
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 16,
+    padding: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  slotHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.MD,
+    paddingBottom: SPACING.MD,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.PRIMARY_LIGHT + '40',
+  },
+  slotHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: SPACING.SM,
+  },
+  slotIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  slotHeaderText: {
+    flex: 1,
+  },
+  slotStudentName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS / 2,
+  },
+  slotDate: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginBottom: SPACING.XS / 2,
+  },
+  slotActivityCount: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  filterSlotButton: {
+    padding: SPACING.XS,
+  },
+  activitiesInSlot: {
+    gap: SPACING.SM,
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.MD,
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 12,
+    marginTop: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  paginationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    borderRadius: 8,
+    backgroundColor: COLORS.BACKGROUND,
+    gap: SPACING.XS,
+  },
+  paginationButtonDisabled: {
+    opacity: 0.5,
+  },
+  paginationButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.PRIMARY,
+  },
+  paginationButtonTextDisabled: {
+    color: COLORS.TEXT_SECONDARY,
+  },
+  paginationInfo: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '600',
   },
 });
 

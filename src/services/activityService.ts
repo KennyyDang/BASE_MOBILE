@@ -22,6 +22,16 @@ export interface StaffActivityResponse {
   createdTime: string;
 }
 
+export interface PagedActivitiesResponse {
+  items: StaffActivityResponse[];
+  pageIndex: number;
+  totalPages: number;
+  totalCount: number;
+  pageSize: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
 class ActivityService {
   /**
    * Get activities for a student slot
@@ -66,6 +76,63 @@ class ActivityService {
       return response.data || [];
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to fetch staff activities';
+    }
+  }
+
+  /**
+   * Get paginated activities with filters
+   * Endpoint: GET /api/Activity/paged
+   * @param params Query parameters: pageIndex, pageSize, StudentSlotId, ActivityTypeId, CreatedById, FromDate, ToDate, IsViewed, Keyword
+   * @returns Paginated response with activity items
+   */
+  async getPagedActivities(params?: {
+    pageIndex?: number;
+    pageSize?: number;
+    StudentSlotId?: string;
+    ActivityTypeId?: string;
+    CreatedById?: string;
+    FromDate?: string;
+    ToDate?: string;
+    IsViewed?: boolean;
+    Keyword?: string;
+  }): Promise<PagedActivitiesResponse> {
+    try {
+      const queryParams = new URLSearchParams();
+      
+      if (params?.pageIndex !== undefined) {
+        queryParams.append('pageIndex', params.pageIndex.toString());
+      }
+      if (params?.pageSize !== undefined) {
+        queryParams.append('pageSize', params.pageSize.toString());
+      }
+      if (params?.StudentSlotId) {
+        queryParams.append('StudentSlotId', params.StudentSlotId);
+      }
+      if (params?.ActivityTypeId) {
+        queryParams.append('ActivityTypeId', params.ActivityTypeId);
+      }
+      if (params?.CreatedById) {
+        queryParams.append('CreatedById', params.CreatedById);
+      }
+      if (params?.FromDate) {
+        queryParams.append('FromDate', params.FromDate);
+      }
+      if (params?.ToDate) {
+        queryParams.append('ToDate', params.ToDate);
+      }
+      if (params?.IsViewed !== undefined) {
+        queryParams.append('IsViewed', params.IsViewed.toString());
+      }
+      if (params?.Keyword) {
+        queryParams.append('Keyword', params.Keyword);
+      }
+
+      const response = await axiosInstance.get<PagedActivitiesResponse>(
+        `/api/Activity/paged?${queryParams.toString()}`
+      );
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch paged activities';
     }
   }
 
