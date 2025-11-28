@@ -277,6 +277,10 @@ export type RootStackParamList = {
   EditActivity: {
     activityId: string;
   };
+  PurchaseService: {
+    studentSlotId: string;
+    studentId: string;
+  };
 };
 
 export type StaffStackParamList = {
@@ -289,9 +293,9 @@ export type MainTabParamList = {
   Dashboard: undefined;
   Schedule: undefined;
   Wallet: undefined;
-  Children: undefined;
-  Services: undefined;
+  BookedClasses: undefined;
   Profile: undefined;
+  Services: undefined;
 };
 
 export type StaffTabParamList = {

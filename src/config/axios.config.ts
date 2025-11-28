@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig, AxiosResp
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { API_BASE_URL, NODE_ENV} from '@env';
+import { authHandler } from '../utils/authHandler';
 
 // Storage keys
 export const STORAGE_KEYS = {
@@ -132,16 +133,25 @@ axiosInstance.interceptors.response.use(
           }
         }
       } catch (refreshError) {
-        // Refresh failed, clear all tokens and redirect to login
+        // Refresh failed - token was invalidated (likely logged in elsewhere)
+        // Clear all tokens and trigger logout + redirect to login
         if (__DEV__) {
-          console.error('[Axios] Token refresh failed:', refreshError);
+          console.error('[Axios] Token refresh failed - user logged in elsewhere:', refreshError);
         }
-        await AsyncStorage.multiRemove([
-          STORAGE_KEYS.ACCESS_TOKEN,
-          STORAGE_KEYS.REFRESH_TOKEN,
-          STORAGE_KEYS.USER,
-        ]);
+        
+        // Use authHandler to properly logout and redirect
+        await authHandler.handleUnauthorized(
+          'Phiên đăng nhập đã hết hạn. Bạn đã đăng nhập ở thiết bị khác. Vui lòng đăng nhập lại.'
+        );
       }
+    }
+    
+    // Also handle 401 even if retry flag is set (means refresh already failed)
+    if (error.response?.status === 401 && originalRequest._retry) {
+      // Already tried refresh and failed, trigger logout
+      await authHandler.handleUnauthorized(
+        'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+      );
     }
     
     return Promise.reject(error);

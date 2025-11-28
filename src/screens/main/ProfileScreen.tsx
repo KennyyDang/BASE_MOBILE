@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -24,6 +24,12 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../../contexts/AuthContext';
 import { RootStackParamList } from '../../types';
 import parentProfileService, { CurrentUserResponse, FamilyProfileResponse } from '../../services/parentProfileService';
+import { useMyChildren } from '../../hooks/useChildrenApi';
+import { StudentResponse, StudentPackageSubscription } from '../../types/api';
+import packageService from '../../services/packageService';
+import childrenService from '../../services/childrenService';
+import studentLevelService from '../../services/studentLevelService';
+import schoolService from '../../services/schoolService';
 import { COLORS } from '../../constants';
 
 const SPACING = {
@@ -79,12 +85,80 @@ const ProfileScreen: React.FC = () => {
   const [updatingFamilyProfile, setUpdatingFamilyProfile] = useState(false);
   const [deletingFamilyId, setDeletingFamilyId] = useState<string | null>(null);
 
+  // Children Management States - Tích hợp từ ChildrenManagementScreen
+  const { students, loading: studentsLoading, error: studentsError, refetch: refetchStudents } = useMyChildren();
+  const [selectedChild, setSelectedChild] = useState<StudentResponse | null>(null);
+  const [editChildModalVisible, setEditChildModalVisible] = useState(false);
+  const [editChildName, setEditChildName] = useState('');
+  const [editChildDateOfBirth, setEditChildDateOfBirth] = useState<Date | null>(null);
+  const [showChildDatePicker, setShowChildDatePicker] = useState(false);
+  const [editChildNote, setEditChildNote] = useState('');
+  const [updatingChild, setUpdatingChild] = useState(false);
+  const [deletingStudentId, setDeletingStudentId] = useState<string | null>(null);
+  const [uploadingPhotoId, setUploadingPhotoId] = useState<string | null>(null);
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [selectedImageChild, setSelectedImageChild] = useState<StudentResponse | null>(null);
+  
+  // Add Child Form States
+  const [addChildModalVisible, setAddChildModalVisible] = useState(false);
+  const [registering, setRegistering] = useState(false);
+  const [addName, setAddName] = useState('');
+  const [addDateOfBirth, setAddDateOfBirth] = useState<Date | null>(null);
+  const [addNote, setAddNote] = useState('');
+  const [addImageUri, setAddImageUri] = useState<string | null>(null);
+  const [addSchoolId, setAddSchoolId] = useState<string>('');
+  const [addStudentLevelId, setAddStudentLevelId] = useState<string>('');
+  const [addDocumentType, setAddDocumentType] = useState<string>('');
+  const [addIssuedBy, setAddIssuedBy] = useState('');
+  const [addIssuedDate, setAddIssuedDate] = useState<Date | null>(null);
+  const [addExpirationDate, setAddExpirationDate] = useState<Date | null>(null);
+  const [addDocumentFileUri, setAddDocumentFileUri] = useState<string | null>(null);
+  
+  // Dropdown data
+  const [schools, setSchools] = useState<Array<{ id: string; name: string }>>([]);
+  const [studentLevels, setStudentLevels] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingSchools, setLoadingSchools] = useState(false);
+  const [loadingStudentLevels, setLoadingStudentLevels] = useState(false);
+  
+  // Date picker states for add form
+  const [showAddDatePicker, setShowAddDatePicker] = useState(false);
+  const [showAddIssuedDatePicker, setShowAddIssuedDatePicker] = useState(false);
+  const [showAddExpirationDatePicker, setShowAddExpirationDatePicker] = useState(false);
+  const [addSelectedDayInput, setAddSelectedDayInput] = useState<string>('');
+  const [addSelectedMonthInput, setAddSelectedMonthInput] = useState<string>('');
+  const [addSelectedYearInput, setAddSelectedYearInput] = useState<string>('');
+  
+  // Date picker states for edit form
+  const [selectedDayInput, setSelectedDayInput] = useState<string>('');
+  const [selectedMonthInput, setSelectedMonthInput] = useState<string>('');
+  const [selectedYearInput, setSelectedYearInput] = useState<string>('');
+  
+  // Student packages
+  const [studentPackages, setStudentPackages] = useState<
+    Record<
+      string,
+      {
+        loading: boolean;
+        data: StudentPackageSubscription[];
+        error: string | null;
+      }
+    >
+  >({});
+  const fetchedStudentsRef = useRef<Set<string>>(new Set());
+
   const fetchCurrentUser = useCallback(async () => {
     try {
       setError(null);
+      setLoading(true);
       const userData = await parentProfileService.getCurrentUser();
       setCurrentUser(userData);
     } catch (err: any) {
+      // If 401, don't set error - authHandler will handle logout
+      if (err?.response?.status === 401) {
+        // Token invalid, authHandler will handle logout
+        return;
+      }
       const errorMessage = err?.response?.data?.message || err?.message || 'Không thể tải thông tin người dùng';
       setError(errorMessage);
     } finally {
@@ -99,6 +173,11 @@ const ProfileScreen: React.FC = () => {
       const profiles = await parentProfileService.getFamilyProfiles();
       setFamilyProfiles(profiles);
     } catch (err: any) {
+      // If 401, don't set error - authHandler will handle logout
+      if (err?.response?.status === 401) {
+        // Token invalid, authHandler will handle logout
+        return;
+      }
       // Don't show error for family profiles, just log it
       console.warn('Failed to fetch family profiles:', err?.message || err);
       setFamilyProfiles([]);
@@ -108,15 +187,649 @@ const ProfileScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchCurrentUser();
-    fetchFamilyProfiles();
-  }, [fetchCurrentUser, fetchFamilyProfiles]);
+    let isMounted = true;
+    
+    const loadData = async () => {
+      if (isMounted) {
+        await fetchCurrentUser();
+        await fetchFamilyProfiles();
+      }
+    };
+    
+    loadData();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, []); // Empty dependency array - only run once on mount
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchCurrentUser();
-    fetchFamilyProfiles();
-  }, [fetchCurrentUser, fetchFamilyProfiles]);
+    try {
+      await Promise.all([
+        fetchCurrentUser(),
+        fetchFamilyProfiles(),
+        refetchStudents(),
+      ]);
+    } catch (err) {
+      console.warn('Error refreshing:', err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchCurrentUser, fetchFamilyProfiles, refetchStudents]);
+
+  // Children Management Functions - Tích hợp từ ChildrenManagementScreen
+  const formatDateForDisplay = useCallback((dateString: string | null | undefined) => {
+    if (!dateString) return 'Chưa có';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime()) || date.getTime() === 0) {
+        return 'Chưa có';
+      }
+      return date.toLocaleDateString('vi-VN');
+    } catch (e) {
+      return 'Chưa có';
+    }
+  }, []);
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('vi-VN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
+
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month, 0).getDate();
+  };
+
+  // Fetch schools and student levels when modal opens
+  useEffect(() => {
+    if (addChildModalVisible && currentUser?.branchId) {
+      fetchSchools();
+      fetchStudentLevels();
+    }
+  }, [addChildModalVisible, currentUser?.branchId]);
+
+  const fetchSchools = async () => {
+    setLoadingSchools(true);
+    try {
+      const response = await schoolService.getSchoolsPaged({
+        pageIndex: 1,
+        pageSize: 100,
+        includeDeleted: false,
+      });
+      setSchools(response.items.map(s => ({ id: s.id, name: s.name })));
+    } catch (err) {
+      console.warn('Failed to fetch schools:', err);
+    } finally {
+      setLoadingSchools(false);
+    }
+  };
+
+  const fetchStudentLevels = async () => {
+    setLoadingStudentLevels(true);
+    try {
+      const response = await studentLevelService.getStudentLevelsPaged({
+        pageIndex: 1,
+        pageSize: 100,
+        branchId: currentUser?.branchId || undefined,
+      });
+      setStudentLevels(response.items.map(l => ({ id: l.id, name: l.name })));
+    } catch (err) {
+      console.warn('Failed to fetch student levels:', err);
+    } finally {
+      setLoadingStudentLevels(false);
+    }
+  };
+
+  // Children Management Handlers
+  const handleAddChild = async () => {
+    if (!currentUser) {
+      try {
+        const user = await parentProfileService.getCurrentUser();
+        setCurrentUser(user);
+        if (!user.branchId) {
+          Alert.alert('Lỗi', 'Bạn chưa được gán vào chi nhánh nào. Vui lòng liên hệ admin.');
+          return;
+        }
+      } catch (err) {
+        Alert.alert('Lỗi', 'Không thể tải thông tin người dùng.');
+        return;
+      }
+    }
+    
+    if (!currentUser?.branchId) {
+      Alert.alert('Lỗi', 'Bạn chưa được gán vào chi nhánh nào. Vui lòng liên hệ admin.');
+      return;
+    }
+
+    setAddChildModalVisible(true);
+  };
+
+  const handleCloseAddChildModal = () => {
+    setAddChildModalVisible(false);
+    setAddName('');
+    setAddDateOfBirth(null);
+    setAddNote('');
+    setAddImageUri(null);
+    setAddSchoolId('');
+    setAddStudentLevelId('');
+    setAddDocumentType('');
+    setAddIssuedBy('');
+    setAddIssuedDate(null);
+    setAddExpirationDate(null);
+    setAddDocumentFileUri(null);
+    setShowAddDatePicker(false);
+    setShowAddIssuedDatePicker(false);
+    setShowAddExpirationDatePicker(false);
+    setAddSelectedDayInput('');
+    setAddSelectedMonthInput('');
+    setAddSelectedYearInput('');
+  };
+
+  const handleRegisterChild = async () => {
+    if (!addName.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập tên của con.');
+      return;
+    }
+
+    if (!currentUser?.branchId) {
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin chi nhánh.');
+      return;
+    }
+
+    setRegistering(true);
+    try {
+      const dateOfBirth = addDateOfBirth 
+        ? new Date(addDateOfBirth.getFullYear(), addDateOfBirth.getMonth(), addDateOfBirth.getDate(), 12, 0, 0, 0).toISOString()
+        : undefined;
+      
+      const issuedDate = addIssuedDate 
+        ? new Date(addIssuedDate.getFullYear(), addIssuedDate.getMonth(), addIssuedDate.getDate(), 12, 0, 0, 0).toISOString()
+        : undefined;
+      
+      const expirationDate = addExpirationDate 
+        ? new Date(addExpirationDate.getFullYear(), addExpirationDate.getMonth(), addExpirationDate.getDate(), 12, 0, 0, 0).toISOString()
+        : undefined;
+
+      await childrenService.registerChild({
+        name: addName.trim(),
+        dateOfBirth,
+        note: addNote.trim() || undefined,
+        image: addImageUri || undefined,
+        branchId: currentUser.branchId,
+        schoolId: addSchoolId || undefined,
+        studentLevelId: addStudentLevelId || undefined,
+        documentType: addDocumentType || undefined,
+        issuedBy: addIssuedBy.trim() || undefined,
+        issuedDate,
+        expirationDate,
+        documentFile: addDocumentFileUri || undefined,
+      });
+
+      Alert.alert('Thành công', 'Đã đăng ký con thành công!');
+      handleCloseAddChildModal();
+      refetchStudents();
+    } catch (error: any) {
+      let message = 'Không thể đăng ký con. Vui lòng thử lại.';
+      if (error?.response?.data) {
+        const errorData = error.response.data;
+        if (errorData.message) message = errorData.message;
+        else if (errorData.error) message = errorData.error;
+        else if (errorData.title) message = errorData.title;
+      } else if (error?.message) {
+        message = error.message;
+      }
+      Alert.alert('Lỗi', message);
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  const handlePickAddImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Quyền truy cập', 'Cần quyền truy cập thư viện ảnh.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setAddImageUri(result.assets[0].uri);
+      }
+    } catch (err: any) {
+      Alert.alert('Lỗi', 'Không thể chọn ảnh. Vui lòng thử lại.');
+    }
+  };
+
+  const handlePickDocumentFile = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Quyền truy cập', 'Cần quyền truy cập thư viện ảnh.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.9,
+      });
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setAddDocumentFileUri(result.assets[0].uri);
+      }
+    } catch (err: any) {
+      Alert.alert('Lỗi', 'Không thể chọn file. Vui lòng thử lại.');
+    }
+  };
+
+  const handleEditChild = (child: StudentResponse) => {
+    setSelectedChild(child);
+    setEditChildName(child.name || '');
+    if (child.dateOfBirth) {
+      try {
+        const dateStr = child.dateOfBirth;
+        let date: Date;
+        if (dateStr.includes('T')) {
+          date = new Date(dateStr);
+        } else {
+          const [year, month, day] = dateStr.split('-').map(Number);
+          date = new Date(year, month - 1, day);
+        }
+        if (isNaN(date.getTime())) {
+          setEditChildDateOfBirth(null);
+        } else {
+          setEditChildDateOfBirth(date);
+        }
+      } catch (e) {
+        setEditChildDateOfBirth(null);
+      }
+    } else {
+      setEditChildDateOfBirth(null);
+    }
+    setEditChildNote(child.note || '');
+    setShowChildDatePicker(false);
+    setEditChildModalVisible(true);
+  };
+
+  const handleDeleteChild = async (child: StudentResponse) => {
+    setDeletingStudentId(child.id);
+    try {
+      await childrenService.deleteStudent(child.id);
+      Alert.alert('Thành công', `Đã xóa con "${child.name}" khỏi hệ thống.`);
+      refetchStudents();
+    } catch (error: any) {
+      let message = 'Không thể xóa con. Vui lòng thử lại.';
+      if (error?.response?.data) {
+        const errorData = error.response.data;
+        if (errorData.message) message = errorData.message;
+        else if (errorData.error) message = errorData.error;
+        else if (errorData.title) message = errorData.title;
+      } else if (error?.message) {
+        message = error.message;
+      }
+      Alert.alert('Lỗi', message);
+    } finally {
+      setDeletingStudentId(null);
+    }
+  };
+
+  const handleUpdateChild = async () => {
+    if (!selectedChild) return;
+    if (!editChildName.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập tên của con.');
+      return;
+    }
+    setUpdatingChild(true);
+    try {
+      const updateData: { name?: string; dateOfBirth?: string; note?: string } = {};
+      updateData.name = editChildName.trim();
+      if (editChildDateOfBirth) {
+        const dateForAPI = new Date(
+          editChildDateOfBirth.getFullYear(),
+          editChildDateOfBirth.getMonth(),
+          editChildDateOfBirth.getDate(),
+          12, 0, 0, 0
+        );
+        updateData.dateOfBirth = dateForAPI.toISOString();
+      } else if (selectedChild.dateOfBirth) {
+        try {
+          const originalDate = new Date(selectedChild.dateOfBirth);
+          if (!isNaN(originalDate.getTime())) {
+            const dateForAPI = new Date(
+              originalDate.getFullYear(),
+              originalDate.getMonth(),
+              originalDate.getDate(),
+              12, 0, 0, 0
+            );
+            updateData.dateOfBirth = dateForAPI.toISOString();
+          }
+        } catch (e) {
+          console.warn('Failed to parse dateOfBirth:', e);
+        }
+      }
+      if (editChildNote.trim() !== (selectedChild.note || '')) {
+        updateData.note = editChildNote.trim();
+      }
+      if (Object.keys(updateData).length === 0) {
+        Alert.alert('Thông báo', 'Không có thay đổi nào để cập nhật.');
+        setUpdatingChild(false);
+        return;
+      }
+      await childrenService.updateChildByParent(selectedChild.id, updateData);
+      Alert.alert('Thành công', 'Cập nhật thông tin con thành công.');
+      setEditChildModalVisible(false);
+      refetchStudents();
+    } catch (error: any) {
+      let message = 'Không thể cập nhật thông tin con. Vui lòng thử lại.';
+      if (error?.response?.data) {
+        const errorData = error.response.data;
+        if (errorData.errors) {
+          const validationErrors: string[] = [];
+          Object.keys(errorData.errors).forEach((key) => {
+            const fieldErrors = errorData.errors[key];
+            let fieldName = key;
+            if (key.toLowerCase() === 'name') fieldName = 'Tên';
+            else if (key.toLowerCase() === 'dateofbirth') fieldName = 'Ngày sinh';
+            else if (key.toLowerCase() === 'note') fieldName = 'Ghi chú';
+            if (Array.isArray(fieldErrors)) {
+              fieldErrors.forEach((err: string) => {
+                let translatedErr = err;
+                if (err.toLowerCase().includes('required')) {
+                  translatedErr = 'là bắt buộc';
+                } else if (err.toLowerCase().includes('invalid')) {
+                  translatedErr = 'không hợp lệ';
+                }
+                validationErrors.push(`${fieldName}: ${translatedErr}`);
+              });
+            } else {
+              validationErrors.push(`${fieldName}: ${fieldErrors}`);
+            }
+          });
+          message = validationErrors.join('\n');
+        } else if (errorData.message) {
+          message = errorData.message;
+        } else if (errorData.error) {
+          message = errorData.error;
+        } else if (errorData.title) {
+          message = errorData.title;
+        }
+      } else if (error?.message) {
+        message = error.message;
+      }
+      Alert.alert('Lỗi', message);
+    } finally {
+      setUpdatingChild(false);
+    }
+  };
+
+  const handleViewDetails = (child: StudentResponse) => {
+    Alert.alert(
+      'Chi tiết học sinh',
+      `Tên: ${child.name}\nNgày sinh: ${formatDateForDisplay(child.dateOfBirth)}\nTrường: ${child.schoolName || 'Chưa có'}\nCấp độ: ${child.studentLevelName || 'Chưa có'}\nChi nhánh: ${child.branchName || 'Chưa có'}`,
+      [{ text: 'Đóng', style: 'default' }]
+    );
+  };
+
+  const handleAttendance = (child: StudentResponse) => {
+    Alert.alert('Điểm danh', `Xem lịch điểm danh của ${child.name}`, [{ text: 'Đóng', style: 'default' }]);
+  };
+
+  const handleClasses = (child: StudentResponse) => {
+    navigation.navigate('StudentClasses', {
+      studentId: child.id,
+      studentName: child.name,
+    });
+  };
+
+  const handleViewPackages = (child: StudentResponse) => {
+    navigation.navigate('StudentPackages', {
+      studentId: child.id,
+      studentName: child.name,
+      branchName: child.branchName || '',
+      studentLevelName: child.studentLevelName || '',
+    });
+  };
+
+  const fetchStudentPackages = useCallback(async (studentId: string) => {
+    fetchedStudentsRef.current.add(studentId);
+    setStudentPackages((prev) => ({
+      ...prev,
+      [studentId]: {
+        data: prev[studentId]?.data || [],
+        loading: true,
+        error: null,
+      },
+    }));
+    try {
+      const data = await packageService.getStudentSubscriptions(studentId);
+      const activeData = data.filter((sub) => {
+        if (!sub.status) return false;
+        const status = sub.status.trim().toUpperCase();
+        return status === 'ACTIVE';
+      });
+      setStudentPackages((prev) => ({
+        ...prev,
+        [studentId]: {
+          data: activeData,
+          loading: false,
+          error: null,
+        },
+      }));
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Không thể tải gói đã đăng ký. Vui lòng thử lại.';
+      setStudentPackages((prev) => ({
+        ...prev,
+        [studentId]: {
+          data: prev[studentId]?.data || [],
+          loading: false,
+          error: message,
+        },
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!students.length) {
+      setStudentPackages({});
+      fetchedStudentsRef.current.clear();
+      return;
+    }
+    
+    // Only fetch for new students that haven't been fetched
+    const studentsToFetch = students.filter(
+      (student) => !fetchedStudentsRef.current.has(student.id)
+    );
+    
+    if (studentsToFetch.length > 0) {
+      studentsToFetch.forEach((student) => {
+        fetchStudentPackages(student.id);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students.length]); // Only depend on students.length to avoid infinite loop
+
+  const handleRetryPackages = (studentId: string) => {
+    fetchedStudentsRef.current.delete(studentId);
+    fetchStudentPackages(studentId);
+  };
+
+  const handlePickChildImage = async (child: StudentResponse) => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Quyền truy cập', 'Cần quyền truy cập thư viện ảnh để upload ảnh cho con.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        setUploadingPhotoId(child.id);
+        try {
+          const updatedStudent = await childrenService.uploadStudentPhoto(
+            child.id,
+            asset.uri,
+            undefined,
+            asset.mimeType || 'image/jpeg'
+          );
+          Alert.alert('Thành công', `Đã upload ảnh cho ${child.name} thành công!`);
+          refetchStudents();
+        } catch (error: any) {
+          const errorMessage = error?.message || error?.data?.message || 'Không thể upload ảnh. Vui lòng thử lại.';
+          Alert.alert('Lỗi', errorMessage);
+        } finally {
+          setUploadingPhotoId(null);
+        }
+      }
+    } catch (err: any) {
+      Alert.alert('Lỗi', 'Không thể chọn ảnh. Vui lòng thử lại.');
+    }
+  };
+
+  const handleViewImage = (child: StudentResponse) => {
+    if (child.image) {
+      setSelectedImageUrl(child.image);
+      setSelectedImageChild(child);
+      setImageViewerVisible(true);
+    }
+  };
+
+  const handleMoreOptions = (child: StudentResponse) => {
+    Alert.alert(
+      'Tùy chọn',
+      `Chọn hành động cho ${child.name}`,
+      [
+        { text: 'Chỉnh sửa', onPress: () => handleEditChild(child) },
+        { text: 'Upload ảnh', onPress: () => handlePickChildImage(child) },
+        { text: 'Xóa con', style: 'destructive', onPress: () => {
+          Alert.alert(
+            'Xác nhận xóa',
+            `Bạn có chắc chắn muốn xóa con "${child.name}"?\n\nHành động này sẽ xóa (soft delete) thông tin con khỏi hệ thống.`,
+            [
+              { text: 'Hủy', style: 'cancel' },
+              { text: 'Xóa', style: 'destructive', onPress: () => handleDeleteChild(child) },
+            ],
+            { cancelable: true }
+          );
+        }},
+        { text: 'Hủy', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const getStatusColor = (status: boolean) => {
+    return status ? COLORS.SUCCESS : COLORS.ERROR;
+  };
+
+  const getStatusText = (status: boolean) => {
+    return status ? 'Hoạt động' : 'Tạm nghỉ';
+  };
+
+  // Document Type Options
+  const documentTypes = [
+    'BirthCertificate', 'HouseholdBook', 'GuardianCertificate', 'AuthorizationLetter',
+    'AdoptionCertificate', 'DivorceCustodyDecision', 'StudentCard', 'SchoolEnrollmentConfirmation',
+    'AcademicRecordBook', 'VnEduScreenshot', 'TuitionReceipt', 'CertificateOrLetter', 'Other',
+  ];
+
+  const getDocumentTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      BirthCertificate: 'Giấy khai sinh',
+      HouseholdBook: 'Sổ hộ khẩu',
+      GuardianCertificate: 'Giấy chứng nhận người giám hộ',
+      AuthorizationLetter: 'Giấy ủy quyền',
+      AdoptionCertificate: 'Giấy chứng nhận nhận nuôi',
+      DivorceCustodyDecision: 'Quyết định quyền nuôi con sau ly hôn',
+      StudentCard: 'Thẻ học sinh',
+      SchoolEnrollmentConfirmation: 'Xác nhận nhập học',
+      AcademicRecordBook: 'Sổ học bạ',
+      VnEduScreenshot: 'Ảnh chụp VnEdu',
+      TuitionReceipt: 'Biên lai học phí',
+      CertificateOrLetter: 'Giấy chứng nhận/Thư',
+      Other: 'Khác',
+    };
+    return labels[type] || type;
+  };
+
+  // Date picker helpers
+  const initializeDatePicker = () => {
+    const date = editChildDateOfBirth || new Date();
+    setSelectedDayInput(date.getDate().toString());
+    setSelectedMonthInput((date.getMonth() + 1).toString());
+    setSelectedYearInput(date.getFullYear().toString());
+  };
+
+  const handleConfirmDate = () => {
+    const day = parseInt(selectedDayInput) || 1;
+    const month = parseInt(selectedMonthInput) || 1;
+    const year = parseInt(selectedYearInput) || new Date().getFullYear();
+    const maxDay = getDaysInMonth(year, month);
+    const validDay = Math.min(Math.max(1, day), maxDay);
+    const validMonth = Math.min(Math.max(1, month), 12);
+    const validYear = Math.max(1950, Math.min(year, new Date().getFullYear()));
+    const newDate = new Date(validYear, validMonth - 1, validDay);
+    setEditChildDateOfBirth(newDate);
+    setShowChildDatePicker(false);
+  };
+
+  const initializeAddDatePicker = (date: Date | null) => {
+    const targetDate = date || new Date();
+    setAddSelectedDayInput(targetDate.getDate().toString());
+    setAddSelectedMonthInput((targetDate.getMonth() + 1).toString());
+    setAddSelectedYearInput(targetDate.getFullYear().toString());
+  };
+
+  const handleConfirmAddDate = () => {
+    const day = parseInt(addSelectedDayInput) || 1;
+    const month = parseInt(addSelectedMonthInput) || 1;
+    const year = parseInt(addSelectedYearInput) || new Date().getFullYear();
+    const maxDay = getDaysInMonth(year, month);
+    const validDay = Math.min(Math.max(1, day), maxDay);
+    const validMonth = Math.min(Math.max(1, month), 12);
+    const validYear = Math.max(1950, Math.min(year, new Date().getFullYear()));
+    const newDate = new Date(validYear, validMonth - 1, validDay);
+    setAddDateOfBirth(newDate);
+    setShowAddDatePicker(false);
+  };
+
+  const handleConfirmIssuedDate = () => {
+    const day = parseInt(addSelectedDayInput) || 1;
+    const month = parseInt(addSelectedMonthInput) || 1;
+    const year = parseInt(addSelectedYearInput) || new Date().getFullYear();
+    const maxDay = getDaysInMonth(year, month);
+    const validDay = Math.min(Math.max(1, day), maxDay);
+    const validMonth = Math.min(Math.max(1, month), 12);
+    const validYear = Math.max(1950, Math.min(year, new Date().getFullYear()));
+    const newDate = new Date(validYear, validMonth - 1, validDay);
+    setAddIssuedDate(newDate);
+    setShowAddIssuedDatePicker(false);
+  };
+
+  const handleConfirmExpirationDate = () => {
+    const day = parseInt(addSelectedDayInput) || 1;
+    const month = parseInt(addSelectedMonthInput) || 1;
+    const year = parseInt(addSelectedYearInput) || new Date().getFullYear();
+    const maxDay = getDaysInMonth(year, month);
+    const validDay = Math.min(Math.max(1, day), maxDay);
+    const validMonth = Math.min(Math.max(1, month), 12);
+    const validYear = Math.max(1950, Math.min(year, new Date().getFullYear()));
+    const newDate = new Date(validYear, validMonth - 1, validDay);
+    setAddExpirationDate(newDate);
+    setShowAddExpirationDatePicker(false);
+  };
 
   const handleEditProfile = () => {
     if (currentUser) {
@@ -266,15 +979,6 @@ const ProfileScreen: React.FC = () => {
         },
       ]
     );
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('vi-VN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
   };
 
   // Student Relationship Options
@@ -806,6 +1510,219 @@ const ProfileScreen: React.FC = () => {
           )}
         </View>
 
+        {/* Children Management Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Quản lý con ({students.length})</Text>
+            <TouchableOpacity
+              style={styles.addChildButton}
+              onPress={handleAddChild}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="add" size={20} color={COLORS.SURFACE} />
+              <Text style={styles.addChildButtonText}>Thêm con</Text>
+            </TouchableOpacity>
+          </View>
+
+          {studentsLoading && students.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+              <Text style={styles.familyLoadingText}>Đang tải danh sách con...</Text>
+            </View>
+          ) : students.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MaterialIcons name="child-care" size={48} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.emptyText}>Chưa có con nào</Text>
+              <Text style={styles.emptySubtext}>Thêm con đầu tiên để bắt đầu quản lý</Text>
+              <TouchableOpacity style={styles.emptyButton} onPress={handleAddChild}>
+                <Text style={styles.emptyButtonText}>Thêm con</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.childrenList}>
+              {students.map((child) => (
+                <View key={child.id} style={styles.childCard}>
+                  <View style={styles.childHeader}>
+                    <TouchableOpacity 
+                      style={styles.childAvatar}
+                      onPress={() => handleViewImage(child)}
+                      disabled={!child.image || uploadingPhotoId === child.id}
+                      activeOpacity={child.image ? 0.7 : 1}
+                    >
+                      {child.image ? (
+                        <Image 
+                          source={{ uri: child.image }} 
+                          style={styles.avatarImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Text style={styles.avatarText}>
+                          {child.name.charAt(0).toUpperCase()}
+                        </Text>
+                      )}
+                      {uploadingPhotoId === child.id && (
+                        <View style={styles.avatarOverlay}>
+                          <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                    <View style={styles.childInfo}>
+                      <Text style={styles.childName}>{child.name}</Text>
+                      <Text style={styles.childDetails}>
+                        {child.studentLevelName || 'Chưa có cấp độ'}
+                      </Text>
+                      <View style={styles.statusContainer}>
+                        <View style={[styles.statusDot, { backgroundColor: getStatusColor(child.status) }]} />
+                        <Text style={styles.statusText}>{getStatusText(child.status)}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity 
+                      style={styles.moreButton}
+                      onPress={() => handleMoreOptions(child)}
+                      disabled={deletingStudentId === child.id || uploadingPhotoId === child.id}
+                    >
+                      {deletingStudentId === child.id || uploadingPhotoId === child.id ? (
+                        <ActivityIndicator size="small" color={COLORS.TEXT_SECONDARY} />
+                      ) : (
+                        <MaterialIcons name="more-vert" size={24} color={COLORS.TEXT_SECONDARY} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.childStats}>
+                    <View style={styles.statItem}>
+                      <MaterialIcons name="school" size={16} color={COLORS.TEXT_SECONDARY} />
+                      <Text style={styles.statItemText} numberOfLines={1}>
+                        {child.schoolName || 'Chưa có trường'}
+                      </Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <MaterialIcons name="location-on" size={16} color={COLORS.TEXT_SECONDARY} />
+                      <Text style={styles.statItemText} numberOfLines={1}>
+                        {child.branchName || 'Chưa có chi nhánh'}
+                      </Text>
+                    </View>
+                    <View style={styles.statItem}>
+                      <MaterialIcons name="date-range" size={16} color={COLORS.TEXT_SECONDARY} />
+                      <Text style={styles.statItemText} numberOfLines={1}>
+                        {formatDateForDisplay(child.dateOfBirth)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity 
+                      style={[styles.actionButton, styles.primaryButton]}
+                      onPress={() => handleViewDetails(child)}
+                    >
+                      <MaterialIcons name="visibility" size={16} color={COLORS.SURFACE} />
+                      <Text style={styles.actionButtonText}>Chi tiết</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity 
+                      style={[styles.actionButton, styles.secondaryButton]}
+                      onPress={() => handleClasses(child)}
+                    >
+                      <MaterialIcons name="school" size={16} color={COLORS.SECONDARY} />
+                      <Text style={[styles.actionButtonText, { color: COLORS.SECONDARY }]}>Lớp học</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.tertiaryButton]}
+                      onPress={() => handleViewPackages(child)}
+                    >
+                      <MaterialIcons name="shopping-cart" size={16} color={COLORS.PRIMARY} />
+                      <Text style={[styles.actionButtonText, { color: COLORS.PRIMARY }]}>Gói học</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.packageContainer}>
+                    <View style={styles.packageHeader}>
+                      <MaterialIcons name="card-membership" size={18} color={COLORS.PRIMARY} />
+                      <Text style={styles.packageTitle}>Gói đã đăng ký</Text>
+                    </View>
+                    {studentPackages[child.id]?.loading ? (
+                      <View style={styles.packageStateRow}>
+                        <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                        <Text style={styles.packageStateText}>Đang tải gói đã đăng ký...</Text>
+                      </View>
+                    ) : studentPackages[child.id]?.error ? (
+                      <View>
+                        <View style={styles.packageStateRow}>
+                          <MaterialIcons name="error-outline" size={18} color={COLORS.ERROR} />
+                          <Text style={[styles.packageStateText, { color: COLORS.ERROR }]}>
+                            {studentPackages[child.id]?.error}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.packageRetryButton}
+                          onPress={() => handleRetryPackages(child.id)}
+                        >
+                          <Text style={styles.packageRetryText}>Thử lại</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : studentPackages[child.id]?.data?.length ? (
+                      studentPackages[child.id].data.map((subscription) => (
+                        <View key={subscription.id} style={styles.packageCard}>
+                          <View style={styles.packageCardHeader}>
+                            <Text style={styles.packageName}>{subscription.packageName}</Text>
+                            <View
+                              style={[
+                                styles.packageStatusBadge,
+                                subscription.status === 'Active'
+                                  ? styles.packageStatusActive
+                                  : styles.packageStatusInactive,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.packageStatusText,
+                                  subscription.status === 'Active'
+                                    ? { color: COLORS.SURFACE }
+                                    : { color: COLORS.TEXT_PRIMARY },
+                                ]}
+                              >
+                                {subscription.status === 'Active' ? 'Đang hiệu lực' : subscription.status}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={styles.packageDate}>
+                            Bắt đầu: {formatDateForDisplay(subscription.startDate)} • Kết thúc: {formatDateForDisplay(subscription.endDate)}
+                          </Text>
+                          <Text style={styles.packageUsedSlot}>
+                            {(() => {
+                              const total = subscription.totalSlotsSnapshot ?? subscription.totalSlots ?? subscription.remainingSlots;
+                              let totalDisplay: number | string = '?';
+                              if (typeof total === 'number') {
+                                totalDisplay = total;
+                              } else {
+                                const nameMatch = subscription.packageName?.match(/(\d+)/);
+                                if (nameMatch) {
+                                  totalDisplay = parseInt(nameMatch[1], 10);
+                                }
+                              }
+                              const used = subscription.usedSlot || 0;
+                              const remaining = typeof totalDisplay === 'number' 
+                                ? Math.max(totalDisplay - used, 0) 
+                                : undefined;
+                              
+                              return `Số buổi đã dùng: ${used}${typeof totalDisplay === 'number' ? ` / ${totalDisplay}` : ''}${remaining !== undefined ? ` • Còn lại: ${remaining}` : ''}`;
+                            })()}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={styles.packageStateText}>
+                        Chưa có gói nào được đăng ký cho học sinh này.
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
         {/* Menu Items */}
         <View style={styles.menuContainer}>
           <TouchableOpacity style={styles.menuItem} onPress={handleEditProfile}>
@@ -1069,6 +1986,590 @@ const ProfileScreen: React.FC = () => {
             </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Edit Child Modal */}
+      <Modal
+        visible={editChildModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          setEditChildModalVisible(false);
+        }}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Chỉnh sửa thông tin</Text>
+                  <TouchableOpacity 
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setEditChildModalVisible(false);
+                    }}
+                  >
+                    <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
+                  </TouchableOpacity>
+                </View>
+                
+                {selectedChild && (
+                  <ScrollView 
+                    style={styles.modalBody}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <View style={styles.modalFormGroup}>
+                      <Text style={styles.modalLabel}>Tên *</Text>
+                      <TextInput
+                        style={styles.modalInput}
+                        value={editChildName}
+                        onChangeText={setEditChildName}
+                        placeholder="Nhập tên của con"
+                        placeholderTextColor={COLORS.TEXT_SECONDARY}
+                      />
+                    </View>
+
+                    <View style={styles.modalFormGroup}>
+                      <Text style={styles.modalLabel}>Ngày sinh</Text>
+                      <TouchableOpacity
+                        style={styles.datePickerButton}
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          initializeDatePicker();
+                          setShowChildDatePicker(true);
+                        }}
+                      >
+                        <Text style={[
+                          styles.datePickerText,
+                          !editChildDateOfBirth && styles.datePickerPlaceholder
+                        ]}>
+                          {editChildDateOfBirth 
+                            ? editChildDateOfBirth.toLocaleDateString('vi-VN')
+                            : 'Chọn ngày sinh'}
+                        </Text>
+                        <MaterialIcons name="calendar-today" size={20} color={COLORS.PRIMARY} />
+                      </TouchableOpacity>
+                      {editChildDateOfBirth && (
+                        <TouchableOpacity
+                          style={styles.clearDateButton}
+                          onPress={() => setEditChildDateOfBirth(null)}
+                        >
+                          <MaterialIcons name="clear" size={16} color={COLORS.ERROR} />
+                          <Text style={styles.clearDateText}>Xóa ngày</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    <View style={styles.modalFormGroup}>
+                      <Text style={styles.modalLabel}>Ghi chú</Text>
+                      <TextInput
+                        style={[styles.modalInput, styles.modalTextArea]}
+                        value={editChildNote}
+                        onChangeText={setEditChildNote}
+                        placeholder="Nhập ghi chú (nếu có)"
+                        placeholderTextColor={COLORS.TEXT_SECONDARY}
+                        multiline
+                        numberOfLines={4}
+                        textAlignVertical="top"
+                      />
+                    </View>
+
+                    <Text style={styles.modalSubtext}>
+                      Trường: {selectedChild.schoolName || 'Chưa có'}{'\n'}
+                      Cấp độ: {selectedChild.studentLevelName || 'Chưa có'}
+                    </Text>
+                  </ScrollView>
+                )}
+                
+                <View style={styles.modalFooter}>
+                  <TouchableOpacity 
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setEditChildModalVisible(false);
+                    }}
+                    disabled={updatingChild}
+                  >
+                    <Text style={[styles.modalButtonText, styles.modalButtonCancelText]}>Hủy</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.modalButton, updatingChild && styles.modalButtonDisabled]}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      handleUpdateChild();
+                    }}
+                    disabled={updatingChild}
+                  >
+                    {updatingChild ? (
+                      <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                    ) : (
+                      <Text style={styles.modalButtonText}>Cập nhật</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Add Child Modal - sẽ thêm sau */}
+      <Modal
+        visible={addChildModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          handleCloseAddChildModal();
+        }}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={[styles.modalContent, styles.addChildModalContent]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Đăng ký con mới</Text>
+                  <TouchableOpacity 
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      handleCloseAddChildModal();
+                    }}
+                    disabled={registering}
+                  >
+                    <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
+                  </TouchableOpacity>
+                </View>
+                
+                <ScrollView 
+                  style={styles.modalBody}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={styles.modalFormGroup}>
+                    <Text style={styles.modalLabel}>Tên *</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      value={addName}
+                      onChangeText={setAddName}
+                      placeholder="Nhập tên của con"
+                      placeholderTextColor={COLORS.TEXT_SECONDARY}
+                    />
+                  </View>
+
+                  <View style={styles.modalFormGroup}>
+                    <Text style={styles.modalLabel}>Ngày sinh</Text>
+                    <TouchableOpacity
+                      style={styles.datePickerButton}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        initializeAddDatePicker(addDateOfBirth);
+                        setShowAddDatePicker(true);
+                      }}
+                    >
+                      <Text style={[
+                        styles.datePickerText,
+                        !addDateOfBirth && styles.datePickerPlaceholder
+                      ]}>
+                        {addDateOfBirth 
+                          ? addDateOfBirth.toLocaleDateString('vi-VN')
+                          : 'Chọn ngày sinh'}
+                      </Text>
+                      <MaterialIcons name="calendar-today" size={20} color={COLORS.PRIMARY} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.modalFormGroup}>
+                    <Text style={styles.modalLabel}>Ảnh đại diện</Text>
+                    <TouchableOpacity
+                      style={styles.imagePickerButton}
+                      onPress={handlePickAddImage}
+                    >
+                      {addImageUri ? (
+                        <Image source={{ uri: addImageUri }} style={styles.imagePickerPreview} />
+                      ) : (
+                        <View style={styles.imagePickerPlaceholder}>
+                          <MaterialIcons name="add-photo-alternate" size={32} color={COLORS.TEXT_SECONDARY} />
+                          <Text style={styles.imagePickerPlaceholderText}>Chọn ảnh</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.modalFormGroup}>
+                    <Text style={styles.modalLabel}>Trường học</Text>
+                    {loadingSchools ? (
+                      <View style={styles.dropdownLoading}>
+                        <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                        <Text style={styles.dropdownLoadingText}>Đang tải...</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.dropdownButton}
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          if (schools.length === 0) {
+                            Alert.alert('Thông báo', 'Chưa có trường học nào.');
+                            return;
+                          }
+                          Alert.alert(
+                            'Chọn trường học',
+                            '',
+                            [
+                              ...schools.map(school => ({
+                                text: school.name,
+                                onPress: () => setAddSchoolId(school.id),
+                              })),
+                              { text: 'Xóa lựa chọn', style: 'destructive', onPress: () => setAddSchoolId('') },
+                              { text: 'Hủy', style: 'cancel' },
+                            ],
+                            { cancelable: true }
+                          );
+                        }}
+                      >
+                        <Text style={[
+                          styles.dropdownText,
+                          !addSchoolId && styles.dropdownPlaceholder
+                        ]}>
+                          {addSchoolId 
+                            ? schools.find(s => s.id === addSchoolId)?.name || 'Đã chọn'
+                            : 'Chọn trường học'}
+                        </Text>
+                        <MaterialIcons name="arrow-drop-down" size={24} color={COLORS.TEXT_SECONDARY} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  <View style={styles.modalFormGroup}>
+                    <Text style={styles.modalLabel}>Cấp độ học sinh</Text>
+                    {loadingStudentLevels ? (
+                      <View style={styles.dropdownLoading}>
+                        <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                        <Text style={styles.dropdownLoadingText}>Đang tải...</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.dropdownButton}
+                        onPress={() => {
+                          Keyboard.dismiss();
+                          if (studentLevels.length === 0) {
+                            Alert.alert('Thông báo', 'Chưa có cấp độ nào.');
+                            return;
+                          }
+                          Alert.alert(
+                            'Chọn cấp độ',
+                            '',
+                            [
+                              ...studentLevels.map(level => ({
+                                text: level.name,
+                                onPress: () => setAddStudentLevelId(level.id),
+                              })),
+                              { text: 'Xóa lựa chọn', style: 'destructive', onPress: () => setAddStudentLevelId('') },
+                              { text: 'Hủy', style: 'cancel' },
+                            ],
+                            { cancelable: true }
+                          );
+                        }}
+                      >
+                        <Text style={[
+                          styles.dropdownText,
+                          !addStudentLevelId && styles.dropdownPlaceholder
+                        ]}>
+                          {addStudentLevelId 
+                            ? studentLevels.find(l => l.id === addStudentLevelId)?.name || 'Đã chọn'
+                            : 'Chọn cấp độ'}
+                        </Text>
+                        <MaterialIcons name="arrow-drop-down" size={24} color={COLORS.TEXT_SECONDARY} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  <View style={styles.modalFormGroup}>
+                    <Text style={styles.modalLabel}>Ghi chú</Text>
+                    <TextInput
+                      style={[styles.modalInput, styles.modalTextArea]}
+                      value={addNote}
+                      onChangeText={setAddNote}
+                      placeholder="Nhập ghi chú (nếu có)"
+                      placeholderTextColor={COLORS.TEXT_SECONDARY}
+                      multiline
+                      numberOfLines={3}
+                      textAlignVertical="top"
+                    />
+                  </View>
+                </ScrollView>
+                
+                <View style={styles.modalFooter}>
+                  <TouchableOpacity 
+                    style={[styles.modalButton, styles.modalButtonCancel]}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      handleCloseAddChildModal();
+                    }}
+                    disabled={registering}
+                  >
+                    <Text style={[styles.modalButtonText, styles.modalButtonCancelText]}>Hủy</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.modalButton, registering && styles.modalButtonDisabled]}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      handleRegisterChild();
+                    }}
+                    disabled={registering}
+                  >
+                    {registering ? (
+                      <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                    ) : (
+                      <Text style={styles.modalButtonText}>Đăng ký</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Image Viewer Modal */}
+      <Modal
+        visible={imageViewerVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setImageViewerVisible(false)}
+      >
+        <View style={styles.imageViewerOverlay}>
+          <TouchableOpacity
+            style={styles.imageViewerCloseButton}
+            onPress={() => setImageViewerVisible(false)}
+          >
+            <MaterialIcons name="close" size={24} color={COLORS.SURFACE} />
+          </TouchableOpacity>
+          
+          {selectedImageUrl && (
+            <View style={styles.imageViewerContainer}>
+              <Image 
+                source={{ uri: selectedImageUrl }} 
+                style={styles.imageViewerImage}
+                resizeMode="contain"
+              />
+              {selectedImageChild && (
+                <View style={styles.imageViewerInfo}>
+                  <Text style={styles.imageViewerName}>{selectedImageChild.name}</Text>
+                  {selectedImageChild.studentLevelName && (
+                    <Text style={styles.imageViewerLevel}>{selectedImageChild.studentLevelName}</Text>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+      </Modal>
+
+      {/* Date Pickers */}
+      {/* Edit Child Date Picker */}
+      <Modal
+        visible={showChildDatePicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowChildDatePicker(false)}
+        hardwareAccelerated={true}
+        presentationStyle="overFullScreen"
+      >
+        <View style={styles.datePickerModalOverlay}>
+          <TouchableOpacity 
+            style={StyleSheet.absoluteFill} 
+            activeOpacity={1}
+            onPress={() => setShowChildDatePicker(false)}
+          />
+          <View style={styles.datePickerModalContent} pointerEvents="box-none">
+            <View style={styles.datePickerModalHeader}>
+              <Text style={styles.datePickerModalTitle}>Chọn ngày sinh</Text>
+              <TouchableOpacity onPress={() => setShowChildDatePicker(false)}>
+                <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.simpleDatePickerContainer}>
+              <View style={styles.dateInputRow}>
+                <View style={styles.dateInputGroup}>
+                  <Text style={styles.dateInputLabel}>Ngày</Text>
+                  <TextInput
+                    style={styles.dateInput}
+                    value={selectedDayInput}
+                    onChangeText={(text) => {
+                      const numericText = text.replace(/[^0-9]/g, '');
+                      if (numericText === '' || (parseInt(numericText) >= 1 && parseInt(numericText) <= 31)) {
+                        setSelectedDayInput(numericText);
+                      }
+                    }}
+                    placeholder="DD"
+                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                </View>
+                <View style={styles.dateInputGroup}>
+                  <Text style={styles.dateInputLabel}>Tháng</Text>
+                  <TextInput
+                    style={styles.dateInput}
+                    value={selectedMonthInput}
+                    onChangeText={(text) => {
+                      const numericText = text.replace(/[^0-9]/g, '');
+                      if (numericText === '' || (parseInt(numericText) >= 1 && parseInt(numericText) <= 12)) {
+                        setSelectedMonthInput(numericText);
+                      }
+                    }}
+                    placeholder="MM"
+                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                </View>
+                <View style={styles.dateInputGroup}>
+                  <Text style={styles.dateInputLabel}>Năm</Text>
+                  <TextInput
+                    style={styles.dateInput}
+                    value={selectedYearInput}
+                    onChangeText={(text) => {
+                      const numericText = text.replace(/[^0-9]/g, '');
+                      const currentYear = new Date().getFullYear();
+                      const numValue = parseInt(numericText);
+                      if (numericText === '' || 
+                          numericText.length < 4 || 
+                          (numericText.length === 4 && numValue >= 1950 && numValue <= currentYear)) {
+                        setSelectedYearInput(numericText);
+                      }
+                    }}
+                    placeholder="YYYY"
+                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                  />
+                </View>
+              </View>
+              <Text style={styles.dateInputHint}>
+                Nhập ngày (1-31), tháng (1-12), năm (1950-{new Date().getFullYear()})
+              </Text>
+            </View>
+            <View style={styles.datePickerModalFooter}>
+              <TouchableOpacity
+                style={[styles.datePickerModalButton, styles.datePickerModalButtonCancel]}
+                onPress={() => setShowChildDatePicker(false)}
+              >
+                <Text style={styles.datePickerModalButtonCancelText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.datePickerModalButton, styles.datePickerModalButtonConfirm]}
+                onPress={handleConfirmDate}
+              >
+                <Text style={styles.datePickerModalButtonConfirmText}>Xác nhận</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Child Date Picker */}
+      <Modal
+        visible={showAddDatePicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowAddDatePicker(false)}
+        hardwareAccelerated={true}
+        presentationStyle="overFullScreen"
+      >
+        <View style={styles.datePickerModalOverlay}>
+          <TouchableOpacity 
+            style={StyleSheet.absoluteFill} 
+            activeOpacity={1}
+            onPress={() => setShowAddDatePicker(false)}
+          />
+          <View style={styles.datePickerModalContent} pointerEvents="box-none">
+            <View style={styles.datePickerModalHeader}>
+              <Text style={styles.datePickerModalTitle}>Chọn ngày sinh</Text>
+              <TouchableOpacity onPress={() => setShowAddDatePicker(false)}>
+                <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.simpleDatePickerContainer}>
+              <View style={styles.dateInputRow}>
+                <View style={styles.dateInputGroup}>
+                  <Text style={styles.dateInputLabel}>Ngày</Text>
+                  <TextInput
+                    style={styles.dateInput}
+                    value={addSelectedDayInput}
+                    onChangeText={(text) => {
+                      const numericText = text.replace(/[^0-9]/g, '');
+                      if (numericText === '' || (parseInt(numericText) >= 1 && parseInt(numericText) <= 31)) {
+                        setAddSelectedDayInput(numericText);
+                      }
+                    }}
+                    placeholder="DD"
+                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                </View>
+                <View style={styles.dateInputGroup}>
+                  <Text style={styles.dateInputLabel}>Tháng</Text>
+                  <TextInput
+                    style={styles.dateInput}
+                    value={addSelectedMonthInput}
+                    onChangeText={(text) => {
+                      const numericText = text.replace(/[^0-9]/g, '');
+                      if (numericText === '' || (parseInt(numericText) >= 1 && parseInt(numericText) <= 12)) {
+                        setAddSelectedMonthInput(numericText);
+                      }
+                    }}
+                    placeholder="MM"
+                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                    keyboardType="number-pad"
+                    maxLength={2}
+                  />
+                </View>
+                <View style={styles.dateInputGroup}>
+                  <Text style={styles.dateInputLabel}>Năm</Text>
+                  <TextInput
+                    style={styles.dateInput}
+                    value={addSelectedYearInput}
+                    onChangeText={(text) => {
+                      const numericText = text.replace(/[^0-9]/g, '');
+                      const currentYear = new Date().getFullYear();
+                      const numValue = parseInt(numericText);
+                      if (numericText === '' || 
+                          numericText.length < 4 || 
+                          (numericText.length === 4 && numValue >= 1950 && numValue <= currentYear)) {
+                        setAddSelectedYearInput(numericText);
+                      }
+                    }}
+                    placeholder="YYYY"
+                    placeholderTextColor={COLORS.TEXT_SECONDARY}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                  />
+                </View>
+              </View>
+              <Text style={styles.dateInputHint}>
+                Nhập ngày (1-31), tháng (1-12), năm (1950-{new Date().getFullYear()})
+              </Text>
+            </View>
+            <View style={styles.datePickerModalFooter}>
+              <TouchableOpacity
+                style={[styles.datePickerModalButton, styles.datePickerModalButtonCancel]}
+                onPress={() => setShowAddDatePicker(false)}
+              >
+                <Text style={styles.datePickerModalButtonCancelText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.datePickerModalButton, styles.datePickerModalButtonConfirm]}
+                onPress={handleConfirmAddDate}
+              >
+                <Text style={styles.datePickerModalButtonConfirmText}>Xác nhận</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* Edit Family Profile Modal */}
@@ -1672,6 +3173,510 @@ const styles = StyleSheet.create({
   },
   dropdownPlaceholder: {
     color: COLORS.TEXT_SECONDARY,
+  },
+  // Children Management Styles
+  addChildButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    borderRadius: 12,
+    gap: SPACING.XS,
+  },
+  addChildButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
+  },
+  childrenList: {
+    gap: SPACING.MD,
+  },
+  childCard: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 16,
+    padding: SPACING.MD,
+    marginBottom: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  childHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.MD,
+  },
+  childAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.MD,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  avatarImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
+  avatarText: {
+    fontSize: FONTS.SIZES.XL,
+    fontWeight: 'bold',
+    color: COLORS.PRIMARY,
+  },
+  avatarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  childInfo: {
+    flex: 1,
+  },
+  childName: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS,
+  },
+  childDetails: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginBottom: SPACING.XS,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: SPACING.XS,
+  },
+  statusText: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  moreButton: {
+    padding: SPACING.XS,
+  },
+  childStats: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.SM,
+    marginBottom: SPACING.MD,
+    paddingBottom: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    minWidth: '30%',
+  },
+  statItemText: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginLeft: SPACING.XS,
+    flex: 1,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: SPACING.SM,
+    marginBottom: SPACING.MD,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.SM,
+    borderRadius: 8,
+    gap: SPACING.XS,
+  },
+  primaryButton: {
+    backgroundColor: COLORS.PRIMARY,
+  },
+  secondaryButton: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  tertiaryButton: {
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+  },
+  actionButtonText: {
+    fontSize: FONTS.SIZES.XS,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
+  },
+  packageContainer: {
+    marginTop: SPACING.MD,
+    paddingTop: SPACING.MD,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.BORDER,
+  },
+  packageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+    gap: SPACING.XS,
+  },
+  packageTitle: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  packageStateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.XS,
+    paddingVertical: SPACING.SM,
+  },
+  packageStateText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  packageRetryButton: {
+    marginTop: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    paddingHorizontal: SPACING.MD,
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  packageRetryText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  packageCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 8,
+    padding: SPACING.SM,
+    marginBottom: SPACING.SM,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  packageCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.XS,
+  },
+  packageName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  packageStatusBadge: {
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    borderRadius: 12,
+  },
+  packageStatusActive: {
+    backgroundColor: COLORS.SUCCESS,
+  },
+  packageStatusInactive: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  packageStatusText: {
+    fontSize: FONTS.SIZES.XS,
+    fontWeight: '600',
+  },
+  packageDate: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginBottom: SPACING.XS,
+  },
+  packageUsedSlot: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  emptySubtext: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    textAlign: 'center',
+    marginTop: SPACING.XS,
+  },
+  emptyButton: {
+    marginTop: SPACING.MD,
+    paddingHorizontal: SPACING.LG,
+    paddingVertical: SPACING.MD,
+    backgroundColor: COLORS.PRIMARY,
+    borderRadius: 12,
+  },
+  emptyButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
+  },
+  modalSubtext: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.SM,
+    padding: SPACING.SM,
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 8,
+  },
+  modalTextArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    backgroundColor: COLORS.BACKGROUND,
+  },
+  datePickerText: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  datePickerPlaceholder: {
+    color: COLORS.TEXT_SECONDARY,
+  },
+  clearDateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.XS,
+    alignSelf: 'flex-start',
+  },
+  clearDateText: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.ERROR,
+    marginLeft: SPACING.XS,
+  },
+  imagePickerButton: {
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    padding: SPACING.MD,
+    backgroundColor: COLORS.BACKGROUND,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 120,
+  },
+  imagePickerPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePickerPlaceholderText: {
+    marginTop: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  imagePickerPreview: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    resizeMode: 'cover',
+  },
+  documentPickerButton: {
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    padding: SPACING.MD,
+    backgroundColor: COLORS.BACKGROUND,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 80,
+  },
+  documentPickerPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  documentPickerPlaceholderText: {
+    marginTop: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  documentPickerPreview: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  documentPickerText: {
+    marginTop: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  addChildModalContent: {
+    maxHeight: '90%',
+    width: '95%',
+    maxWidth: 500,
+  },
+  dropdownLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.SM,
+  },
+  dropdownLoadingText: {
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  imageViewerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerContainer: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerImage: {
+    width: '100%',
+    height: '80%',
+  },
+  imageViewerCloseButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 40,
+    right: SPACING.MD,
+    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
+    padding: SPACING.SM,
+  },
+  imageViewerInfo: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 50 : 40,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.LG,
+  },
+  imageViewerName: {
+    fontSize: FONTS.SIZES.XL,
+    fontWeight: 'bold',
+    color: COLORS.SURFACE,
+    marginBottom: SPACING.XS,
+    textAlign: 'center',
+  },
+  imageViewerLevel: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.SURFACE,
+    opacity: 0.8,
+    textAlign: 'center',
+  },
+  // Date Picker Modal Styles
+  datePickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  datePickerModalContent: {
+    backgroundColor: COLORS.SURFACE,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: SPACING.LG,
+    maxHeight: '70%',
+  },
+  datePickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.MD,
+    paddingBottom: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  datePickerModalTitle: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  simpleDatePickerContainer: {
+    paddingVertical: SPACING.MD,
+  },
+  dateInputRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: SPACING.SM,
+  },
+  dateInputGroup: {
+    flex: 1,
+  },
+  dateInputLabel: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_SECONDARY,
+    marginBottom: SPACING.XS,
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_PRIMARY,
+    backgroundColor: COLORS.BACKGROUND,
+    textAlign: 'center',
+  },
+  dateInputHint: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.SM,
+    textAlign: 'center',
+  },
+  datePickerModalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: SPACING.MD,
+    paddingTop: SPACING.MD,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.BORDER,
+  },
+  datePickerModalButton: {
+    flex: 1,
+    paddingVertical: SPACING.MD,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: SPACING.XS,
+  },
+  datePickerModalButtonCancel: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  datePickerModalButtonConfirm: {
+    backgroundColor: COLORS.PRIMARY,
+  },
+  datePickerModalButtonCancelText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  datePickerModalButtonConfirmText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
   },
 });
 

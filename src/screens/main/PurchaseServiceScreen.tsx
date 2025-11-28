@@ -16,15 +16,14 @@ import {
   Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { MainTabParamList } from '../../types';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../../types';
 import serviceService from '../../services/serviceService';
 import studentSlotService from '../../services/studentSlotService';
 import orderService from '../../services/orderService';
-import { AddOnService, StudentSlotResponse, WalletType, StudentResponse } from '../../types/api';
+import { AddOnService, StudentSlotResponse, WalletType } from '../../types/api';
 import { COLORS } from '../../constants';
-import { useMyChildren } from '../../hooks/useChildrenApi';
 
 const SPACING = {
   XS: 4,
@@ -45,23 +44,24 @@ const FONTS = {
   },
 };
 
-type ServicesNavigationProp = BottomTabNavigationProp<MainTabParamList, 'Services'>;
+type PurchaseServiceNavigationProp = StackNavigationProp<RootStackParamList, 'PurchaseService'>;
+type PurchaseServiceRouteProp = RouteProp<RootStackParamList, 'PurchaseService'>;
 
-const ServicesScreen: React.FC = () => {
-  const navigation = useNavigation<ServicesNavigationProp>();
-  const { students, loading: studentsLoading } = useMyChildren();
-  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+const PurchaseServiceScreen: React.FC = () => {
+  const navigation = useNavigation<PurchaseServiceNavigationProp>();
+  const route = useRoute<PurchaseServiceRouteProp>();
+  const { studentSlotId, studentId } = route.params;
+
   const [addOns, setAddOns] = useState<AddOnService[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<StudentSlotResponse | null>(null);
+  const [loadingSlot, setLoadingSlot] = useState(false);
 
   // Purchase modal states
   const [purchaseModalVisible, setPurchaseModalVisible] = useState(false);
   const [selectedService, setSelectedService] = useState<AddOnService | null>(null);
-  const [studentSlots, setStudentSlots] = useState<StudentSlotResponse[]>([]);
-  const [loadingSlots, setLoadingSlots] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<StudentSlotResponse | null>(null);
   const [quantity, setQuantity] = useState<string>('1');
   const [creatingOrder, setCreatingOrder] = useState(false);
 
@@ -94,16 +94,41 @@ const ServicesScreen: React.FC = () => {
     return timeString.substring(0, 5); // HH:mm
   }, []);
 
+  // Fetch slot details
+  const fetchSlotDetails = useCallback(async () => {
+    if (!studentSlotId || !studentId) {
+      return;
+    }
+
+    try {
+      setLoadingSlot(true);
+      const response = await studentSlotService.getStudentSlots({
+        studentId,
+        pageIndex: 1,
+        pageSize: 100,
+        status: 'Booked',
+      });
+      const slot = response.items.find(s => s.id === studentSlotId);
+      if (slot) {
+        setSelectedSlot(slot);
+      }
+    } catch (err: any) {
+      console.warn('Failed to fetch slot details:', err);
+    } finally {
+      setLoadingSlot(false);
+    }
+  }, [studentSlotId, studentId]);
+
+  // Fetch add-ons
   const fetchAddOns = useCallback(async () => {
-    if (!selectedStudentId) {
+    if (!studentId) {
       setLoading(false);
       setRefreshing(false);
       return;
     }
     try {
       setError(null);
-      const data = await serviceService.getStudentAddOns(selectedStudentId);
-      // Only show active add-ons
+      const data = await serviceService.getStudentAddOns(studentId);
       const activeAddOns = data.filter(addOn => addOn.isActive);
       setAddOns(activeAddOns);
     } catch (err: any) {
@@ -113,49 +138,15 @@ const ServicesScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedStudentId]);
-
-  const fetchStudentSlots = useCallback(async () => {
-    if (!selectedStudentId) {
-      setStudentSlots([]);
-      return;
-    }
-    try {
-      setLoadingSlots(true);
-      const response = await studentSlotService.getStudentSlots({
-        pageIndex: 1,
-        pageSize: 100,
-        studentId: selectedStudentId, // Lọc theo học sinh đã chọn
-        status: 'Booked',
-        upcomingOnly: true,
-      });
-      // Filter only booked slots (API đã filter nhưng để chắc chắn)
-      const bookedSlots = response.items.filter(slot => slot.status === 'Booked');
-      setStudentSlots(bookedSlots);
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || 'Không thể tải danh sách slot';
-      Alert.alert('Lỗi', errorMessage);
-    } finally {
-      setLoadingSlots(false);
-    }
-  }, [selectedStudentId]);
-
-  // Auto-select first student when students are loaded
-  useEffect(() => {
-    if (students.length > 0) {
-      // Nếu chưa chọn học sinh nào hoặc học sinh đã chọn không còn trong danh sách
-      if (!selectedStudentId || !students.find(s => s.id === selectedStudentId)) {
-        setSelectedStudentId(students[0].id);
-      }
-    }
-  }, [students, selectedStudentId]);
+  }, [studentId]);
 
   useEffect(() => {
-    if (selectedStudentId) {
+    if (studentId) {
       setLoading(true);
       fetchAddOns();
+      fetchSlotDetails();
     }
-  }, [fetchAddOns, selectedStudentId]);
+  }, [studentId, fetchAddOns, fetchSlotDetails]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -163,24 +154,30 @@ const ServicesScreen: React.FC = () => {
   }, [fetchAddOns]);
 
   const handlePurchase = (addOn: AddOnService) => {
+    if (!selectedSlot) {
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin slot học');
+      return;
+    }
     setSelectedService(addOn);
-    setSelectedSlot(null);
     setQuantity('1');
     setPurchaseModalVisible(true);
-    fetchStudentSlots();
   };
 
   const handleClosePurchaseModal = () => {
     setPurchaseModalVisible(false);
     setSelectedService(null);
-    setSelectedSlot(null);
     setQuantity('1');
-    setStudentSlots([]);
+  };
+
+  const calculateTotal = () => {
+    if (!selectedService) return 0;
+    const qty = parseInt(quantity, 10) || 0;
+    return selectedService.effectivePrice * qty;
   };
 
   const handleCreateOrder = async () => {
     if (!selectedService || !selectedSlot) {
-      Alert.alert('Lỗi', 'Vui lòng chọn slot học');
+      Alert.alert('Lỗi', 'Vui lòng chọn dịch vụ');
       return;
     }
 
@@ -202,7 +199,6 @@ const ServicesScreen: React.FC = () => {
         ],
       });
 
-      // Save order info and show payment modal
       setCreatedOrderId(order.id);
       setOrderTotalAmount(order.totalAmount);
       handleClosePurchaseModal();
@@ -213,12 +209,6 @@ const ServicesScreen: React.FC = () => {
     } finally {
       setCreatingOrder(false);
     }
-  };
-
-  const calculateTotal = () => {
-    if (!selectedService) return 0;
-    const qty = parseInt(quantity, 10) || 0;
-    return selectedService.effectivePrice * qty;
   };
 
   const handleClosePaymentModal = () => {
@@ -250,6 +240,7 @@ const ServicesScreen: React.FC = () => {
             text: 'OK',
             onPress: () => {
               handleClosePaymentModal();
+              navigation.goBack();
             },
           },
         ]
@@ -306,52 +297,38 @@ const ServicesScreen: React.FC = () => {
       >
         {/* Header Section */}
         <View style={styles.headerSection}>
-          <Text style={styles.headerTitle}>Dịch vụ bổ sung</Text>
+          <Text style={styles.headerTitle}>Mua dịch vụ bổ sung</Text>
           <Text style={styles.headerSubtitle}>
-            Bánh kẹo, đồ ăn và các dịch vụ khác
+            Chọn dịch vụ cho lớp học đã đặt
           </Text>
         </View>
 
-        {/* Student Selector */}
-        {students.length > 0 && (
-          <View style={styles.studentSelectorContainer}>
-            <Text style={styles.studentSelectorLabel}>
-              Chọn học sinh ({students.length}):
-            </Text>
-            <View style={styles.studentSelectorWrapper}>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={true}
-                style={styles.studentSelectorScroll}
-                contentContainerStyle={styles.studentSelectorContent}
-                nestedScrollEnabled={true}
-                bounces={false}
-              >
-                {students.map((student) => (
-                  <TouchableOpacity
-                    key={student.id}
-                    style={[
-                      styles.studentSelectorButton,
-                      selectedStudentId === student.id && styles.studentSelectorButtonActive,
-                    ]}
-                    onPress={() => setSelectedStudentId(student.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.studentSelectorText,
-                        selectedStudentId === student.id && styles.studentSelectorTextActive,
-                      ]}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                    >
-                      {student.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
+        {/* Slot Info */}
+        {loadingSlot ? (
+          <View style={styles.slotInfoCard}>
+            <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+            <Text style={styles.loadingTextSmall}>Đang tải thông tin lớp học...</Text>
           </View>
-        )}
+        ) : selectedSlot ? (
+          <View style={styles.slotInfoCard}>
+            <View style={styles.slotInfoHeader}>
+              <MaterialIcons name="event-available" size={24} color={COLORS.PRIMARY} />
+              <Text style={styles.slotInfoTitle}>Lớp học đã chọn</Text>
+            </View>
+            <Text style={styles.slotInfoText}>{formatDate(selectedSlot.date)}</Text>
+            {selectedSlot.timeframe && (
+              <Text style={styles.slotInfoText}>
+                {selectedSlot.timeframe.name}: {formatTime(selectedSlot.timeframe.startTime)} - {formatTime(selectedSlot.timeframe.endTime)}
+              </Text>
+            )}
+            {selectedSlot.room?.roomName && (
+              <Text style={styles.slotInfoText}>Phòng: {selectedSlot.room.roomName}</Text>
+            )}
+            {selectedSlot.branchSlot?.branchName && (
+              <Text style={styles.slotInfoText}>Chi nhánh: {selectedSlot.branchSlot.branchName}</Text>
+            )}
+          </View>
+        ) : null}
 
         {/* Add-ons List */}
         {addOns.length === 0 ? (
@@ -369,8 +346,8 @@ const ServicesScreen: React.FC = () => {
                 <View style={styles.addOnHeader}>
                   <View style={styles.addOnIconContainer}>
                     {addOn.image ? (
-                      <Image 
-                        source={{ uri: addOn.image }} 
+                      <Image
+                        source={{ uri: addOn.image }}
                         style={styles.addOnImage}
                         resizeMode="cover"
                       />
@@ -397,7 +374,7 @@ const ServicesScreen: React.FC = () => {
                       {addOn.isActive ? 'Đang bán' : 'Tạm ngưng'}
                     </Text>
                   </View>
-                  
+
                   <TouchableOpacity
                     style={[styles.purchaseButton, !addOn.isActive && styles.purchaseButtonDisabled]}
                     onPress={() => handlePurchase(addOn)}
@@ -425,7 +402,6 @@ const ServicesScreen: React.FC = () => {
           style={styles.modalOverlay}
         >
           <View style={styles.modalContent}>
-            {/* Modal Header */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Mua dịch vụ</Text>
               <TouchableOpacity onPress={handleClosePurchaseModal}>
@@ -433,9 +409,7 @@ const ServicesScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Modal Body */}
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {/* Service Info */}
               {selectedService && (
                 <View style={styles.serviceInfoCard}>
                   <View style={styles.serviceInfoHeader}>
@@ -448,59 +422,19 @@ const ServicesScreen: React.FC = () => {
                 </View>
               )}
 
-              {/* Select Student Slot */}
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Chọn slot học *</Text>
-                {loadingSlots ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color={COLORS.PRIMARY} />
-                    <Text style={styles.loadingTextSmall}>Đang tải danh sách slot...</Text>
+              {selectedSlot && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Lớp học</Text>
+                  <View style={styles.selectedSlotInfo}>
+                    <MaterialIcons name="check-circle" size={20} color={COLORS.PRIMARY} />
+                    <Text style={styles.selectedSlotInfoText}>
+                      {formatDate(selectedSlot.date)}
+                      {selectedSlot.timeframe && ` • ${formatTime(selectedSlot.timeframe.startTime)} - ${formatTime(selectedSlot.timeframe.endTime)}`}
+                    </Text>
                   </View>
-                ) : studentSlots.length === 0 ? (
-                  <View style={styles.emptySlotsContainer}>
-                    <MaterialIcons name="event-busy" size={32} color={COLORS.TEXT_SECONDARY} />
-                    <Text style={styles.emptySlotsText}>Không có slot nào đã đặt</Text>
-                  </View>
-                ) : (
-                  <ScrollView style={styles.slotsList} nestedScrollEnabled>
-                    {studentSlots.map((slot) => (
-                      <TouchableOpacity
-                        key={slot.id}
-                        style={[
-                          styles.slotCard,
-                          selectedSlot?.id === slot.id && styles.slotCardSelected,
-                        ]}
-                        onPress={() => setSelectedSlot(slot)}
-                      >
-                        <View style={styles.slotCardContent}>
-                          <View style={styles.slotCardHeader}>
-                            <MaterialIcons
-                              name={selectedSlot?.id === slot.id ? 'radio-button-checked' : 'radio-button-unchecked'}
-                              size={20}
-                              color={selectedSlot?.id === slot.id ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
-                            />
-                            <Text style={styles.slotStudentName}>{slot.studentName}</Text>
-                          </View>
-                          <Text style={styles.slotDate}>{formatDate(slot.date)}</Text>
-                          {slot.timeframe && (
-                            <Text style={styles.slotTime}>
-                              {slot.timeframe.name}: {formatTime(slot.timeframe.startTime)} - {formatTime(slot.timeframe.endTime)}
-                            </Text>
-                          )}
-                          {slot.room && (
-                            <Text style={styles.slotRoom}>Phòng: {slot.room.roomName}</Text>
-                          )}
-                          {slot.branchSlot?.branchName && (
-                            <Text style={styles.slotBranch}>Chi nhánh: {slot.branchSlot.branchName}</Text>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                )}
-              </View>
+                </View>
+              )}
 
-              {/* Quantity Input */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Số lượng *</Text>
                 <TextInput
@@ -513,14 +447,12 @@ const ServicesScreen: React.FC = () => {
                 />
               </View>
 
-              {/* Total Preview */}
               <View style={styles.totalPreview}>
                 <Text style={styles.totalLabel}>Tổng tiền:</Text>
                 <Text style={styles.totalValue}>{formatCurrency(calculateTotal())}</Text>
               </View>
             </ScrollView>
 
-            {/* Modal Footer */}
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonCancel]}
@@ -533,10 +465,10 @@ const ServicesScreen: React.FC = () => {
                 style={[
                   styles.modalButton,
                   styles.modalButtonConfirm,
-                  (!selectedSlot || creatingOrder) && styles.modalButtonDisabled,
+                  creatingOrder && styles.modalButtonDisabled,
                 ]}
                 onPress={handleCreateOrder}
-                disabled={!selectedSlot || creatingOrder}
+                disabled={creatingOrder}
               >
                 {creatingOrder ? (
                   <ActivityIndicator size="small" color={COLORS.SURFACE} />
@@ -564,7 +496,6 @@ const ServicesScreen: React.FC = () => {
           style={styles.modalOverlay}
         >
           <View style={styles.modalContent}>
-            {/* Modal Header */}
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Thanh toán đơn hàng</Text>
               <TouchableOpacity onPress={handleClosePaymentModal}>
@@ -572,9 +503,7 @@ const ServicesScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Modal Body */}
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {/* Order Info */}
               <View style={styles.orderInfoCard}>
                 <View style={styles.orderInfoHeader}>
                   <MaterialIcons name="receipt" size={24} color={COLORS.PRIMARY} />
@@ -590,13 +519,8 @@ const ServicesScreen: React.FC = () => {
                 </View>
               </View>
 
-              {/* Select Wallet Type */}
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Chọn ví thanh toán *</Text>
-                <Text style={styles.sectionSubtitle}>
-                  Chọn ví để trừ tiền thanh toán đơn hàng
-                </Text>
-                
                 <View style={styles.walletTypeContainer}>
                   <TouchableOpacity
                     style={[
@@ -650,7 +574,6 @@ const ServicesScreen: React.FC = () => {
                 </View>
               </View>
 
-              {/* Payment Summary */}
               <View style={styles.paymentSummary}>
                 <View style={styles.paymentSummaryRow}>
                   <Text style={styles.paymentSummaryLabel}>Số tiền thanh toán:</Text>
@@ -666,7 +589,6 @@ const ServicesScreen: React.FC = () => {
               </View>
             </ScrollView>
 
-            {/* Modal Footer */}
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonCancel]}
@@ -723,6 +645,11 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     color: COLORS.TEXT_SECONDARY,
   },
+  loadingTextSmall: {
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
   errorText: {
     marginTop: SPACING.MD,
     fontSize: FONTS.SIZES.MD,
@@ -754,6 +681,30 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: FONTS.SIZES.MD,
     color: COLORS.TEXT_SECONDARY,
+  },
+  slotInfoCard: {
+    backgroundColor: COLORS.SUCCESS_BG,
+    borderRadius: 16,
+    padding: SPACING.MD,
+    marginBottom: SPACING.LG,
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY_LIGHT,
+  },
+  slotInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  slotInfoTitle: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '700',
+    color: COLORS.PRIMARY,
+    marginLeft: SPACING.SM,
+  },
+  slotInfoText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    marginTop: SPACING.XS,
   },
   addOnsList: {
     gap: SPACING.MD,
@@ -787,51 +738,6 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-  },
-  studentSelectorContainer: {
-    marginBottom: SPACING.LG,
-  },
-  studentSelectorLabel: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.SM,
-  },
-  studentSelectorWrapper: {
-    height: 50,
-    width: '100%',
-  },
-  studentSelectorScroll: {
-    flexGrow: 0,
-    flexShrink: 1,
-  },
-  studentSelectorContent: {
-    paddingRight: SPACING.MD,
-    paddingLeft: SPACING.XS,
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  studentSelectorButton: {
-    paddingHorizontal: SPACING.MD,
-    paddingVertical: SPACING.SM,
-    borderRadius: 20,
-    backgroundColor: COLORS.BACKGROUND,
-    borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    marginRight: SPACING.SM,
-  },
-  studentSelectorButtonActive: {
-    backgroundColor: COLORS.PRIMARY,
-    borderColor: COLORS.PRIMARY,
-  },
-  studentSelectorText: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_PRIMARY,
-    fontWeight: '500',
-  },
-  studentSelectorTextActive: {
-    color: COLORS.SURFACE,
-    fontWeight: '600',
   },
   addOnInfo: {
     flex: 1,
@@ -916,108 +822,6 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_SECONDARY,
     textAlign: 'center',
   },
-  // Payment Modal Styles
-  orderInfoCard: {
-    backgroundColor: COLORS.PRIMARY_LIGHT + '10',
-    borderRadius: 12,
-    padding: SPACING.MD,
-    marginBottom: SPACING.MD,
-  },
-  orderInfoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.MD,
-  },
-  orderInfoTitle: {
-    fontSize: FONTS.SIZES.LG,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    marginLeft: SPACING.SM,
-  },
-  orderInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.SM,
-  },
-  orderInfoLabel: {
-    fontSize: FONTS.SIZES.MD,
-    color: COLORS.TEXT_SECONDARY,
-  },
-  orderInfoValue: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  orderInfoAmount: {
-    fontSize: FONTS.SIZES.LG,
-    fontWeight: 'bold',
-    color: COLORS.SECONDARY,
-  },
-  sectionSubtitle: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    marginBottom: SPACING.MD,
-  },
-  walletTypeContainer: {
-    gap: SPACING.SM,
-  },
-  walletTypeCard: {
-    backgroundColor: COLORS.BACKGROUND,
-    borderRadius: 12,
-    padding: SPACING.MD,
-    borderWidth: 2,
-    borderColor: COLORS.BORDER,
-  },
-  walletTypeCardSelected: {
-    borderColor: COLORS.PRIMARY,
-    backgroundColor: COLORS.PRIMARY_LIGHT + '10',
-  },
-  walletTypeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.XS,
-  },
-  walletTypeName: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-    marginLeft: SPACING.SM,
-  },
-  walletTypeNameSelected: {
-    color: COLORS.PRIMARY,
-  },
-  walletTypeDescription: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    marginLeft: SPACING.XL,
-  },
-  paymentSummary: {
-    backgroundColor: COLORS.PRIMARY_LIGHT + '10',
-    borderRadius: 12,
-    padding: SPACING.MD,
-    marginTop: SPACING.MD,
-  },
-  paymentSummaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.SM,
-  },
-  paymentSummaryLabel: {
-    fontSize: FONTS.SIZES.MD,
-    color: COLORS.TEXT_SECONDARY,
-  },
-  paymentSummaryValue: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  paymentSummaryDivider: {
-    height: 1,
-    backgroundColor: COLORS.BORDER,
-    marginVertical: SPACING.SM,
-  },
   // Modal Styles
   modalOverlay: {
     flex: 1,
@@ -1079,33 +883,12 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     marginBottom: SPACING.SM,
   },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: SPACING.MD,
-    justifyContent: 'center',
-  },
-  loadingTextSmall: {
-    marginLeft: SPACING.SM,
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-  },
-  emptySlotsContainer: {
-    alignItems: 'center',
-    padding: SPACING.LG,
-  },
-  emptySlotsText: {
-    marginTop: SPACING.SM,
-    fontSize: FONTS.SIZES.MD,
-    color: COLORS.TEXT_SECONDARY,
-  },
   selectedSlotInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.SUCCESS_BG,
     borderRadius: 12,
     padding: SPACING.SM,
-    marginBottom: SPACING.SM,
   },
   selectedSlotInfoText: {
     marginLeft: SPACING.SM,
@@ -1113,62 +896,15 @@ const styles = StyleSheet.create({
     color: COLORS.PRIMARY,
     fontWeight: '600',
   },
-  slotsList: {
-    maxHeight: 200,
-  },
-  slotCard: {
-    backgroundColor: COLORS.BACKGROUND,
-    borderRadius: 12,
-    padding: SPACING.MD,
-    marginBottom: SPACING.SM,
-    borderWidth: 2,
-    borderColor: COLORS.BORDER,
-  },
-  slotCardSelected: {
-    borderColor: COLORS.PRIMARY,
-    backgroundColor: COLORS.PRIMARY_LIGHT + '10',
-  },
-  slotCardContent: {
-    flex: 1,
-  },
-  slotCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.SM,
-  },
-  slotStudentName: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-    marginLeft: SPACING.SM,
-  },
-  slotDate: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.XS,
-  },
-  slotTime: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    marginBottom: SPACING.XS,
-  },
-  slotRoom: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    marginBottom: SPACING.XS,
-  },
-  slotBranch: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-  },
   quantityInput: {
-    backgroundColor: COLORS.BACKGROUND,
-    borderRadius: 8,
-    padding: SPACING.MD,
-    fontSize: FONTS.SIZES.MD,
-    color: COLORS.TEXT_PRIMARY,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_PRIMARY,
+    backgroundColor: COLORS.SURFACE,
   },
   totalPreview: {
     flexDirection: 'row',
@@ -1180,20 +916,20 @@ const styles = StyleSheet.create({
     marginTop: SPACING.MD,
   },
   totalLabel: {
-    fontSize: FONTS.SIZES.LG,
+    fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
   },
   totalValue: {
-    fontSize: FONTS.SIZES.XL,
+    fontSize: FONTS.SIZES.LG,
     fontWeight: 'bold',
     color: COLORS.SECONDARY,
   },
   modalFooter: {
     flexDirection: 'row',
-    padding: SPACING.MD,
     borderTopWidth: 1,
     borderTopColor: COLORS.BORDER,
+    padding: SPACING.MD,
     gap: SPACING.SM,
   },
   modalButton: {
@@ -1202,11 +938,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.MD,
-    borderRadius: 8,
+    borderRadius: 12,
     gap: SPACING.XS,
   },
   modalButtonCancel: {
     backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
   },
   modalButtonCancelText: {
     fontSize: FONTS.SIZES.MD,
@@ -1224,6 +962,103 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.SURFACE,
   },
+  orderInfoCard: {
+    backgroundColor: COLORS.PRIMARY_LIGHT + '10',
+    borderRadius: 12,
+    padding: SPACING.MD,
+    marginBottom: SPACING.MD,
+  },
+  orderInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.MD,
+  },
+  orderInfoTitle: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    marginLeft: SPACING.SM,
+  },
+  orderInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  orderInfoLabel: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  orderInfoValue: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  orderInfoAmount: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: 'bold',
+    color: COLORS.SECONDARY,
+  },
+  walletTypeContainer: {
+    gap: SPACING.SM,
+  },
+  walletTypeCard: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    borderWidth: 2,
+    borderColor: COLORS.BORDER,
+  },
+  walletTypeCardSelected: {
+    borderColor: COLORS.PRIMARY,
+    backgroundColor: COLORS.PRIMARY_LIGHT + '10',
+  },
+  walletTypeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.XS,
+  },
+  walletTypeName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginLeft: SPACING.SM,
+  },
+  walletTypeNameSelected: {
+    color: COLORS.PRIMARY,
+  },
+  walletTypeDescription: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginLeft: SPACING.XL,
+  },
+  paymentSummary: {
+    backgroundColor: COLORS.PRIMARY_LIGHT + '10',
+    borderRadius: 12,
+    padding: SPACING.MD,
+    marginTop: SPACING.MD,
+  },
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  paymentSummaryLabel: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  paymentSummaryValue: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  paymentSummaryDivider: {
+    height: 1,
+    backgroundColor: COLORS.BORDER,
+    marginVertical: SPACING.SM,
+  },
 });
 
-export default ServicesScreen;
+export default PurchaseServiceScreen;
+

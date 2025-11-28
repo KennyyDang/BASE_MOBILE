@@ -320,6 +320,7 @@ export interface AddOnService {
   isActive: boolean;
   priceOverride: number | null;
   effectivePrice: number;
+  image: string | null;
 }
 
 // Order Types

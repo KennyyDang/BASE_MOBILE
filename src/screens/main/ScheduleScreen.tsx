@@ -1390,6 +1390,39 @@ const ScheduleScreen: React.FC = () => {
           </Text>
         </View>
 
+        {studentsLoading && !students.length ? (
+          <View style={[styles.stateCard, styles.surfaceCard, styles.sectionSpacing]}>
+            <ActivityIndicator size="large" color={COLORS.PRIMARY} />
+            <Text style={styles.stateText}>Đang tải danh sách con...</Text>
+          </View>
+        ) : null}
+
+        {studentsError ? (
+          <View style={[styles.stateCard, styles.surfaceCard, styles.sectionSpacing]}>
+            <MaterialIcons name="error-outline" size={42} color={COLORS.ERROR} />
+            <Text style={[styles.stateText, { color: COLORS.ERROR }]}>{studentsError}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={refetchStudents}>
+              <Text style={styles.retryButtonText}>Thử lại</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {!studentsLoading && students.length === 0 ? (
+          <View style={[styles.stateCard, styles.surfaceCard, styles.sectionSpacing]}>
+            <MaterialIcons name="child-care" size={42} color={COLORS.TEXT_SECONDARY} />
+            <Text style={styles.stateText}>
+              Chưa có thông tin con trong tài khoản. Vui lòng thêm con tại mục Quản lý con để xem các
+              khung giờ phù hợp.
+            </Text>
+          </View>
+        ) : (
+          <>
+            {renderStudentSelector()}
+            {renderSelectedStudentInfo()}
+            {renderSubscriptionSection()}
+          </>
+        )}
+
         {/* Điều hướng tuần */}
         <View style={[styles.sectionCard, styles.sectionSpacing]}>
           <View style={styles.weekNavigator}>
@@ -1426,39 +1459,11 @@ const ScheduleScreen: React.FC = () => {
           </View>
         </View>
 
-        {studentsLoading && !students.length ? (
-          <View style={[styles.stateCard, styles.surfaceCard]}>
-            <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-            <Text style={styles.stateText}>Đang tải danh sách con...</Text>
-            </View>
-        ) : null}
-
-        {studentsError ? (
-          <View style={[styles.stateCard, styles.surfaceCard]}>
-            <MaterialIcons name="error-outline" size={42} color={COLORS.ERROR} />
-            <Text style={[styles.stateText, { color: COLORS.ERROR }]}>{studentsError}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={refetchStudents}>
-              <Text style={styles.retryButtonText}>Thử lại</Text>
-            </TouchableOpacity>
-            </View>
-        ) : null}
-
-        {!studentsLoading && students.length === 0 ? (
-          <View style={[styles.stateCard, styles.surfaceCard]}>
-            <MaterialIcons name="child-care" size={42} color={COLORS.TEXT_SECONDARY} />
-            <Text style={styles.stateText}>
-              Chưa có thông tin con trong tài khoản. Vui lòng thêm con tại mục Quản lý con để xem các
-              khung giờ phù hợp.
-            </Text>
-            </View>
-        ) : (
+        {!studentsLoading && students.length > 0 ? (
           <>
-            {renderStudentSelector()}
-            {renderSelectedStudentInfo()}
-            {renderSubscriptionSection()}
             {renderSlotList()}
           </>
-        )}
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

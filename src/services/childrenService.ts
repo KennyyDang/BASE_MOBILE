@@ -1,4 +1,5 @@
 // Children Management Service
+import { Platform } from 'react-native';
 import axiosInstance from '../config/axios.config';
 import { apiClient } from './apiClient';
 import { API_ENDPOINTS } from '../constants';
@@ -299,13 +300,17 @@ class ChildrenService {
 
       if (formData.image) {
         // Extract file extension from URI
-        const uri = formData.image;
+        let uri = formData.image;
+        // Fix URI for Android - remove 'file://' prefix if exists
+        if (Platform.OS === 'android' && uri.startsWith('file://')) {
+          uri = uri.replace('file://', '');
+        }
         const fileExtension = uri.split('.').pop() || 'jpg';
         const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
         
         // @ts-ignore - FormData type issue with React Native
-        multipartFormData.append('Image', {
-          uri: uri,
+        multipartFormData.append('ImageFile', {
+          uri: Platform.OS === 'android' ? uri : formData.image,
           type: mimeType,
           name: `child_image_${Date.now()}.${fileExtension}`,
         } as any);
@@ -339,7 +344,11 @@ class ChildrenService {
 
       if (formData.documentFile) {
         // Extract file extension from URI
-        const uri = formData.documentFile;
+        let uri = formData.documentFile;
+        // Fix URI for Android - remove 'file://' prefix if exists
+        if (Platform.OS === 'android' && uri.startsWith('file://')) {
+          uri = uri.replace('file://', '');
+        }
         const fileExtension = uri.split('.').pop() || 'pdf';
         const mimeType = fileExtension === 'pdf' ? 'application/pdf' : 
                         fileExtension === 'jpg' || fileExtension === 'jpeg' ? 'image/jpeg' :
@@ -347,20 +356,16 @@ class ChildrenService {
         
         // @ts-ignore - FormData type issue with React Native
         multipartFormData.append('DocumentFile', {
-          uri: uri,
+          uri: Platform.OS === 'android' ? uri : formData.documentFile,
           type: mimeType,
           name: `document_${Date.now()}.${fileExtension}`,
         } as any);
       }
 
+      // Axios interceptor will automatically handle FormData Content-Type with boundary
       const response = await axiosInstance.post<StudentResponse>(
         '/api/Student/register-child',
-        multipartFormData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
+        multipartFormData
       );
       
       return response.data;
