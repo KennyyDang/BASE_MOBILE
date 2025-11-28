@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
@@ -7,6 +7,7 @@ import notificationService from '../services/notificationService';
 import pushNotificationService from '../services/pushNotificationService';
 import { STORAGE_KEYS } from '../config/axios.config';
 import { LoginRequest, UserInfo, MobileLoginRequest } from '../types/api';
+import { authHandler } from '../utils/authHandler';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -125,7 +126,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       // Clear AsyncStorage first
       await authService.logout();
@@ -140,7 +141,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       throw error;
     }
-  };
+  }, []);
+
+  // Register logout handler for axios interceptor
+  useEffect(() => {
+    authHandler.setLogoutHandler(logout);
+    return () => {
+      authHandler.setLogoutHandler(null as any);
+    };
+  }, [logout]);
 
   const updateUser = async (userData: Partial<UserInfo>) => {
     try {

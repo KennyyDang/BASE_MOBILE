@@ -1,5 +1,5 @@
-import React from 'react';
-import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
+import React, { useRef, useEffect } from 'react';
+import { NavigationContainer, LinkingOptions, NavigationContainerRef } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
@@ -11,6 +11,7 @@ import { Linking, TouchableOpacity, Alert } from 'react-native';
 import { RootStackParamList, MainTabParamList, StaffTabParamList } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { COLORS } from '../constants';
+import { authHandler } from '../utils/authHandler';
 
 
 // Custom theme for React Native Paper
@@ -46,7 +47,6 @@ import DashboardScreen from '../screens/main/DashboardScreen';
 import ScheduleScreen from '../screens/main/ScheduleScreen';
 import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
-import ChildrenManagementScreen from '../screens/main/ChildrenManagementScreen';
 import SchoolsScreen from '../screens/main/SchoolsScreen';
 import TopUpScreen from '../screens/main/TopUpScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
@@ -56,8 +56,9 @@ import StudentClassesScreen from '../screens/main/StudentClassesScreen';
 import StudentActivityScreen from '../screens/main/StudentActivityScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import MySubscriptionsScreen from '../screens/main/MySubscriptionsScreen';
-import ServicesScreen from '../screens/main/ServicesScreen';
+import BookedClassesScreen from '../screens/main/BookedClassesScreen';
 import OrderHistoryScreen from '../screens/main/OrderHistoryScreen';
+import PurchaseServiceScreen from '../screens/main/PurchaseServiceScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 import BadgeIcon from '../components/BadgeIcon';
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount';
@@ -227,8 +228,8 @@ const MainTabNavigator = () => {
             case 'Children':
               iconName = 'child-care';
               break;
-            case 'Services':
-              iconName = 'restaurant';
+            case 'BookedClasses':
+              iconName = 'event-available';
               break;
             case 'Profile':
               iconName = 'person';
@@ -291,19 +292,11 @@ const MainTabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name="Children" 
-        component={ChildrenManagementScreen}
+        name="BookedClasses" 
+        component={BookedClassesScreen}
         options={{
-          title: 'Quản Lý Con',
-          headerTitle: 'Quản Lý Con',
-        }}
-      />
-      <Tab.Screen 
-        name="Services" 
-        component={ServicesScreen}
-        options={{
-          title: 'Dịch Vụ',
-          headerTitle: 'Dịch vụ bổ sung',
+          title: 'Lớp Đã Đặt',
+          headerTitle: 'Lớp học đã đặt',
         }}
       />
       <Tab.Screen 
@@ -362,10 +355,19 @@ const linking: LinkingOptions<any> = {
 // Root Navigator
 const AppNavigator = () => {
   const { isAuthenticated, user } = useAuth();
+  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+
+  // Register navigation ref for auth handler
+  useEffect(() => {
+    authHandler.setNavigationRef(navigationRef.current);
+    return () => {
+      authHandler.setNavigationRef(null);
+    };
+  }, []);
 
   return (
     <PaperProvider theme={theme}>
-      <NavigationContainer linking={linking}>
+      <NavigationContainer ref={navigationRef} linking={linking}>
         {isAuthenticated && <NotificationWatcher enabled />}
         <Stack.Navigator
           screenOptions={{
@@ -585,6 +587,14 @@ const AppNavigator = () => {
               options={{
                 title: 'Chỉnh sửa hoạt động',
                 headerTitle: 'Chỉnh sửa hoạt động',
+              }}
+            />
+            <Stack.Screen
+              name="PurchaseService"
+              component={PurchaseServiceScreen}
+              options={{
+                title: 'Mua dịch vụ bổ sung',
+                headerTitle: 'Mua dịch vụ bổ sung',
               }}
             />
           </>
