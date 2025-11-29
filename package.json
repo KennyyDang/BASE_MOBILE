@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "start": "expo start",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
+    "start:clear": "expo start --clear",
+    "android": "npx expo run:android",
+    "android:clear": "npx expo run:android --clear",
+    "ios": "npx expo run:ios",
     "web": "expo start --web",
     "lint": "eslint .",
     "test": "jest",

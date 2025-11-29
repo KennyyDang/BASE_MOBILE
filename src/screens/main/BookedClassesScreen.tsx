@@ -161,6 +161,7 @@ const BookedClassesScreen: React.FC = () => {
   const [activities, setActivities] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [expandedDays, setExpandedDays] = useState<Set<WeekdayKey>>(new Set()); // Mặc định đóng tất cả
 
   useEffect(() => {
     if (students.length && !selectedStudentId) {
@@ -450,20 +451,47 @@ const BookedClassesScreen: React.FC = () => {
           const dayDate = getWeekDate(weekOffset, day);
           const dayDateDisplay = formatDateDisplay(dayDate);
 
+          const isExpanded = expandedDays.has(day);
+          const toggleDay = () => {
+            setExpandedDays((prev) => {
+              const newSet = new Set(prev);
+              if (newSet.has(day)) {
+                newSet.delete(day);
+              } else {
+                newSet.add(day);
+              }
+              return newSet;
+            });
+          };
+
           return (
             <View key={day} style={styles.daySection}>
-              <View style={styles.dayHeader}>
-                <View>
+              <TouchableOpacity
+                style={styles.dayHeader}
+                onPress={toggleDay}
+                activeOpacity={0.7}
+              >
+                <View style={{ flex: 1 }}>
                   <Text style={styles.dayTitle}>{title} - {dayDateDisplay}</Text>
                   <Text style={styles.daySubtitle}>{subtitle}</Text>
                 </View>
-                <View style={styles.dayBadge}>
-                  <MaterialIcons name="event-available" size={18} color={COLORS.PRIMARY} />
-                  <Text style={styles.dayBadgeText}>{daySlots.length}</Text>
+                <View style={styles.dayHeaderRight}>
+                  <View style={styles.dayBadge}>
+                    <MaterialIcons name="event-available" size={18} color={COLORS.PRIMARY} />
+                    <Text style={styles.dayBadgeText}>{daySlots.length}</Text>
+                  </View>
+                  <MaterialIcons
+                    name={isExpanded ? 'keyboard-arrow-down' : 'keyboard-arrow-right'}
+                    size={24}
+                    color={COLORS.PRIMARY}
+                    style={styles.dayChevron}
+                  />
                 </View>
-              </View>
+              </TouchableOpacity>
 
-              {daySlots.length === 0 ? (
+              {isExpanded && (
+                <>
+                  {daySlots.length === 0 ? (
                 <View style={styles.emptySlotCard}>
                   <MaterialIcons name="watch-later" size={32} color={COLORS.TEXT_SECONDARY} />
                   <Text style={styles.emptySlotText}>Chưa có lớp học nào trong ngày</Text>
@@ -526,6 +554,8 @@ const BookedClassesScreen: React.FC = () => {
                     </TouchableOpacity>
                   );
                 })
+                  )}
+                </>
               )}
             </View>
           );
@@ -1043,6 +1073,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: SPACING.SM,
+    paddingVertical: SPACING.XS,
+  },
+  dayHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
+  },
+  dayChevron: {
+    marginLeft: SPACING.XS,
   },
   dayTitle: {
     fontSize: FONTS.SIZES.LG,

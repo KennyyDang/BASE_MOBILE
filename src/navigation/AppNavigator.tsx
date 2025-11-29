@@ -41,6 +41,7 @@ import ManagerRegisterParentScreen from '../screens/manager/ManagerRegisterParen
 import StaffScheduleScreen from '../screens/staff/StaffScheduleScreen';
 import ActivityTypesScreen from '../screens/staff/ActivityTypesScreen';
 import ActivitiesScreen from '../screens/staff/ActivitiesScreen';
+import StaffDashboardScreen from '../screens/staff/StaffDashboardScreen';
 import CreateActivityScreen from '../screens/staff/CreateActivityScreen';
 import EditActivityScreen from '../screens/staff/EditActivityScreen';
 import DashboardScreen from '../screens/main/DashboardScreen';
@@ -55,6 +56,7 @@ import StudentPackagesScreen from '../screens/main/StudentPackagesScreen';
 import StudentClassesScreen from '../screens/main/StudentClassesScreen';
 import StudentActivityScreen from '../screens/main/StudentActivityScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
+import TransactionDetailScreen from '../screens/main/TransactionDetailScreen';
 import MySubscriptionsScreen from '../screens/main/MySubscriptionsScreen';
 import BookedClassesScreen from '../screens/main/BookedClassesScreen';
 import OrderHistoryScreen from '../screens/main/OrderHistoryScreen';
@@ -137,6 +139,9 @@ const StaffTabNavigator = () => {
           let iconName: string;
 
           switch (route.name) {
+            case 'StaffDashboard':
+              iconName = 'dashboard';
+              break;
             case 'ActivityTypes':
               iconName = 'category';
               break;
@@ -179,6 +184,14 @@ const StaffTabNavigator = () => {
         headerRight: () => <LogoutHeaderButton />,
       })}
     >
+      <StaffTab.Screen
+        name="StaffDashboard"
+        component={StaffDashboardScreen}
+        options={{
+          title: 'Trang chủ',
+          headerTitle: 'Trang chủ',
+        }}
+      />
       <StaffTab.Screen
         name="ActivityTypes"
         component={ActivityTypesScreen}
@@ -552,9 +565,13 @@ const AppNavigator = () => {
             <Stack.Screen
               name="TransactionHistory"
               component={TransactionHistoryScreen}
+            />
+            <Stack.Screen
+              name="TransactionDetail"
+              component={TransactionDetailScreen}
               options={{
-                title: 'Lịch sử giao dịch',
-                headerTitle: 'Lịch sử giao dịch',
+                title: 'Chi tiết giao dịch',
+                headerTitle: 'Chi tiết giao dịch',
               }}
             />
             <Stack.Screen

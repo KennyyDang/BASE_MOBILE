@@ -88,8 +88,21 @@ const LoginScreen: React.FC = () => {
   };
 
   const handleLogin = async () => {
-    if (!formData.email || !formData.password) {
-      Alert.alert('Lỗi', 'Vui lòng nhập đầy đủ thông tin');
+    // Validate input trước khi gửi
+    if (!formData.email || !formData.email.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập email.');
+      return;
+    }
+    
+    if (!formData.password || !formData.password.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập mật khẩu.');
+      return;
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email.trim())) {
+      Alert.alert('Lỗi', 'Email không đúng định dạng. Vui lòng kiểm tra lại.');
       return;
     }
 
@@ -171,8 +184,105 @@ const LoginScreen: React.FC = () => {
       
       let errorMessage = 'Đăng nhập thất bại. Vui lòng thử lại.';
       
-      if (error?.response?.data?.message) {
-        errorMessage = error.response.data.message;
+      // Xử lý lỗi validation từ server (ASP.NET Core format)
+      if (error?.response?.data) {
+        const errorData = error.response.data;
+        const status = error.response.status;
+        
+        // Log để debug (chỉ trong dev mode)
+        if (__DEV__) {
+          console.log('[Login Error] Status:', status);
+          console.log('[Login Error] Data:', JSON.stringify(errorData, null, 2));
+        }
+        
+        // Xử lý validation errors (400 Bad Request) - Format từ ASP.NET Core
+        if (status === 400) {
+          // ASP.NET Core trả về format: { title: "...", errors: { "Field": ["error1", "error2"] } }
+          if (errorData.errors && typeof errorData.errors === 'object' && !Array.isArray(errorData.errors)) {
+            // Parse validation errors từ object { "Email": ["error"], "Password": ["error"] }
+            const validationMessages: string[] = [];
+            
+            Object.entries(errorData.errors).forEach(([field, errors]: [string, any]) => {
+              if (Array.isArray(errors)) {
+                errors.forEach((err: string) => {
+                  // Translate field names
+                  let fieldName = field;
+                  if (field.toLowerCase() === 'email') fieldName = 'Email';
+                  else if (field.toLowerCase() === 'password') fieldName = 'Mật khẩu';
+                  
+                  // Translate common error messages
+                  let errMsg = err;
+                  if (err.toLowerCase().includes('required')) errMsg = 'là bắt buộc';
+                  else if (err.toLowerCase().includes('invalid')) errMsg = 'không hợp lệ';
+                  else if (err.toLowerCase().includes('format')) errMsg = 'không đúng định dạng';
+                  
+                  validationMessages.push(`${fieldName}: ${errMsg}`);
+                });
+              } else if (typeof errors === 'string') {
+                let fieldName = field;
+                if (field.toLowerCase() === 'email') fieldName = 'Email';
+                else if (field.toLowerCase() === 'password') fieldName = 'Mật khẩu';
+                validationMessages.push(`${fieldName}: ${errors}`);
+              }
+            });
+            
+            if (validationMessages.length > 0) {
+              errorMessage = validationMessages.join('\n');
+            } else if (errorData.title && !errorData.title.includes('One or more validation errors occurred')) {
+              errorMessage = errorData.title;
+            } else if (errorData.message) {
+              errorMessage = errorData.message;
+            } else {
+              errorMessage = 'Thông tin đăng nhập không hợp lệ. Vui lòng kiểm tra lại email và mật khẩu.';
+            }
+          } 
+          // Xử lý lỗi dạng array
+          else if (Array.isArray(errorData.errors)) {
+            const validationErrors = errorData.errors
+              .map((err: any) => {
+                if (typeof err === 'string') return err;
+                if (err.message) return err.message;
+                if (typeof err === 'object') {
+                  return Object.values(err).join(', ');
+                }
+                return JSON.stringify(err);
+              })
+              .filter((msg: string) => msg && msg.trim() !== '')
+              .join('\n');
+            
+            if (validationErrors) {
+              errorMessage = validationErrors;
+            } else if (errorData.title && !errorData.title.includes('One or more validation errors occurred')) {
+              errorMessage = errorData.title;
+            } else if (errorData.message) {
+              errorMessage = errorData.message;
+            } else {
+              errorMessage = 'Thông tin đăng nhập không hợp lệ. Vui lòng kiểm tra lại email và mật khẩu.';
+            }
+          }
+          // Fallback cho các trường hợp khác
+          else if (errorData.title && !errorData.title.includes('One or more validation errors occurred')) {
+            errorMessage = errorData.title;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else {
+            errorMessage = 'Thông tin đăng nhập không hợp lệ. Vui lòng kiểm tra lại email và mật khẩu.';
+          }
+        } 
+        // Xử lý lỗi 401 Unauthorized
+        else if (status === 401) {
+          errorMessage = 'Email hoặc mật khẩu không đúng.';
+        } 
+        // Xử lý các lỗi khác
+        else {
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.title) {
+            errorMessage = errorData.title;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        }
       } else if (error?.message) {
         errorMessage = error.message;
       } else if (typeof error === 'string') {

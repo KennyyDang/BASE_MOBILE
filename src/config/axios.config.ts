@@ -11,7 +11,6 @@ export const STORAGE_KEYS = {
   USER: '@base_user',
 } as const;
 
-
 const sanitizeBaseUrl = (url?: string | null) => {
   if (!url) return url;
   const trimmed = url.trim();
@@ -57,6 +56,9 @@ const axiosInstance: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Increase max body length for file uploads
+  maxBodyLength: Infinity,
+  maxContentLength: Infinity,
 });
 
 // Export function to get current base URL (for debugging/verification)
@@ -67,10 +69,34 @@ axiosInstance.interceptors.request.use(
     try {
       // Handle FormData: remove default Content-Type to let axios set it with boundary
       if (config.data instanceof FormData) {
+        // In React Native, we must completely remove Content-Type
+        // so the native layer can set multipart/form-data with boundary
         if (config.headers) {
-          // Remove the default 'application/json' Content-Type for FormData
-          delete (config.headers as any)['Content-Type'];
+          const headers = config.headers as any;
+          
+          // Remove Content-Type from all possible locations
+          delete headers['Content-Type'];
+          delete headers['content-type'];
+          
+          // Remove from common headers
+          if (headers.common) {
+            delete headers.common['Content-Type'];
+            delete headers.common['content-type'];
+          }
+          
+          // Remove from method-specific headers
+          const method = (config.method || 'post').toLowerCase();
+          if (headers[method]) {
+            delete headers[method]['Content-Type'];
+            delete headers[method]['content-type'];
+          }
+          
+        // Ensure Content-Type is completely removed
+        // React Native's FormData needs to set this automatically
+        if (config.headers['Content-Type']) {
+          delete config.headers['Content-Type'];
         }
+      }
       }
 
       const token = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -92,7 +118,12 @@ axiosInstance.interceptors.request.use(
       return config;
     }
   },
-  (error: AxiosError) => Promise.reject(error)
+  (error: AxiosError) => {
+    if (__DEV__) {
+      console.error('[Axios] Request interceptor error:', error);
+    }
+    return Promise.reject(error);
+  }
 );
 
 // Response interceptor - handle 401 globally and auto-refresh token
@@ -101,16 +132,43 @@ axiosInstance.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as any;
     
+    // If already handling logout, reject all 401 requests immediately to prevent log spam
+    if (error.response?.status === 401 && authHandler.isHandling()) {
+      return Promise.reject(error);
+    }
+    
+    // Skip refresh token request if it fails (to avoid infinite loop)
+    if (error.response?.status === 401 && (originalRequest as any)._isRefreshRequest) {
+      // Refresh token request itself failed - trigger logout immediately
+      if (!authHandler.isHandling()) {
+        authHandler.handleUnauthorized(
+          'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+        ).catch(() => {
+          // Silently ignore errors to prevent log spam
+        });
+      }
+      return Promise.reject(error);
+    }
+    
+    // Handle 401 errors - try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
+      
+      // Skip refresh if already handling logout
+      if (authHandler.isHandling()) {
+        return Promise.reject(error);
+      }
       
       try {
         // Try to refresh token
         const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
         if (refreshToken && refreshToken.trim()) {
+          // Mark this request as refresh token request to avoid infinite loop
           const response = await axiosInstance.post('/api/Auth/refresh', {
             refreshToken: refreshToken.trim()
-          });
+          }, {
+            _isRefreshRequest: true // Custom flag to identify refresh requests
+          } as any);
           
           if (response.data?.access_token) {
             const newToken = response.data.access_token.trim();
@@ -131,27 +189,23 @@ axiosInstance.interceptors.response.use(
               console.error('[Axios] Invalid token format received from refresh endpoint');
             }
           }
+        } else {
+          // No refresh token available - trigger logout immediately
+          throw new Error('No refresh token available');
         }
       } catch (refreshError) {
         // Refresh failed - token was invalidated (likely logged in elsewhere)
-        // Clear all tokens and trigger logout + redirect to login
-        if (__DEV__) {
-          console.error('[Axios] Token refresh failed - user logged in elsewhere:', refreshError);
+        // Only handle logout once - authHandler will prevent multiple calls
+        if (!authHandler.isHandling()) {
+          // Use authHandler to properly logout and redirect
+          // It will handle clearing tokens and navigation
+          authHandler.handleUnauthorized(
+            'Phiên đăng nhập đã hết hạn. Bạn đã đăng nhập ở thiết bị khác. Vui lòng đăng nhập lại.'
+          ).catch(() => {
+            // Silently ignore errors from handleUnauthorized to prevent log spam
+          });
         }
-        
-        // Use authHandler to properly logout and redirect
-        await authHandler.handleUnauthorized(
-          'Phiên đăng nhập đã hết hạn. Bạn đã đăng nhập ở thiết bị khác. Vui lòng đăng nhập lại.'
-        );
       }
-    }
-    
-    // Also handle 401 even if retry flag is set (means refresh already failed)
-    if (error.response?.status === 401 && originalRequest._retry) {
-      // Already tried refresh and failed, trigger logout
-      await authHandler.handleUnauthorized(
-        'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
-      );
     }
     
     return Promise.reject(error);
