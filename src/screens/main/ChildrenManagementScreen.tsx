@@ -854,14 +854,43 @@ const ChildrenManagementScreen: React.FC = () => {
         return status === 'ACTIVE';
       });
       
-      setStudentPackages((prev) => ({
-        ...prev,
-        [studentId]: {
-          data: activeData,
-          loading: false,
-          error: null,
-        },
-      }));
+      // Fetch package details để lấy totalSlots cho các subscription không có totalSlotsSnapshot
+      try {
+        const suitablePackages = await packageService.getSuitablePackages(studentId);
+        // Lưu totalSlots vào subscription data nếu chưa có
+        const enrichedData = activeData.map((sub) => {
+          const matchingPackage = suitablePackages.find((pkg) => pkg.id === sub.packageId);
+          if (matchingPackage && matchingPackage.totalSlots && typeof matchingPackage.totalSlots === 'number') {
+            // Nếu subscription chưa có totalSlotsSnapshot hoặc totalSlots, thêm vào
+            if (!sub.totalSlotsSnapshot && !sub.totalSlots) {
+              return {
+                ...sub,
+                totalSlotsSnapshot: matchingPackage.totalSlots,
+              };
+            }
+          }
+          return sub;
+        });
+        
+        setStudentPackages((prev) => ({
+          ...prev,
+          [studentId]: {
+            data: enrichedData,
+            loading: false,
+            error: null,
+          },
+        }));
+      } catch (pkgErr) {
+        // Nếu không fetch được package details, vẫn dùng data gốc
+        setStudentPackages((prev) => ({
+          ...prev,
+          [studentId]: {
+            data: activeData,
+            loading: false,
+            error: null,
+          },
+        }));
+      }
     } catch (err: any) {
       const message =
         err?.response?.data?.message ||
@@ -1147,23 +1176,37 @@ const ChildrenManagementScreen: React.FC = () => {
                       </Text>
                       <Text style={styles.packageUsedSlot}>
                         {(() => {
-                          const total = subscription.totalSlotsSnapshot ?? subscription.totalSlots ?? subscription.remainingSlots;
-                          let totalDisplay: number | string = '?';
-                          if (typeof total === 'number') {
-                            totalDisplay = total;
-                          } else {
-                            // Try to parse from packageName
+                          const used = subscription.usedSlot || 0;
+                          // Tính total từ nhiều nguồn (giống logic trong ScheduleScreen)
+                          let total: number | null = null;
+                          
+                          // Ưu tiên 1: totalSlotsSnapshot hoặc totalSlots từ subscription
+                          if (typeof subscription.totalSlotsSnapshot === 'number') {
+                            total = subscription.totalSlotsSnapshot;
+                          } else if (typeof subscription.totalSlots === 'number') {
+                            total = subscription.totalSlots;
+                          }
+                          // Ưu tiên 2: Tính từ usedSlot + remainingSlots nếu có
+                          else if (typeof subscription.remainingSlots === 'number') {
+                            total = used + subscription.remainingSlots;
+                          }
+                          // Ưu tiên 3: Parse từ packageName nếu có số
+                          else {
                             const nameMatch = subscription.packageName?.match(/(\d+)/);
                             if (nameMatch) {
-                              totalDisplay = parseInt(nameMatch[1], 10);
+                              const parsed = parseInt(nameMatch[1], 10);
+                              if (!isNaN(parsed)) {
+                                total = parsed;
+                              }
                             }
                           }
-                          const used = subscription.usedSlot || 0;
-                          const remaining = typeof totalDisplay === 'number' 
-                            ? Math.max(totalDisplay - used, 0) 
+                          
+                          const totalDisplay = total !== null ? total.toString() : '?';
+                          const remaining = typeof total === 'number' 
+                            ? Math.max(total - used, 0) 
                             : undefined;
                           
-                          return `Số buổi đã dùng: ${used}${typeof totalDisplay === 'number' ? ` / ${totalDisplay}` : ''}${remaining !== undefined ? ` • Còn lại: ${remaining}` : ''}`;
+                          return `Số buổi đã dùng: ${used} / ${totalDisplay}${remaining !== undefined ? ` • Còn lại: ${remaining}` : ''}`;
                         })()}
                       </Text>
                     </View>

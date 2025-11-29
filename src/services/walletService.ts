@@ -62,6 +62,21 @@ class WalletService {
   }
 
   /**
+   * Get wallet by ID
+   * Endpoint: GET /api/Wallet/{id}
+   * @param walletId Wallet ID (UUID)
+   * @returns Wallet information
+   */
+  async getWalletById(walletId: string): Promise<CurrentUserWalletResponse | StudentWalletResponse> {
+    try {
+      const response = await axiosInstance.get<CurrentUserWalletResponse | StudentWalletResponse>(`/api/Wallet/${walletId}`);
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch wallet';
+    }
+  }
+
+  /**
    * Get student wallet by studentId
    * Endpoint: GET /api/Wallet/student/{studentId}
    * Returns wallet information for a specific student

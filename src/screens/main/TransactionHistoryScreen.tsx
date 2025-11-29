@@ -9,93 +9,78 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
-  Modal,
-  Linking,
+  FlatList,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
-import walletService from '../../services/walletService';
-import { DepositResponse } from '../../types/api';
-import { COLORS } from '../../constants';
+import transactionService from '../../services/transactionService';
+import { TransactionResponse, TransactionType } from '../../types/api';
+import { COLORS, SPACING, FONTS } from '../../constants';
 
-const SPACING = {
-  XS: 4,
-  SM: 8,
-  MD: 16,
-  LG: 24,
-  XL: 32,
+const TRANSACTION_TYPE_LABELS: Record<TransactionType, string> = {
+  OrderPayment: 'Thanh toán đơn hàng',
+  Deposit: 'Nạp tiền vào ví',
+  TransferIn: 'Nhận tiền chuyển khoản',
+  TransferOut: 'Chuyển tiền đi',
+  PackagePayment: 'Thanh toán mua gói',
+  Refund: 'Hoàn tiền hủy gói',
+  Tuition: 'Thanh toán học phí',
+  Canteen: 'Mua đồ ăn buffet',
+  Game: 'Chơi game',
+  ServicePurchase: 'Mua dịch vụ',
 };
 
-const FONTS = {
-  SIZES: {
-    XS: 12,
-    SM: 14,
-    MD: 16,
-    LG: 18,
-    XL: 20,
-    XXL: 24,
-  },
+const TRANSACTION_TYPE_ICONS: Record<TransactionType, string> = {
+  OrderPayment: 'shopping-cart',
+  Deposit: 'account-balance-wallet',
+  TransferIn: 'arrow-downward',
+  TransferOut: 'arrow-upward',
+  PackagePayment: 'card-giftcard',
+  Refund: 'undo',
+  Tuition: 'school',
+  Canteen: 'restaurant',
+  Game: 'sports-esports',
+  ServicePurchase: 'room-service',
 };
 
 const TransactionHistoryScreen: React.FC = () => {
   type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'TransactionHistory'>;
   const navigation = useNavigation<NavigationProp>();
 
-  const [transactions, setTransactions] = useState<DepositResponse[]>([]);
+  const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [pageIndex, setPageIndex] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<DepositResponse | null>(null);
-  const [loadingCheckoutUrl, setLoadingCheckoutUrl] = useState(false);
-  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
-  const [cancelling, setCancelling] = useState(false);
+  const [selectedType, setSelectedType] = useState<TransactionType | null>(null);
+  const [showFilter, setShowFilter] = useState(false);
 
-  const fetchTransactions = useCallback(async (page: number = 1, silent: boolean = false) => {
-    if (!silent) {
-      if (page === 1) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
+  const fetchTransactions = useCallback(async (page: number = 1, reset: boolean = false) => {
+    if (!reset && page === 1) {
+      setLoading(true);
+    } else if (page > 1) {
+      setLoadingMore(true);
     }
     setError(null);
 
     try {
-      const deposits = await walletService.getDeposits(page, 20);
-      
-      // Ensure deposits is always an array
-      let depositsArray: DepositResponse[] = [];
-      if (Array.isArray(deposits)) {
-        depositsArray = deposits;
-      } else if (deposits && typeof deposits === 'object' && 'items' in deposits) {
-        // Handle paginated response
-        depositsArray = Array.isArray((deposits as any).items) ? (deposits as any).items : [];
-      }
-      
-      if (page === 1) {
-        // Remove duplicates by id
-        const uniqueDeposits = depositsArray.filter((deposit, index, self) =>
-          index === self.findIndex((d) => d.id === deposit.id)
-        );
-        setTransactions(uniqueDeposits);
+      const response = await transactionService.getMyTransactions({
+        pageIndex: page,
+        pageSize: 20,
+        type: selectedType || undefined,
+      });
+
+      if (reset || page === 1) {
+        setTransactions(response.items || []);
       } else {
-        setTransactions((prev) => {
-          // Combine and remove duplicates
-          const combined = [...prev, ...depositsArray];
-          return combined.filter((deposit, index, self) =>
-            index === self.findIndex((d) => d.id === deposit.id)
-          );
-        });
+        setTransactions((prev) => [...prev, ...(response.items || [])]);
       }
 
-      setHasMore(depositsArray.length === 20);
+      setHasMore(response.hasNextPage || false);
       setPageIndex(page);
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Không thể tải giao dịch. Vui lòng thử lại.';
@@ -108,11 +93,11 @@ const TransactionHistoryScreen: React.FC = () => {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedType]);
 
   useEffect(() => {
-    fetchTransactions(1);
-  }, [fetchTransactions]);
+    fetchTransactions(1, true);
+  }, [selectedType]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -123,462 +108,252 @@ const TransactionHistoryScreen: React.FC = () => {
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore && !loading) {
-      fetchTransactions(pageIndex + 1, true);
+      fetchTransactions(pageIndex + 1, false);
     }
   }, [loadingMore, hasMore, loading, pageIndex, fetchTransactions]);
 
   const formatTransactionTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return {
-      date: date.toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+      date: date.toLocaleDateString('vi-VN', { year: 'numeric', month: 'long', day: 'numeric' }),
       time: date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
       full: date.toLocaleString('vi-VN'),
     };
   };
 
-  const getTransactionIcon = (status: string) => {
-    if (status === 'Completed') return 'check-circle';
-    if (status === 'Pending') return 'schedule';
-    if (status === 'Failed') return 'error';
-    return 'account-balance-wallet';
+  const getWalletTypeLabel = (walletType: string) => {
+    if (walletType === 'Parent') return 'Ví phụ huynh';
+    if (walletType === 'Student') return 'Ví học sinh';
+    return walletType;
   };
 
-  const getTransactionIconColor = (status: string) => {
-    if (status === 'Completed') return COLORS.SUCCESS;
-    if (status === 'Pending') return COLORS.WARNING;
-    if (status === 'Failed') return COLORS.ERROR;
-    return COLORS.PRIMARY;
+  const getTransactionIcon = (type: TransactionType) => {
+    return TRANSACTION_TYPE_ICONS[type] || 'receipt';
   };
 
-  const getStatusText = (status: string) => {
-    if (status === 'Completed') return 'Hoàn thành';
-    if (status === 'Pending') return 'Đang xử lý';
-    if (status === 'Failed') return 'Thất bại';
-    return status;
+  const getTransactionLabel = (type: TransactionType) => {
+    return TRANSACTION_TYPE_LABELS[type] || type;
   };
 
-  const getStatusColor = (status: string) => {
-    if (status === 'Completed') return COLORS.SUCCESS;
-    if (status === 'Pending') return COLORS.WARNING;
-    if (status === 'Failed') return COLORS.ERROR;
-    return COLORS.TEXT_SECONDARY;
+  const getAmountColor = (amount: number) => {
+    return amount >= 0 ? COLORS.SUCCESS : COLORS.ERROR;
   };
 
-  const handleTransactionPress = async (transaction: DepositResponse) => {
-    // Chỉ xử lý khi status là Pending
-    if (transaction.status !== 'Pending') {
-      return;
-    }
-
-    setSelectedTransaction(transaction);
-    setPaymentModalVisible(true);
-    setLoadingCheckoutUrl(true);
-    setCheckoutUrl(null);
-
-    try {
-      // Bước 1: Kiểm tra xem transaction đã có checkoutUrl chưa
-      if (transaction.checkoutUrl) {
-        setCheckoutUrl(transaction.checkoutUrl);
-        setLoadingCheckoutUrl(false);
-        return;
-      }
-
-      // Bước 2: Thử lấy từ AsyncStorage bằng orderCode (nếu có)
-      let savedCheckoutUrl: string | null = null;
-      if (transaction.payOSOrderCode) {
-        try {
-          savedCheckoutUrl = await AsyncStorage.getItem(`deposit_order_${transaction.payOSOrderCode}`);
-        } catch (storageErr) {
-          console.warn('Failed to get checkoutUrl from storage:', storageErr);
-        }
-      }
-
-      // Bước 3: Nếu không có trong storage, thử lấy bằng depositId
-      if (!savedCheckoutUrl && transaction.id) {
-        try {
-          savedCheckoutUrl = await AsyncStorage.getItem(`deposit_${transaction.id}`);
-        } catch (storageErr) {
-          console.warn('Failed to get checkoutUrl from storage by id:', storageErr);
-        }
-      }
-
-      // Bước 4: Nếu có trong storage, dùng luôn
-      if (savedCheckoutUrl) {
-        setCheckoutUrl(savedCheckoutUrl);
-        // Cập nhật transaction trong list
-        setTransactions((prev) =>
-          prev.map((t) =>
-            t.id === transaction.id ? { ...t, checkoutUrl: savedCheckoutUrl } : t
-          )
-        );
-        setLoadingCheckoutUrl(false);
-        return;
-      }
-
-      // Bước 5: Nếu không có trong storage, thử fetch từ API
-      try {
-        const depositDetail = await walletService.getDepositById(transaction.id);
-        if (depositDetail.checkoutUrl) {
-          setCheckoutUrl(depositDetail.checkoutUrl);
-          // Lưu vào storage để lần sau không cần fetch
-          try {
-            if (transaction.id) {
-              await AsyncStorage.setItem(`deposit_${transaction.id}`, depositDetail.checkoutUrl);
-            }
-            if (transaction.payOSOrderCode) {
-              await AsyncStorage.setItem(`deposit_order_${transaction.payOSOrderCode}`, depositDetail.checkoutUrl);
-            }
-          } catch (storageErr) {
-            console.warn('Failed to save checkoutUrl to storage:', storageErr);
-          }
-          // Cập nhật transaction trong list
-          setTransactions((prev) =>
-            prev.map((t) =>
-              t.id === transaction.id ? { ...t, checkoutUrl: depositDetail.checkoutUrl } : t
-            )
-          );
-          setLoadingCheckoutUrl(false);
-        } else {
-          Alert.alert('Lỗi', 'Không thể lấy link thanh toán. Vui lòng thử lại sau.');
-          setLoadingCheckoutUrl(false);
-        }
-      } catch (apiErr: any) {
-        // Nếu API cũng không có, hiển thị lỗi
-        const errorMessage = apiErr?.response?.data?.message || apiErr?.message || 'Không thể tải thông tin thanh toán';
-        Alert.alert('Lỗi', errorMessage);
-        setLoadingCheckoutUrl(false);
-      }
-    } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || 'Không thể tải thông tin thanh toán';
-      Alert.alert('Lỗi', errorMessage);
-      setLoadingCheckoutUrl(false);
-    }
+  const handleTransactionPress = (transaction: TransactionResponse) => {
+    navigation.navigate('TransactionDetail', { 
+      transactionId: transaction.id,
+      transaction: transaction, // Pass transaction object to avoid API call
+    });
   };
 
-  const handleOpenPaymentLink = async () => {
-    if (!checkoutUrl) {
-      Alert.alert('Lỗi', 'Không có link thanh toán');
-      return;
-    }
-
-    try {
-      const supported = await Linking.canOpenURL(checkoutUrl);
-      if (supported) {
-        await Linking.openURL(checkoutUrl);
-      } else {
-        Alert.alert('Lỗi', 'Không thể mở trình duyệt thanh toán');
-      }
-    } catch (err) {
-      Alert.alert('Lỗi', 'Không thể mở liên kết thanh toán');
-    }
+  const handleFilterChange = (type: TransactionType | null) => {
+    setSelectedType(type);
+    setShowFilter(false);
   };
 
-  const handleCloseModal = () => {
-    setPaymentModalVisible(false);
-    setSelectedTransaction(null);
-    setCheckoutUrl(null);
-    setLoadingCheckoutUrl(false);
-    setCancelling(false);
+  const renderTransactionItem = ({ item }: { item: TransactionResponse }) => {
+      const timeInfo = formatTransactionTime(item.timestamp);
+    const isPositive = item.amount >= 0;
+    const amountColor = getAmountColor(item.amount);
+
+    return (
+      <TouchableOpacity
+        style={styles.transactionCard}
+        onPress={() => handleTransactionPress(item)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.transactionHeader}>
+          <View style={[styles.transactionIconContainer, { backgroundColor: amountColor + '20' }]}>
+            <MaterialIcons
+              name={getTransactionIcon(item.type) as any}
+              size={24}
+              color={amountColor}
+            />
+          </View>
+          <View style={styles.transactionMainInfo}>
+            <Text style={styles.transactionDescription}>
+              {getTransactionLabel(item.type)}
+            </Text>
+            {item.description && (
+              <Text style={styles.transactionSubDescription} numberOfLines={1}>
+                {item.description}
+              </Text>
+            )}
+            <View style={styles.transactionMeta}>
+              <Text style={styles.transactionDate}>{timeInfo.date}</Text>
+              <Text style={styles.transactionTime}>{timeInfo.time}</Text>
+            </View>
+            {item.packageStudentName && (
+              <Text style={styles.transactionStudent}>
+                Học sinh: {item.packageStudentName}
+              </Text>
+            )}
+            {item.orderStudentName && (
+              <Text style={styles.transactionStudent}>
+                Học sinh: {item.orderStudentName}
+              </Text>
+            )}
+            {item.walletType && (
+              <Text style={styles.transactionWallet}>
+                {getWalletTypeLabel(item.walletType)}
+              </Text>
+            )}
+          </View>
+          <View style={styles.transactionAmountContainer}>
+            <Text style={[styles.transactionAmount, { color: amountColor }]}>
+              {isPositive ? '+' : ''}
+              {item.amount.toLocaleString('vi-VN')} VNĐ
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
-  const handleCancelDeposit = async () => {
-    if (!selectedTransaction) {
-      return;
-    }
+  const renderFilterButton = () => {
+    return (
+      <TouchableOpacity
+        style={styles.filterButton}
+        onPress={() => setShowFilter(!showFilter)}
+        activeOpacity={0.7}
+      >
+        <MaterialIcons
+          name={showFilter ? 'filter-list' : 'filter-list'}
+          size={20}
+          color={selectedType ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
+        />
+        <Text style={[styles.filterButtonText, selectedType && styles.filterButtonTextActive]}>
+          {selectedType ? TRANSACTION_TYPE_LABELS[selectedType] : 'Tất cả'}
+        </Text>
+        {selectedType && (
+          <TouchableOpacity
+            style={styles.clearFilterButton}
+            onPress={() => handleFilterChange(null)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MaterialIcons name="close" size={16} color={COLORS.PRIMARY} />
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
-    Alert.alert(
-      'Xác nhận hủy',
-      `Bạn có chắc chắn muốn hủy giao dịch nạp tiền ${selectedTransaction.amount.toLocaleString('vi-VN')} VNĐ?`,
-      [
-        {
-          text: 'Không',
-          style: 'cancel',
-        },
-        {
-          text: 'Có, hủy giao dịch',
-          style: 'destructive',
-          onPress: async () => {
-            setCancelling(true);
-            try {
-              // Gọi API cancel deposit
-              await walletService.cancelDeposit(selectedTransaction.id);
-              
-              // Xóa checkoutUrl khỏi storage nếu có
-              try {
-                if (selectedTransaction.id) {
-                  await AsyncStorage.removeItem(`deposit_${selectedTransaction.id}`);
-                }
-                if (selectedTransaction.payOSOrderCode) {
-                  await AsyncStorage.removeItem(`deposit_order_${selectedTransaction.payOSOrderCode}`);
-                }
-              } catch (storageErr) {
-                console.warn('Failed to remove checkoutUrl from storage:', storageErr);
-              }
+  const renderFilterModal = () => {
+    if (!showFilter) return null;
 
-              // Refresh danh sách transactions
-              await fetchTransactions(1, true);
-
-              Alert.alert(
-                'Thành công',
-                'Đã hủy giao dịch thành công.',
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      handleCloseModal();
-                    },
-                  },
-                ]
-              );
-            } catch (err: any) {
-              const errorMessage = err?.message || 'Không thể hủy giao dịch. Vui lòng thử lại.';
-              Alert.alert('Lỗi', errorMessage);
-              setCancelling(false);
-            }
-          },
-        },
-      ]
+    return (
+      <View style={styles.filterModal}>
+        <ScrollView style={styles.filterList} showsVerticalScrollIndicator={false}>
+          <TouchableOpacity
+            style={[
+              styles.filterItem,
+              !selectedType && styles.filterItemActive,
+            ]}
+            onPress={() => handleFilterChange(null)}
+          >
+            <Text style={[
+              styles.filterItemText,
+              !selectedType && styles.filterItemTextActive,
+            ]}>
+              Tất cả giao dịch
+            </Text>
+            {!selectedType && (
+              <MaterialIcons name="check" size={20} color={COLORS.PRIMARY} />
+            )}
+          </TouchableOpacity>
+          {(Object.keys(TRANSACTION_TYPE_LABELS) as TransactionType[]).map((type) => (
+            <TouchableOpacity
+              key={type}
+              style={[
+                styles.filterItem,
+                selectedType === type && styles.filterItemActive,
+              ]}
+              onPress={() => handleFilterChange(type)}
+            >
+              <MaterialIcons
+                name={TRANSACTION_TYPE_ICONS[type] as any}
+                size={20}
+                color={selectedType === type ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
+                style={styles.filterItemIcon}
+              />
+              <Text style={[
+                styles.filterItemText,
+                selectedType === type && styles.filterItemTextActive,
+              ]}>
+                {TRANSACTION_TYPE_LABELS[type]}
+              </Text>
+              {selectedType === type && (
+                <MaterialIcons name="check" size={20} color={COLORS.PRIMARY} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-        onScroll={({ nativeEvent }) => {
-          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
-          const paddingToBottom = 20;
-          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
-            handleLoadMore();
-          }
-        }}
-        scrollEventThrottle={400}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Lịch sử giao dịch</Text>
-          <Text style={styles.headerSubtitle}>
-            Xem tất cả các giao dịch nạp tiền của bạn
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Lịch sử giao dịch</Text>
+        <Text style={styles.headerSubtitle}>
+          Xem tất cả các giao dịch của bạn
+        </Text>
+      </View>
+
+      <View style={styles.filterContainer}>
+        {renderFilterButton()}
+        {renderFilterModal()}
+      </View>
+
+      {loading && transactions.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.PRIMARY} />
+          <Text style={styles.loadingText}>Đang tải giao dịch...</Text>
+        </View>
+      ) : error && transactions.length === 0 ? (
+        <View style={styles.errorContainer}>
+          <MaterialIcons name="error-outline" size={48} color={COLORS.ERROR} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => fetchTransactions(1, true)}>
+            <Text style={styles.retryButtonText}>Thử lại</Text>
+          </TouchableOpacity>
+        </View>
+      ) : transactions.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <MaterialIcons name="receipt-long" size={64} color={COLORS.TEXT_SECONDARY} />
+          <Text style={styles.emptyTitle}>Chưa có giao dịch nào</Text>
+          <Text style={styles.emptySubtitle}>
+            {selectedType
+              ? `Chưa có giao dịch loại "${TRANSACTION_TYPE_LABELS[selectedType]}"`
+              : 'Các giao dịch của bạn sẽ hiển thị ở đây'}
           </Text>
         </View>
-
-        {/* Transactions List */}
-        {loading && transactions.length === 0 ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-            <Text style={styles.loadingText}>Đang tải giao dịch...</Text>
-          </View>
-        ) : error && transactions.length === 0 ? (
-          <View style={styles.errorContainer}>
-            <MaterialIcons name="error-outline" size={48} color={COLORS.ERROR} />
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={() => fetchTransactions(1)}>
-              <Text style={styles.retryButtonText}>Thử lại</Text>
-            </TouchableOpacity>
-          </View>
-        ) : transactions.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="receipt-long" size={64} color={COLORS.TEXT_SECONDARY} />
-            <Text style={styles.emptyTitle}>Chưa có giao dịch nào</Text>
-            <Text style={styles.emptySubtitle}>
-              Các giao dịch nạp tiền của bạn sẽ hiển thị ở đây
-            </Text>
-          </View>
-        ) : (
-          <>
-            {transactions
-              .filter((transaction, index, self) => 
-                index === self.findIndex((t) => t.id === transaction.id)
-              )
-              .map((transaction) => {
-              const timeInfo = formatTransactionTime(transaction.timestamp);
-              const isPending = transaction.status === 'Pending';
-              return (
-                <TouchableOpacity
-                  key={transaction.id}
-                  style={[
-                    styles.transactionCard,
-                    isPending && styles.transactionCardPending,
-                  ]}
-                  onPress={() => handleTransactionPress(transaction)}
-                  activeOpacity={isPending ? 0.7 : 1}
-                  disabled={!isPending}
-                >
-                  <View style={styles.transactionHeader}>
-                    <View style={styles.transactionIconContainer}>
-                      <MaterialIcons
-                        name={getTransactionIcon(transaction.status)}
-                        size={24}
-                        color={getTransactionIconColor(transaction.status)}
-                      />
-                    </View>
-                    <View style={styles.transactionMainInfo}>
-                      <Text style={styles.transactionDescription}>
-                        {transaction.status === 'Completed'
-                          ? 'Nạp tiền vào ví'
-                          : transaction.status === 'Pending'
-                          ? 'Đang xử lý nạp tiền'
-                          : 'Giao dịch thất bại'}
-                      </Text>
-                      <Text style={styles.transactionDate}>{timeInfo.date}</Text>
-                      <Text style={styles.transactionTime}>{timeInfo.time}</Text>
-                    </View>
-                    <View style={styles.transactionAmountContainer}>
-                      <Text
-                        style={[
-                          styles.transactionAmount,
-                          transaction.status === 'Completed' && { color: COLORS.SUCCESS },
-                        ]}
-                      >
-                        {transaction.status === 'Completed' ? '+' : ''}
-                        {transaction.amount.toLocaleString('vi-VN')} VNĐ
-                      </Text>
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          { backgroundColor: getStatusColor(transaction.status) + '20' },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            { color: getStatusColor(transaction.status) },
-                          ]}
-                        >
-                          {getStatusText(transaction.status)}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                  {transaction.payOSOrderCode && (
-                    <View style={styles.transactionDetails}>
-                      <Text style={styles.transactionDetailText}>
-                        Mã đơn hàng: {transaction.payOSOrderCode}
-                      </Text>
-                    </View>
-                  )}
-                  {isPending && (
-                    <View style={styles.pendingHint}>
-                      <MaterialIcons name="info-outline" size={16} color={COLORS.WARNING} />
-                      <Text style={styles.pendingHintText}>
-                        Chạm để tiếp tục thanh toán
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-
-            {loadingMore && (
+      ) : (
+        <FlatList
+          data={transactions}
+          renderItem={renderTransactionItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingMore ? (
               <View style={styles.loadingMoreContainer}>
                 <ActivityIndicator size="small" color={COLORS.PRIMARY} />
                 <Text style={styles.loadingMoreText}>Đang tải thêm...</Text>
               </View>
-            )}
-
-            {!hasMore && transactions.length > 0 && (
+            ) : !hasMore && transactions.length > 0 ? (
               <View style={styles.endContainer}>
                 <Text style={styles.endText}>Đã hiển thị tất cả giao dịch</Text>
               </View>
-            )}
-          </>
-        )}
-      </ScrollView>
-
-      {/* Payment Modal */}
-      <Modal
-        visible={paymentModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={handleCloseModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Tiếp tục thanh toán</Text>
-              <TouchableOpacity onPress={handleCloseModal} style={styles.modalCloseButton}>
-                <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
-              </TouchableOpacity>
-            </View>
-
-            {selectedTransaction && (
-              <View style={styles.modalBody}>
-                <View style={styles.transactionInfoBox}>
-                  <Text style={styles.transactionInfoLabel}>Số tiền:</Text>
-                  <Text style={styles.transactionInfoValue}>
-                    {selectedTransaction.amount.toLocaleString('vi-VN')} VNĐ
-                  </Text>
-                </View>
-                {selectedTransaction.payOSOrderCode && (
-                  <View style={styles.transactionInfoBox}>
-                    <Text style={styles.transactionInfoLabel}>Mã đơn hàng:</Text>
-                    <Text style={styles.transactionInfoValue}>
-                      {selectedTransaction.payOSOrderCode}
-                    </Text>
-                  </View>
-                )}
-
-                {loadingCheckoutUrl ? (
-                  <View style={styles.loadingCheckoutContainer}>
-                    <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-                    <Text style={styles.loadingCheckoutText}>Đang tải link thanh toán...</Text>
-                  </View>
-                ) : checkoutUrl ? (
-                  <>
-                    <View style={styles.checkoutUrlBox}>
-                      <MaterialIcons name="payment" size={24} color={COLORS.PRIMARY} />
-                      <Text style={styles.checkoutUrlLabel}>Link thanh toán:</Text>
-                      <Text style={styles.checkoutUrlText} numberOfLines={2}>
-                        {checkoutUrl}
-                      </Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.openPaymentButton}
-                      onPress={handleOpenPaymentLink}
-                      activeOpacity={0.8}
-                    >
-                      <MaterialIcons name="open-in-new" size={20} color={COLORS.SURFACE} />
-                      <Text style={styles.openPaymentButtonText}>Mở link thanh toán</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={handleCancelDeposit}
-                      activeOpacity={0.8}
-                      disabled={cancelling}
-                    >
-                      {cancelling ? (
-                        <ActivityIndicator size="small" color={COLORS.ERROR} />
-                      ) : (
-                        <MaterialIcons name="cancel" size={20} color={COLORS.ERROR} />
-                      )}
-                      <Text style={styles.cancelButtonText}>
-                        {cancelling ? 'Đang hủy...' : 'Hủy giao dịch'}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.infoBox}>
-                      <MaterialIcons name="info-outline" size={20} color={COLORS.INFO} />
-                      <Text style={styles.infoText}>
-                        Nhấn vào nút trên để mở link thanh toán trong trình duyệt và hoàn tất giao dịch.
-                      </Text>
-                    </View>
-                  </>
-                ) : (
-                  <View style={styles.errorCheckoutContainer}>
-                    <MaterialIcons name="error-outline" size={48} color={COLORS.ERROR} />
-                    <Text style={styles.errorCheckoutText}>
-                      Không thể lấy link thanh toán. Vui lòng thử lại sau.
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
+            ) : null
+          }
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -588,11 +363,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.BACKGROUND,
   },
-  scrollContent: {
-    padding: SPACING.MD,
-  },
   header: {
-    marginBottom: SPACING.LG,
+    padding: SPACING.MD,
+    paddingBottom: SPACING.SM,
   },
   headerTitle: {
     fontSize: FONTS.SIZES.XXL,
@@ -604,7 +377,84 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     color: COLORS.TEXT_SECONDARY,
   },
+  filterContainer: {
+    paddingHorizontal: SPACING.MD,
+    paddingBottom: SPACING.SM,
+    position: 'relative',
+    zIndex: 10,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.SURFACE,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  filterButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_SECONDARY,
+    marginLeft: SPACING.SM,
+    flex: 1,
+  },
+  filterButtonTextActive: {
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  clearFilterButton: {
+    marginLeft: SPACING.SM,
+    padding: SPACING.XS,
+  },
+  filterModal: {
+    position: 'absolute',
+    top: '100%',
+    left: SPACING.MD,
+    right: SPACING.MD,
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 8,
+    marginTop: SPACING.XS,
+    maxHeight: 400,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  filterList: {
+    maxHeight: 400,
+  },
+  filterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  filterItemActive: {
+    backgroundColor: COLORS.PRIMARY_50,
+  },
+  filterItemIcon: {
+    marginRight: SPACING.SM,
+  },
+  filterItemText: {
+    flex: 1,
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_PRIMARY,
+  },
+  filterItemTextActive: {
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  listContent: {
+    padding: SPACING.MD,
+  },
   loadingContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING.XL,
@@ -615,6 +465,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.MD,
   },
   errorContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING.XL,
@@ -638,6 +489,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   emptyContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING.XL,
@@ -670,6 +522,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   transactionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: SPACING.MD,
   },
   transactionMainInfo: {
@@ -681,14 +538,34 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     marginBottom: SPACING.XS,
   },
-  transactionDate: {
+  transactionSubDescription: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
     marginBottom: SPACING.XS,
   },
+  transactionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.XS,
+  },
+  transactionDate: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginRight: SPACING.SM,
+  },
   transactionTime: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
+  },
+  transactionStudent: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.XS,
+  },
+  transactionWallet: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.XS / 2,
   },
   transactionAmountContainer: {
     alignItems: 'flex-end',
@@ -696,27 +573,6 @@ const styles = StyleSheet.create({
   transactionAmount: {
     fontSize: FONTS.SIZES.LG,
     fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.XS,
-  },
-  statusBadge: {
-    paddingHorizontal: SPACING.SM,
-    paddingVertical: SPACING.XS,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: FONTS.SIZES.XS,
-    fontWeight: '600',
-  },
-  transactionDetails: {
-    marginTop: SPACING.MD,
-    paddingTop: SPACING.MD,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.BORDER,
-  },
-  transactionDetailText: {
-    fontSize: FONTS.SIZES.XS,
-    color: COLORS.TEXT_SECONDARY,
   },
   loadingMoreContainer: {
     flexDirection: 'row',
@@ -737,161 +593,6 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
   },
-  transactionCardPending: {
-    borderWidth: 1,
-    borderColor: COLORS.WARNING + '40',
-  },
-  pendingHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.SM,
-    paddingTop: SPACING.SM,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.BORDER,
-  },
-  pendingHintText: {
-    fontSize: FONTS.SIZES.XS,
-    color: COLORS.WARNING,
-    marginLeft: SPACING.XS,
-    fontStyle: 'italic',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: COLORS.SURFACE,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: SPACING.LG,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.LG,
-    paddingBottom: SPACING.MD,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.BORDER,
-  },
-  modalTitle: {
-    fontSize: FONTS.SIZES.XL,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  modalCloseButton: {
-    padding: SPACING.XS,
-  },
-  modalBody: {
-    paddingTop: SPACING.MD,
-  },
-  transactionInfoBox: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.MD,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.BORDER,
-  },
-  transactionInfoLabel: {
-    fontSize: FONTS.SIZES.MD,
-    color: COLORS.TEXT_SECONDARY,
-  },
-  transactionInfoValue: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  loadingCheckoutContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.XL,
-  },
-  loadingCheckoutText: {
-    fontSize: FONTS.SIZES.MD,
-    color: COLORS.TEXT_SECONDARY,
-    marginTop: SPACING.MD,
-  },
-  checkoutUrlBox: {
-    backgroundColor: COLORS.PRIMARY_50,
-    padding: SPACING.MD,
-    borderRadius: 12,
-    marginTop: SPACING.MD,
-    marginBottom: SPACING.LG,
-  },
-  checkoutUrlLabel: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    marginTop: SPACING.SM,
-    marginBottom: SPACING.XS,
-  },
-  checkoutUrlText: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.PRIMARY,
-    fontWeight: '600',
-  },
-  openPaymentButton: {
-    backgroundColor: COLORS.PRIMARY,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.MD,
-    paddingHorizontal: SPACING.LG,
-    borderRadius: 8,
-    marginBottom: SPACING.MD,
-  },
-  openPaymentButtonText: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.SURFACE,
-    marginLeft: SPACING.SM,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: COLORS.INFO_BG,
-    padding: SPACING.MD,
-    borderRadius: 12,
-  },
-  infoText: {
-    flex: 1,
-    marginLeft: SPACING.SM,
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_PRIMARY,
-    lineHeight: 20,
-  },
-  errorCheckoutContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.XL,
-  },
-  errorCheckoutText: {
-    fontSize: FONTS.SIZES.MD,
-    color: COLORS.ERROR,
-    textAlign: 'center',
-    marginTop: SPACING.MD,
-  },
-  cancelButton: {
-    backgroundColor: COLORS.SURFACE,
-    borderWidth: 1,
-    borderColor: COLORS.ERROR,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.MD,
-    paddingHorizontal: SPACING.LG,
-    borderRadius: 8,
-    marginBottom: SPACING.MD,
-  },
-  cancelButtonText: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.ERROR,
-    marginLeft: SPACING.SM,
-  },
 });
 
 export default TransactionHistoryScreen;
-

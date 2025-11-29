@@ -265,6 +265,61 @@ export interface DepositResponse {
   qrCodeUrl?: string | null; // QR code URL nếu có
 }
 
+// Transaction API Response - Full info from /api/Transaction/me
+export type TransactionType = 
+  | 'OrderPayment'      // Thanh toán đơn hàng
+  | 'Deposit'           // Nạp tiền vào ví
+  | 'TransferIn'        // Nhận tiền chuyển khoản
+  | 'TransferOut'       // Chuyển tiền đi
+  | 'PackagePayment'    // Thanh toán mua gói
+  | 'Refund'            // Hoàn tiền hủy gói
+  | 'Tuition'           // Thanh toán học phí
+  | 'Canteen'           // Mua đồ ăn buffet
+  | 'Game'              // Chơi game
+  | 'ServicePurchase';  // Mua dịch vụ
+
+export interface TransactionResponse {
+  id: string;
+  walletId: string;
+  amount: number; // Số âm (-): Trừ tiền, Số dương (+): Cộng tiền
+  type: TransactionType;
+  timestamp: string; // ISO date-time string
+  note?: string | null;
+  walletType: string; // "Parent" | "Student"
+  description?: string | null;
+  
+  // Package fields (cho PackagePayment, Refund)
+  packageSubscriptionId?: string | null;
+  packageName?: string | null;
+  packageStartDate?: string | null;
+  packageEndDate?: string | null;
+  packageTotalSlot?: number | null;
+  packageStudentName?: string | null;
+  packagePrice?: number | null;
+  packageUsedSlot?: number | null;
+  refundReason?: string | null;
+  refundPercentage?: number | null;
+  refundedAt?: string | null;
+  
+  // Order fields (cho OrderPayment)
+  orderId?: string | null;
+  orderReference?: string | null;
+  orderStatus?: string | null;
+  orderCreatedDate?: string | null;
+  orderStudentName?: string | null;
+  orderServiceNames?: string | null;
+}
+
+export interface TransactionListParams {
+  pageIndex?: number;
+  pageSize?: number;
+  type?: TransactionType;
+  fromDate?: string; // ISO date-time string
+  toDate?: string;   // ISO date-time string
+}
+
+export interface TransactionListResponse extends PaginatedResponse<TransactionResponse> {}
+
 // Packages
 export interface PackageBenefit {
   id: string;

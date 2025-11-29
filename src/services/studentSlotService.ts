@@ -119,6 +119,27 @@ class StudentSlotService {
       throw error.response?.data || error.message || 'Failed to fetch staff slots';
     }
   }
+
+  /**
+   * Cancel a booked slot for a student
+   * Endpoint: DELETE /api/StudentSlot/cancel
+   * @param slotId The student slot ID to cancel
+   * @param studentId The student ID
+   * @returns Success response
+   */
+  async cancelSlot(slotId: string, studentId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const response = await axiosInstance.delete('/api/StudentSlot/cancel', {
+        params: {
+          slotId,
+          studentId,
+        },
+      });
+      return response.data || { success: true };
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to cancel slot';
+    }
+  }
 }
 
 export const studentSlotService = new StudentSlotService();

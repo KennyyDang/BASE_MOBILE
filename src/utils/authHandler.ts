@@ -30,6 +30,13 @@ export const authHandler = {
   },
 
   /**
+   * Check if currently handling unauthorized logout
+   */
+  isHandling: (): boolean => {
+    return isHandlingUnauthorized;
+  },
+
+  /**
    * Trigger logout and redirect to login
    * Called by axios interceptor when token is invalid
    */
@@ -62,12 +69,15 @@ export const authHandler = {
         });
       }
     } catch (error) {
-      console.error('[AuthHandler] Error handling unauthorized:', error);
+      // Only log error once, silently handle subsequent errors
+      if (__DEV__) {
+        console.error('[AuthHandler] Error handling unauthorized:', error);
+      }
     } finally {
       // Reset flag after a delay to allow navigation to complete
       setTimeout(() => {
         isHandlingUnauthorized = false;
-      }, 1000);
+      }, 2000);
     }
   },
 };

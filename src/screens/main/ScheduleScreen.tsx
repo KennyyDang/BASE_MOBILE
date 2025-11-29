@@ -216,9 +216,11 @@ const ScheduleScreen: React.FC = () => {
   const [subscriptionsLoading, setSubscriptionsLoading] = useState(false);
   const [subscriptionsError, setSubscriptionsError] = useState<string | null>(null);
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
+  const [packageTotalSlots, setPackageTotalSlots] = useState<Record<string, number>>({}); // Map packageId -> totalSlots
   const [weekOffset, setWeekOffset] = useState<number>(0); // 0 = tuần hiện tại, -1 = tuần trước, 1 = tuần sau
   const [bookedSlots, setBookedSlots] = useState<StudentSlotResponse[]>([]);
   const [bookedSlotsLoading, setBookedSlotsLoading] = useState(false);
+  const [expandedDays, setExpandedDays] = useState<Set<WeekdayKey>>(new Set()); // Mặc định đóng tất cả
 
   useEffect(() => {
     if (students.length && !selectedStudentId) {
@@ -230,21 +232,40 @@ const ScheduleScreen: React.FC = () => {
     return students.find((student) => student.id === selectedStudentId) ?? null;
   }, [selectedStudentId, students]);
 
-  const computeRemainingSlots = useCallback((subscription: StudentPackageSubscription) => {
-    const total = subscription.totalSlotsSnapshot ?? subscription.totalSlots ?? subscription.remainingSlots;
-    if (typeof total === 'number') {
-      return Math.max(total - (subscription.usedSlot || 0), 0);
+  const computeTotalSlots = useCallback((subscription: StudentPackageSubscription): number | null => {
+    // Ưu tiên 1: totalSlotsSnapshot hoặc totalSlots từ subscription
+    if (typeof subscription.totalSlotsSnapshot === 'number') {
+      return subscription.totalSlotsSnapshot;
     }
-    // Try to parse from packageName if it contains a number (e.g., "15 slot")
+    if (typeof subscription.totalSlots === 'number') {
+      return subscription.totalSlots;
+    }
+    // Ưu tiên 2: Lấy từ packageTotalSlots map (đã fetch từ package gốc)
+    if (subscription.packageId && packageTotalSlots[subscription.packageId]) {
+      return packageTotalSlots[subscription.packageId];
+    }
+    // Ưu tiên 3: Tính từ usedSlot + remainingSlots
+    if (typeof subscription.remainingSlots === 'number') {
+      return (subscription.usedSlot || 0) + subscription.remainingSlots;
+    }
+    // Ưu tiên 4: Parse từ packageName
     const nameMatch = subscription.packageName?.match(/(\d+)/);
     if (nameMatch) {
       const totalFromName = parseInt(nameMatch[1], 10);
       if (!isNaN(totalFromName)) {
-        return Math.max(totalFromName - (subscription.usedSlot || 0), 0);
+        return totalFromName;
       }
     }
+    return null;
+  }, [packageTotalSlots]);
+
+  const computeRemainingSlots = useCallback((subscription: StudentPackageSubscription) => {
+    const total = computeTotalSlots(subscription);
+    if (total !== null) {
+      return Math.max(total - (subscription.usedSlot || 0), 0);
+    }
     return undefined;
-  }, []);
+  }, [computeTotalSlots]);
 
   const selectedSubscription = useMemo(() => {
     if (!selectedSubscriptionId) {
@@ -268,14 +289,55 @@ const ScheduleScreen: React.FC = () => {
         });
         setSubscriptions(activeData);
 
+        // Fetch package details để lấy totalSlots cho các subscription không có totalSlotsSnapshot
+        const totalSlotsMap: Record<string, number> = {};
+        try {
+          const suitablePackages = await packageService.getSuitablePackages(studentId);
+          suitablePackages.forEach((pkg) => {
+            if (pkg.totalSlots && typeof pkg.totalSlots === 'number') {
+              totalSlotsMap[pkg.id] = pkg.totalSlots;
+            }
+          });
+          // Chỉ update nếu có thay đổi để tránh re-render không cần thiết
+          setPackageTotalSlots((prev) => {
+            const hasChanges = Object.keys(totalSlotsMap).some(
+              (key) => prev[key] !== totalSlotsMap[key]
+            );
+            if (hasChanges || Object.keys(totalSlotsMap).length > 0) {
+              return { ...prev, ...totalSlotsMap };
+            }
+            return prev;
+          });
+        } catch (pkgErr) {
+          // Ignore error khi fetch package details
+        }
+
         const currentValid = activeData.find((sub) => sub.id === selectedSubscriptionId);
         if (currentValid) {
-          setSelectedSubscriptionId(currentValid.id);
+          // Giữ nguyên subscription đã chọn nếu vẫn còn trong danh sách
+          // Không cần set lại để tránh re-render
         } else {
-          const defaultSubscription =
-            activeData.find((sub) => sub.status === 'Active' && (computeRemainingSlots(sub) ?? 1) > 0) ||
-            activeData.find((sub) => sub.status === 'Active') ||
-            activeData[0];
+          // Tính toán remaining slots trực tiếp ở đây thay vì dùng callback
+          const findDefaultSubscription = () => {
+            // Tìm subscription có remaining slots > 0
+            for (const sub of activeData) {
+              if (sub.status === 'Active') {
+                const total = sub.totalSlotsSnapshot ?? sub.totalSlots ?? 
+                             (totalSlotsMap[sub.packageId] ?? null) ??
+                             (typeof sub.remainingSlots === 'number' ? (sub.usedSlot || 0) + sub.remainingSlots : null);
+                if (total !== null) {
+                  const remaining = Math.max(total - (sub.usedSlot || 0), 0);
+                  if (remaining > 0) {
+                    return sub;
+                  }
+                }
+              }
+            }
+            // Nếu không có, tìm bất kỳ subscription Active nào
+            return activeData.find((sub) => sub.status === 'Active') || activeData[0];
+          };
+          
+          const defaultSubscription = findDefaultSubscription();
           setSelectedSubscriptionId(defaultSubscription ? defaultSubscription.id : null);
         }
       } catch (error: any) {
@@ -290,7 +352,7 @@ const ScheduleScreen: React.FC = () => {
         setSubscriptionsLoading(false);
       }
     },
-    [selectedSubscriptionId, computeRemainingSlots]
+    [selectedSubscriptionId] // Loại bỏ computeRemainingSlots khỏi dependencies
   );
 
   useEffect(() => {
@@ -302,7 +364,8 @@ const ScheduleScreen: React.FC = () => {
       return;
     }
     fetchSubscriptions(selectedStudentId);
-  }, [selectedStudentId, fetchSubscriptions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStudentId]); // Chỉ phụ thuộc vào selectedStudentId để tránh infinite loop
 
   const resolvePackageSubscriptionId = useCallback(
     (slot: BranchSlotResponse): string | null => {
@@ -715,14 +778,16 @@ const ScheduleScreen: React.FC = () => {
       setPagination(null);
       setBookedSlots([]);
     }
-  }, [selectedStudentId, fetchSlots, fetchBookedSlots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStudentId]); // Chỉ phụ thuộc vào selectedStudentId để tránh infinite loop
 
   // Refresh booked slots khi weekOffset thay đổi
   useEffect(() => {
     if (selectedStudentId) {
       fetchBookedSlots(selectedStudentId);
     }
-  }, [weekOffset, selectedStudentId, fetchBookedSlots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekOffset, selectedStudentId]); // Loại bỏ fetchBookedSlots khỏi dependencies
 
   const handleRefreshSlots = useCallback(() => {
     if (!selectedStudentId) {
@@ -731,14 +796,16 @@ const ScheduleScreen: React.FC = () => {
     setSlotsRefreshing(true);
     fetchSlots({ page: 1, silent: true });
     fetchBookedSlots(selectedStudentId);
-  }, [selectedStudentId, fetchSlots, fetchBookedSlots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStudentId]); // Loại bỏ fetchSlots và fetchBookedSlots khỏi dependencies
 
   const handleRetrySlots = useCallback(() => {
     if (!selectedStudentId) {
       return;
     }
     fetchSlots({ page: 1 });
-  }, [selectedStudentId, fetchSlots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStudentId]); // Loại bỏ fetchSlots khỏi dependencies
 
   const handleLoadMore = useCallback(() => {
     if (!pagination?.hasNextPage || loadingMore) {
@@ -747,6 +814,86 @@ const ScheduleScreen: React.FC = () => {
     const nextPage = (pagination.pageIndex ?? 1) + 1;
     fetchSlots({ page: nextPage, append: true });
   }, [fetchSlots, pagination, loadingMore]);
+
+  // Kiểm tra xem có thể cancel slot không (phải còn > 1 giờ trước khi slot bắt đầu)
+  const canCancelSlot = useCallback((slot: BranchSlotResponse, bookedSlot: StudentSlotResponse | null): boolean => {
+    if (!bookedSlot) return false;
+    
+    // Lấy thời gian bắt đầu của slot từ bookedSlot.date hoặc tính từ slot
+    let slotDateTime: Date;
+    
+    // Ưu tiên dùng date từ bookedSlot vì nó chính xác hơn
+    if (bookedSlot.date) {
+      slotDateTime = new Date(bookedSlot.date);
+    } else {
+      // Fallback: tính từ slot với weekOffset
+      const slotDate = computeSlotDateISO(slot, weekOffset);
+      slotDateTime = new Date(slotDate);
+    }
+    
+    // Nếu slot có timeframe với startTime, cập nhật giờ phút
+    if (slot.timeframe?.startTime) {
+      const [hours = '0', minutes = '0'] = slot.timeframe.startTime.split(':');
+      slotDateTime.setHours(Number(hours), Number(minutes), 0, 0);
+    }
+    
+    const now = new Date();
+    
+    // Tính thời gian còn lại (milliseconds)
+    const timeRemaining = slotDateTime.getTime() - now.getTime();
+    // Phải còn hơn 1 giờ (3600000 milliseconds = 60 phút * 60 giây * 1000)
+    return timeRemaining > 3600000;
+  }, [weekOffset]);
+
+  // Xử lý cancel slot
+  const handleCancelSlot = useCallback(
+    async (slot: BranchSlotResponse, bookedSlot: StudentSlotResponse) => {
+      if (!selectedStudentId) {
+        Alert.alert('Thông báo', 'Vui lòng chọn con trước khi hủy lịch.');
+        return;
+      }
+
+      // Kiểm tra lại xem có thể cancel không
+      if (!canCancelSlot(slot, bookedSlot)) {
+        Alert.alert(
+          'Không thể hủy',
+          'Chỉ có thể hủy lịch học trước 1 giờ. Vui lòng liên hệ trung tâm nếu cần hỗ trợ.'
+        );
+        return;
+      }
+
+      Alert.alert(
+        'Xác nhận hủy lịch',
+        `Bạn có chắc chắn muốn hủy lịch học này không?`,
+        [
+          {
+            text: 'Không',
+            style: 'cancel',
+          },
+          {
+            text: 'Có, hủy lịch',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await studentSlotService.cancelSlot(bookedSlot.id, selectedStudentId);
+                Alert.alert('Thành công', 'Đã hủy lịch học thành công.');
+                // Refresh lại danh sách slots và booked slots
+                fetchSlots({ page: 1 });
+                fetchBookedSlots(selectedStudentId);
+              } catch (error: any) {
+                const message =
+                  error?.response?.data?.message ||
+                  error?.message ||
+                  'Không thể hủy lịch học. Vui lòng thử lại sau.';
+                Alert.alert('Lỗi', message);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [selectedStudentId, canCancelSlot, fetchSlots, fetchBookedSlots]
+  );
 
   const groupedSlots = useMemo(() => {
     const groups: Record<WeekdayKey, BranchSlotResponse[]> = {
@@ -921,18 +1068,10 @@ const ScheduleScreen: React.FC = () => {
                   </View>
                   <Text style={styles.subscriptionChipMeta}>
                     {(() => {
-                      const total = subscription.totalSlotsSnapshot ?? subscription.totalSlots ?? subscription.remainingSlots;
-                      let totalDisplay = '?';
-                      if (typeof total === 'number') {
-                        totalDisplay = total.toString();
-                      } else {
-                        // Try to parse from packageName
-                        const nameMatch = subscription.packageName?.match(/(\d+)/);
-                        if (nameMatch) {
-                          totalDisplay = nameMatch[1];
-                        }
-                      }
-                      return `${subscription.usedSlot || 0} / ${totalDisplay} buổi đã dùng`;
+                      const used = subscription.usedSlot || 0;
+                      const total = computeTotalSlots(subscription);
+                      const totalDisplay = total !== null ? total.toString() : '?';
+                      return `${used} / ${totalDisplay} buổi đã dùng`;
                     })()}
                     {remaining !== undefined ? ` • Còn ${remaining} buổi` : ''}
                     {' • HSD '}
@@ -993,20 +1132,47 @@ const ScheduleScreen: React.FC = () => {
           const dayDate = getWeekDate(weekOffset, day);
           const dayDateDisplay = formatDateDisplay(dayDate);
 
+          const isExpanded = expandedDays.has(day);
+          const toggleDay = () => {
+            setExpandedDays((prev) => {
+              const newSet = new Set(prev);
+              if (newSet.has(day)) {
+                newSet.delete(day);
+              } else {
+                newSet.add(day);
+              }
+              return newSet;
+            });
+          };
+
           return (
             <View key={day} style={styles.daySection}>
-              <View style={styles.dayHeader}>
-                <View>
+              <TouchableOpacity
+                style={styles.dayHeader}
+                onPress={toggleDay}
+                activeOpacity={0.7}
+              >
+                <View style={{ flex: 1 }}>
                   <Text style={styles.dayTitle}>{title} - {dayDateDisplay}</Text>
                   <Text style={styles.daySubtitle}>{subtitle}</Text>
-              </View>
-                <View style={styles.dayBadge}>
-                  <MaterialIcons name="event-available" size={18} color={COLORS.PRIMARY} />
-                  <Text style={styles.dayBadgeText}>{daySlots.length}</Text>
-            </View>
-          </View>
+                </View>
+                <View style={styles.dayHeaderRight}>
+                  <View style={styles.dayBadge}>
+                    <MaterialIcons name="event-available" size={18} color={COLORS.PRIMARY} />
+                    <Text style={styles.dayBadgeText}>{daySlots.length}</Text>
+                  </View>
+                  <MaterialIcons
+                    name={isExpanded ? 'keyboard-arrow-down' : 'keyboard-arrow-right'}
+                    size={24}
+                    color={COLORS.PRIMARY}
+                    style={styles.dayChevron}
+                  />
+                </View>
+              </TouchableOpacity>
 
-              {daySlots.length === 0 ? (
+              {isExpanded && (
+                <>
+                  {daySlots.length === 0 ? (
                 <View style={styles.emptySlotCard}>
                   <MaterialIcons name="watch-later" size={32} color={COLORS.TEXT_SECONDARY} />
                   <Text style={styles.emptySlotText}>Chưa có slot nào trong ngày</Text>
@@ -1175,13 +1341,25 @@ const ScheduleScreen: React.FC = () => {
                       ) : null}
 
                       {isBooked ? (
-                        <View style={styles.bookedSlotInfo}>
-                          <MaterialIcons name="event-available" size={20} color={COLORS.PRIMARY} />
-                          <Text style={styles.bookedSlotText}>
-                            Đã đặt lịch cho ngày {formatDateDisplay(getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate)))}
-                            {bookedSlot?.room?.roomName && ` • Phòng: ${bookedSlot.room.roomName}`}
-                            {bookedSlot?.status && ` • Trạng thái: ${bookedSlot.status}`}
-                          </Text>
+                        <View>
+                          <View style={styles.bookedSlotInfo}>
+                            <MaterialIcons name="event-available" size={20} color={COLORS.PRIMARY} />
+                            <Text style={styles.bookedSlotText}>
+                              Đã đặt lịch cho ngày {formatDateDisplay(getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate)))}
+                              {bookedSlot?.room?.roomName && ` • Phòng: ${bookedSlot.room.roomName}`}
+                              {bookedSlot?.status && ` • Trạng thái: ${bookedSlot.status}`}
+                            </Text>
+                          </View>
+                          {canCancelSlot(slot, bookedSlot) && (
+                            <TouchableOpacity
+                              style={styles.cancelButton}
+                              onPress={() => handleCancelSlot(slot, bookedSlot)}
+                              activeOpacity={0.85}
+                            >
+                              <MaterialIcons name="cancel" size={18} color={COLORS.ERROR} />
+                              <Text style={styles.cancelButtonText}>Hủy lịch học</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                       ) : (
                         <>
@@ -1343,6 +1521,8 @@ const ScheduleScreen: React.FC = () => {
             </View>
                   );
                 })
+                  )}
+                </>
               )}
           </View>
           );
@@ -1618,6 +1798,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: SPACING.SM,
+    paddingVertical: SPACING.XS,
+  },
+  dayHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
+  },
+  dayChevron: {
+    marginLeft: SPACING.XS,
   },
   dayTitle: {
     fontSize: FONTS.SIZES.LG,
@@ -2108,6 +2297,23 @@ const styles = StyleSheet.create({
     color: COLORS.PRIMARY,
     fontWeight: '600',
     lineHeight: 20,
+  },
+  cancelButton: {
+    marginTop: SPACING.SM,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.ERROR_BG || '#FFEBEE',
+    borderRadius: 12,
+    padding: SPACING.SM,
+    borderWidth: 1,
+    borderColor: COLORS.ERROR,
+  },
+  cancelButtonText: {
+    marginLeft: SPACING.XS,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.ERROR,
+    fontWeight: '600',
   },
 });
 

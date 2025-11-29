@@ -9,16 +9,20 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { useCurrentUserWallet, useStudentWallets } from '../../hooks/useWalletApi';
 import { useMyChildren } from '../../hooks/useChildrenApi';
 import studentSlotService from '../../services/studentSlotService';
 import branchSlotService from '../../services/branchSlotService';
 import walletService from '../../services/walletService';
-import { StudentSlotResponse, BranchSlotRoomResponse, DepositResponse } from '../../types/api';
+import transactionService from '../../services/transactionService';
+import { StudentSlotResponse, BranchSlotRoomResponse, TransactionResponse } from '../../types/api';
+import { RootStackParamList } from '../../types';
 import { COLORS } from '../../constants';
 
 const SPACING = {
@@ -40,9 +44,11 @@ const FONTS = {
   },
 };
 
+type DashboardNavigationProp = StackNavigationProp<RootStackParamList>;
+
 const DashboardScreen: React.FC = () => {
   const { logout } = useAuth();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<DashboardNavigationProp>();
   const { data: walletData, loading: walletLoading } = useCurrentUserWallet();
   const { data: studentWallets, loading: studentWalletsLoading } = useStudentWallets();
   const { students } = useMyChildren();
@@ -52,8 +58,9 @@ const DashboardScreen: React.FC = () => {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<StudentSlotResponse | null>(null);
   const [slotDetailModalVisible, setSlotDetailModalVisible] = useState(false);
-  const [recentTransactions, setRecentTransactions] = useState<DepositResponse[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<TransactionResponse[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -186,16 +193,11 @@ const DashboardScreen: React.FC = () => {
   const fetchRecentTransactions = useCallback(async () => {
     setTransactionsLoading(true);
     try {
-      const deposits = await walletService.getDeposits(1, 5);
-      // Ensure deposits is always an array
-      if (Array.isArray(deposits)) {
-        setRecentTransactions(deposits);
-      } else if (deposits && typeof deposits === 'object' && 'items' in deposits) {
-        // Handle paginated response
-        setRecentTransactions(Array.isArray((deposits as any).items) ? (deposits as any).items : []);
-      } else {
-        setRecentTransactions([]);
-      }
+      const response = await transactionService.getMyTransactions({
+        pageIndex: 1,
+        pageSize: 5,
+      });
+      setRecentTransactions(response.items || []);
     } catch (error: any) {
       // Error handled silently, ensure array is set
       setRecentTransactions([]);
@@ -211,31 +213,94 @@ const DashboardScreen: React.FC = () => {
   const formatTransactionTime = (timestamp: string) => {
     const date = new Date(timestamp);
     const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const transactionDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Vừa xong';
-    if (diffMins < 60) return `${diffMins} phút trước`;
-    if (diffHours < 24) return `${diffHours} giờ trước`;
-    if (diffDays === 1) return 'Hôm qua';
-    if (diffDays < 7) return `${diffDays} ngày trước`;
-    return date.toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric', year: 'numeric' });
+    // Format time: HH:mm
+    const timeStr = date.toLocaleTimeString('vi-VN', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    });
+
+    // Same day
+    if (transactionDate.getTime() === today.getTime()) {
+      if (diffMins < 1) return `Vừa xong, ${timeStr}`;
+      if (diffMins < 60) return `Hôm nay, ${timeStr}`;
+      return `Hôm nay, ${timeStr}`;
+    }
+
+    // Yesterday
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (transactionDate.getTime() === yesterday.getTime()) {
+      return `Hôm qua, ${timeStr}`;
+    }
+
+    // Within 7 days
+    if (diffDays < 7) {
+      const dayName = date.toLocaleDateString('vi-VN', { weekday: 'long' });
+      return `${dayName}, ${timeStr}`;
+    }
+
+    // Older than 7 days
+    const dateStr = date.toLocaleDateString('vi-VN', { 
+      day: 'numeric', 
+      month: 'numeric',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    });
+    return `${dateStr}, ${timeStr}`;
   };
 
-  const getTransactionIcon = (status: string) => {
-    if (status === 'Completed') return 'check-circle';
-    if (status === 'Pending') return 'schedule';
-    if (status === 'Failed') return 'error';
-    return 'account-balance-wallet';
+  const getTransactionIcon = (type: string) => {
+    switch (type) {
+      case 'Deposit': return 'add-circle';
+      case 'TransferIn': return 'arrow-downward';
+      case 'TransferOut': return 'arrow-upward';
+      case 'PackagePayment': return 'shopping-bag';
+      case 'Refund': return 'undo';
+      case 'OrderPayment': return 'receipt';
+      case 'Tuition': return 'school';
+      case 'Canteen': return 'restaurant';
+      case 'Game': return 'videogame-asset';
+      case 'ServicePurchase': return 'room-service';
+      default: return 'account-balance-wallet';
+    }
   };
 
-  const getTransactionIconColor = (status: string) => {
-    if (status === 'Completed') return COLORS.SUCCESS;
-    if (status === 'Pending') return COLORS.WARNING;
-    if (status === 'Failed') return COLORS.ERROR;
+  const getTransactionIconBackground = (type: string, amount: number) => {
+    // Positive amount (income) = light green, negative (expense) = light red
+    if (amount > 0) return COLORS.SUCCESS_BG || '#E8F5E9';
+    if (amount < 0) return COLORS.ERROR_BG || '#FFEBEE';
+    return COLORS.PRIMARY_LIGHT || '#E0F2F1';
+  };
+
+  const getTransactionIconColor = (type: string, amount: number) => {
+    // Positive amount (income) = green, negative (expense) = red
+    if (amount > 0) return COLORS.SUCCESS;
+    if (amount < 0) return COLORS.ERROR;
     return COLORS.PRIMARY;
+  };
+
+  const getTransactionDescription = (transaction: TransactionResponse) => {
+    if (transaction.description) return transaction.description;
+    switch (transaction.type) {
+      case 'Deposit': return 'Nạp tiền vào ví';
+      case 'TransferIn': return 'Nhận tiền chuyển khoản';
+      case 'TransferOut': return 'Chuyển tiền đi';
+      case 'PackagePayment': return 'Thanh toán mua gói';
+      case 'Refund': return 'Hoàn tiền hủy gói';
+      case 'OrderPayment': return 'Thanh toán đơn hàng';
+      case 'Tuition': return 'Thanh toán học phí';
+      case 'Canteen': return 'Mua đồ ăn buffet';
+      case 'Game': return 'Chơi game';
+      case 'ServicePurchase': return 'Mua dịch vụ';
+      default: return 'Giao dịch';
+    }
   };
 
   const handleViewSlotDetail = (slot: StudentSlotResponse) => {
@@ -279,6 +344,12 @@ const DashboardScreen: React.FC = () => {
       case 'profile':
         navigation.navigate('Main', { screen: 'Profile' });
         break;
+      case 'subscriptions':
+        navigation.navigate('MySubscriptions');
+        break;
+      case 'bookedClasses':
+        navigation.navigate('Main', { screen: 'BookedClasses' });
+        break;
       case 'help':
         Alert.alert(
           'Hỗ trợ',
@@ -291,13 +362,27 @@ const DashboardScreen: React.FC = () => {
     }
   };
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      fetchUpcomingSlots(),
+      fetchRecentTransactions(),
+    ]);
+    setRefreshing(false);
+  }, [fetchUpcomingSlots, fetchRecentTransactions]);
+
   const handleLogout = () => {
     logout();
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
         {/* Welcome Section */}
         <View style={styles.welcomeSection}>
           <View style={styles.welcomeHeader}>
@@ -315,8 +400,14 @@ const DashboardScreen: React.FC = () => {
 
         {/* Quick Stats */}
         <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <MaterialIcons name="schedule" size={24} color={COLORS.PRIMARY} />
+          <TouchableOpacity 
+            style={[styles.statCard, styles.statCardClickable]}
+            onPress={() => handleQuickAction('schedule')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.statIconContainer, { backgroundColor: COLORS.PRIMARY_LIGHT }]}>
+              <MaterialIcons name="schedule" size={24} color={COLORS.PRIMARY} />
+            </View>
             {slotsLoading ? (
               <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
             ) : (
@@ -332,37 +423,47 @@ const DashboardScreen: React.FC = () => {
               </Text>
             )}
             <Text style={styles.statLabel}>Lớp học hôm nay</Text>
-          </View>
+          </TouchableOpacity>
           
-          <View style={styles.statCard}>
-            <MaterialIcons name="sentiment-satisfied" size={24} color={COLORS.SECONDARY} />
+          <TouchableOpacity 
+            style={[styles.statCard, styles.statCardClickable]}
+            onPress={() => handleQuickAction('wallet')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.statIconContainer, { backgroundColor: COLORS.SUCCESS_BG }]}>
+              <MaterialIcons name="account-balance-wallet" size={24} color={COLORS.SECONDARY} />
+            </View>
             {walletLoading ? (
               <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
             ) : (
               <Text style={styles.statNumber}>
-                {walletData ? walletData.balance.toLocaleString('vi-VN') : '0'}
+                {walletData ? (walletData.balance / 1000).toFixed(0) + 'k' : '0'}
               </Text>
             )}
-            <Text style={styles.statLabel}>VNĐ</Text>
-          </View>
+            <Text style={styles.statLabel}>Ví phụ huynh</Text>
+          </TouchableOpacity>
           
-          <View style={styles.statCard}>
-            <MaterialIcons name="sentiment-satisfied" size={24} color={COLORS.SECONDARY} />
+          <TouchableOpacity 
+            style={[styles.statCard, styles.statCardClickable]}
+            onPress={() => handleQuickAction('wallet')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.statIconContainer, { backgroundColor: COLORS.WARNING_BG }]}>
+              <MaterialIcons name="child-care" size={24} color={COLORS.WARNING} />
+            </View>
             {studentWalletsLoading ? (
               <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
             ) : (
               <Text style={styles.statNumber}>
                 {studentWallets && studentWallets.length > 0 
-                  ? studentWallets.reduce((total, wallet) => total + wallet.balance, 0).toLocaleString('vi-VN')
+                  ? (studentWallets.reduce((total, wallet) => total + wallet.balance, 0) / 1000).toFixed(0) + 'k'
                   : '0'}
               </Text>
             )}
             <Text style={styles.statLabel}>
-              {studentWallets && studentWallets.length > 0 
-                ? 'VNĐ ví của con'
-                : 'Chưa có ví con'}
+              {students.length > 0 ? `${students.length} con` : 'Chưa có con'}
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Quick Actions */}
@@ -396,18 +497,26 @@ const DashboardScreen: React.FC = () => {
             
             <TouchableOpacity 
               style={styles.quickActionCard}
-              onPress={() => handleQuickAction('children')}
-            >
-              <MaterialIcons name="child-care" size={32} color={COLORS.WARNING} />
-              <Text style={styles.quickActionText}>Quản lý con</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.quickActionCard}
               onPress={() => handleQuickAction('notifications')}
             >
               <MaterialIcons name="notifications" size={32} color={COLORS.ERROR} />
               <Text style={styles.quickActionText}>Thông báo</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.quickActionCard}
+              onPress={() => handleQuickAction('subscriptions')}
+            >
+              <MaterialIcons name="card-membership" size={32} color={COLORS.ACCENT} />
+              <Text style={styles.quickActionText}>Gói đăng ký</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.quickActionCard}
+              onPress={() => handleQuickAction('bookedClasses')}
+            >
+              <MaterialIcons name="event-available" size={32} color={COLORS.SUCCESS} />
+              <Text style={styles.quickActionText}>Lớp đã đặt</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -506,21 +615,27 @@ const DashboardScreen: React.FC = () => {
               <TouchableOpacity
                 key={transaction.id}
                 style={styles.transactionCard}
-                onPress={() => handleQuickAction('transactionHistory')}
+                onPress={() => {
+                  navigation.navigate('TransactionDetail', {
+                    transactionId: transaction.id,
+                    transaction: transaction,
+                  });
+                }}
                 activeOpacity={0.85}
               >
-                <MaterialIcons 
-                  name={getTransactionIcon(transaction.status)} 
-                  size={24} 
-                  color={getTransactionIconColor(transaction.status)} 
-                />
+                <View style={[
+                  styles.transactionIconContainer,
+                  { backgroundColor: getTransactionIconBackground(transaction.type, transaction.amount) }
+                ]}>
+                  <MaterialIcons 
+                    name={getTransactionIcon(transaction.type) as any} 
+                    size={20} 
+                    color={getTransactionIconColor(transaction.type, transaction.amount)} 
+                  />
+                </View>
                 <View style={styles.transactionInfo}>
-                  <Text style={styles.transactionDescription}>
-                    {transaction.status === 'Completed' 
-                      ? 'Nạp tiền vào ví' 
-                      : transaction.status === 'Pending'
-                      ? 'Đang xử lý nạp tiền'
-                      : 'Giao dịch thất bại'}
+                  <Text style={styles.transactionDescription} numberOfLines={1}>
+                    {getTransactionDescription(transaction)}
                   </Text>
                   <Text style={styles.transactionTime}>
                     {formatTransactionTime(transaction.timestamp)}
@@ -528,10 +643,10 @@ const DashboardScreen: React.FC = () => {
                 </View>
                 <Text style={[
                   styles.transactionAmount,
-                  transaction.status === 'Completed' && { color: COLORS.SUCCESS }
+                  { color: getTransactionIconColor(transaction.type, transaction.amount) }
                 ]}>
-                  {transaction.status === 'Completed' ? '+' : ''}
-                  {transaction.amount.toLocaleString('vi-VN')} VNĐ
+                  {transaction.amount > 0 ? '+' : ''}
+                  {Math.abs(transaction.amount).toLocaleString('vi-VN')} VNĐ
                 </Text>
               </TouchableOpacity>
             ))
@@ -703,6 +818,17 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  statCardClickable: {
+    // Add visual feedback for clickable cards
+  },
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.SM,
+  },
   statNumber: {
     fontSize: FONTS.SIZES.LG,
     fontWeight: 'bold',
@@ -819,9 +945,17 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  transactionIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.MD,
+  },
   transactionInfo: {
     flex: 1,
-    marginLeft: SPACING.MD,
+    marginRight: SPACING.SM,
   },
   transactionDescription: {
     fontSize: FONTS.SIZES.MD,

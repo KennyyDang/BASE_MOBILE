@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import axiosInstance from '../config/axios.config';
 
 /**
@@ -233,31 +234,38 @@ const parentProfileService = {
     try {
       const formData = new FormData();
       
-      formData.append('Name', name);
-      formData.append('Phone', phone);
-      formData.append('StudentRela', studentRela);
+      // Append text fields as strings
+      formData.append('Name', String(name));
+      formData.append('Phone', String(phone));
+      formData.append('StudentRela', String(studentRela));
       
       // Add avatar file if provided
       if (avatarFileUri) {
-        const fileExtension = avatarFileUri.split('.').pop() || 'jpg';
+        // Extract file extension from URI
+        let uri = avatarFileUri;
+        // Fix URI for Android - remove 'file://' prefix if exists
+        if (Platform.OS === 'android' && uri.startsWith('file://')) {
+          uri = uri.replace('file://', '');
+        }
+        const fileExtension = uri.split('.').pop() || 'jpg';
         const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
         const fileName = `family_avatar_${Date.now()}.${fileExtension}`;
         
         // @ts-ignore - FormData type issue with React Native
         formData.append('AvatarFile', {
-          uri: avatarFileUri,
+          uri: Platform.OS === 'android' ? uri : avatarFileUri,
           type: mimeType,
           name: fileName,
         } as any);
       }
 
+      // Axios interceptor will automatically handle FormData Content-Type with boundary
+      // Similar to registerChild service which works correctly
       const response = await axiosInstance.post<FamilyProfileResponse>(
         '/api/FamilyProfile',
         formData,
         {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+          timeout: 60000, // 60 seconds timeout for file upload
         }
       );
       
@@ -266,7 +274,10 @@ const parentProfileService = {
       const errorData = error?.response?.data;
       let errorMessage = 'Không thể tạo family profile';
       
-      if (errorData) {
+      // Handle network errors
+      if (!error?.response) {
+        errorMessage = 'Lỗi kết nối mạng. Vui lòng kiểm tra kết nối internet và thử lại.';
+      } else if (errorData) {
         if (errorData.detail) {
           errorMessage = errorData.detail;
         } else if (errorData.message) {
@@ -323,26 +334,29 @@ const parentProfileService = {
       
       // Add avatar file if provided
       if (avatarFileUri) {
-        const fileExtension = avatarFileUri.split('.').pop() || 'jpg';
+        // Extract file extension from URI
+        let uri = avatarFileUri;
+        // Fix URI for Android - remove 'file://' prefix if exists
+        if (Platform.OS === 'android' && uri.startsWith('file://')) {
+          uri = uri.replace('file://', '');
+        }
+        const fileExtension = uri.split('.').pop() || 'jpg';
         const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
         const fileName = `family_avatar_${Date.now()}.${fileExtension}`;
         
         // @ts-ignore - FormData type issue with React Native
         formData.append('AvatarFile', {
-          uri: avatarFileUri,
+          uri: Platform.OS === 'android' ? uri : avatarFileUri,
           type: mimeType,
           name: fileName,
         } as any);
       }
 
+      // Don't set Content-Type header manually - axios will set it with boundary automatically
+      // The interceptor will handle removing default Content-Type for FormData
       const response = await axiosInstance.put<FamilyProfileResponse>(
         `/api/FamilyProfile/${id}`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
+        formData
       );
       
       return response.data;
@@ -350,7 +364,10 @@ const parentProfileService = {
       const errorData = error?.response?.data;
       let errorMessage = 'Không thể cập nhật family profile';
       
-      if (errorData) {
+      // Handle network errors
+      if (!error?.response) {
+        errorMessage = 'Lỗi kết nối mạng. Vui lòng kiểm tra kết nối internet và thử lại.';
+      } else if (errorData) {
         if (errorData.detail) {
           errorMessage = errorData.detail;
         } else if (errorData.message) {

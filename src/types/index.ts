@@ -265,6 +265,10 @@ export type RootStackParamList = {
     slotTimeframe?: string;
   };
   TransactionHistory: undefined;
+  TransactionDetail: {
+    transactionId: string;
+    transaction?: any; // Optional: pass transaction object to avoid API call
+  };
   MySubscriptions: undefined;
   OrderHistory: undefined;
   Schools: undefined;
@@ -299,6 +303,7 @@ export type MainTabParamList = {
 };
 
 export type StaffTabParamList = {
+  StaffDashboard: undefined;
   ActivityTypes: undefined;
   Activities: undefined;
   StaffSchedule: undefined;
