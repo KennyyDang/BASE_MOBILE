@@ -210,8 +210,14 @@ const StudentClassesScreen: React.FC = () => {
     });
   };
 
+  // Filter out cancelled classes
+  const activeClasses = classes.filter((item) => {
+    const status = (item.status || '').toLowerCase();
+    return status !== 'cancelled';
+  });
+
   // Sắp xếp: lớp sắp tới trước, đã qua sau
-  const sortedClasses = [...classes].sort((a, b) => {
+  const sortedClasses = [...activeClasses].sort((a, b) => {
     const dateA = new Date(a.date).getTime();
     const dateB = new Date(b.date).getTime();
     const now = Date.now();

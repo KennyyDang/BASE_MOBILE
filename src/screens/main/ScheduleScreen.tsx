@@ -228,6 +228,26 @@ const ScheduleScreen: React.FC = () => {
     }
   }, [students, selectedStudentId]);
 
+  // Reset slot rooms state when slots change - rooms are already in response
+  useEffect(() => {
+    if (slots.length > 0) {
+      setSlotRoomsState((prev) => {
+        const updated: Record<string, SlotRoomsStateEntry> = {};
+        slots.forEach((slot) => {
+          const existing = prev[slot.id];
+          const roomsFromSlot = slot.rooms || [];
+          updated[slot.id] = {
+            ...(existing || createDefaultSlotRoomsState()),
+            rooms: roomsFromSlot.length > 0 ? roomsFromSlot : (existing?.rooms || []),
+            // Auto-select first room if not selected
+            selectedRoomId: existing?.selectedRoomId || roomsFromSlot[0]?.roomId || roomsFromSlot[0]?.id || null,
+          };
+        });
+        return updated;
+      });
+    }
+  }, [slots]);
+
   const selectedStudent: StudentResponse | null = useMemo(() => {
     return students.find((student) => student.id === selectedStudentId) ?? null;
   }, [selectedStudentId, students]);
@@ -405,13 +425,17 @@ const ScheduleScreen: React.FC = () => {
       }
 
       try {
+        // Don't pass date parameter - API returns all slots for all days in the week
+        // The weekDate field in each slot indicates which day of the week it belongs to
         const response = await branchSlotService.getAvailableSlotsForStudent(
           selectedStudentId,
           page,
           PAGE_SIZE
+          // date parameter removed - API returns all slots for all weekdays
         );
         const items = response?.items ?? [];
 
+        // Rooms are already included in response, no need to fetch separately
         setSlots((prev) => (append ? [...prev, ...items] : items));
         setPagination({
           pageIndex: response.pageIndex,
@@ -441,6 +465,7 @@ const ScheduleScreen: React.FC = () => {
       }
     },
     [selectedStudentId]
+    // weekOffset removed from dependencies - we don't filter by date anymore
   );
 
 
@@ -525,46 +550,47 @@ const ScheduleScreen: React.FC = () => {
 
   const handleToggleRooms = useCallback(
     (slotId: string) => {
-      let shouldFetch = false;
+      // Rooms are already in slot.rooms from API response, just toggle expanded state
       setSlotRoomsState((prev) => {
         const existing = prev[slotId] ? { ...prev[slotId] } : createDefaultSlotRoomsState();
-        const nextExpanded = !existing.expanded;
-        if (nextExpanded && !existing.rooms.length && !existing.loading) {
-          shouldFetch = true;
-        }
+        const slot = slots.find(s => s.id === slotId);
+        const roomsFromSlot = slot?.rooms || [];
+        
+        // Initialize rooms from slot if not already set
+        const rooms = existing.rooms.length > 0 ? existing.rooms : roomsFromSlot;
+        
+        // Auto-select first room if none selected
+        const firstRoomId = rooms[0]?.roomId || rooms[0]?.id || null;
+        const selectedRoomId = existing.selectedRoomId || firstRoomId;
+        
         return {
           ...prev,
           [slotId]: {
             ...existing,
-            expanded: nextExpanded,
+            expanded: !existing.expanded,
+            rooms: rooms,
+            selectedRoomId: selectedRoomId,
           },
         };
       });
-
-      if (shouldFetch) {
-        fetchSlotRooms(slotId);
-      }
     },
-    [fetchSlotRooms]
+    [slots]
   );
 
   const handleRetryRooms = useCallback(
     (slotId: string) => {
-      fetchSlotRooms(slotId);
+      // Rooms are already in response, just reload slots
+      fetchSlots({ page: 1, append: false, silent: false });
     },
-    [fetchSlotRooms]
+    [fetchSlots]
   );
 
   const handleLoadMoreRooms = useCallback(
     (slotId: string) => {
-      const entry = slotRoomsState[slotId];
-      if (!entry || entry.loading || !entry.pagination?.hasNextPage) {
-        return;
-      }
-      const nextPage = (entry.pagination.pageIndex ?? 1) + 1;
-      fetchSlotRooms(slotId, { page: nextPage, append: true });
+      // Rooms are already included in response, no pagination needed
+      // This function is kept for compatibility but does nothing
     },
-    [slotRoomsState, fetchSlotRooms]
+    []
   );
 
   const handleSelectRoom = useCallback((slotId: string, roomId: string) => {
@@ -601,7 +627,9 @@ const ScheduleScreen: React.FC = () => {
       }
 
       const entry = slotRoomsState[slot.id];
-      if (!entry) {
+      const roomsFromSlot = slot.rooms || [];
+      
+      if (!entry || roomsFromSlot.length === 0) {
         Alert.alert('Thông báo', 'Vui lòng mở danh sách phòng trước khi đặt lịch.');
         return;
       }
@@ -623,7 +651,7 @@ const ScheduleScreen: React.FC = () => {
       // Tính ngày cụ thể cho slot theo tuần đang xem
       const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
       const slotDateDisplay = formatDateDisplay(slotDate);
-      const selectedRoom = entry.rooms.find((room) => room.id === entry.selectedRoomId);
+      const selectedRoom = roomsFromSlot.find((room) => (room.roomId || room.id) === entry.selectedRoomId);
 
       // Xác nhận với người dùng
       Alert.alert(
@@ -637,11 +665,16 @@ const ScheduleScreen: React.FC = () => {
           {
             text: 'Đặt lịch',
             onPress: async () => {
+              if (!entry.selectedRoomId) {
+                Alert.alert('Thông báo', 'Vui lòng chọn phòng để đặt lịch.');
+                return;
+              }
+              
               const payload = {
                 studentId: selectedStudentId,
                 branchSlotId: slot.id,
                 packageSubscriptionId,
-                roomId: entry.selectedRoomId,
+                roomId: entry.selectedRoomId, // Đã check null ở trên
                 date: computeSlotDateISO(slot, weekOffset), // Date theo tuần đang xem
                 parentNote: entry.parentNote?.trim() || undefined,
               };
@@ -676,11 +709,20 @@ const ScheduleScreen: React.FC = () => {
                 fetchSlots({ page: 1, silent: true });
                 fetchBookedSlots(selectedStudentId);
               } catch (error: any) {
-                const message =
+                let message =
                   error?.response?.data?.message ||
                   error?.response?.data?.error ||
                   error?.message ||
                   'Không thể đặt slot cho con. Vui lòng thử lại sau.';
+                
+                // Nếu lỗi là "đã đặt rồi" và slot đã cancelled, thử refresh và thông báo
+                const cancelledSlot = getCancelledSlot(slot);
+                if ((message.includes('đã đặt') || message.includes('already booked') || message.includes('đã đặt ca này')) && cancelledSlot) {
+                  // Refresh booked slots để đảm bảo cancelled slot đã được filter
+                  fetchBookedSlots(selectedStudentId);
+                  message = 'Vui lòng đợi vài giây rồi thử lại. Hệ thống đang cập nhật thông tin sau khi hủy lịch.';
+                }
+                
                 Alert.alert('Lỗi', message);
                 setSlotRoomsState((prev) => {
                   const existing = prev[slot.id] ? { ...prev[slot.id] } : createDefaultSlotRoomsState();
@@ -725,7 +767,7 @@ const ScheduleScreen: React.FC = () => {
     };
   }, [weekOffset]);
 
-  // Fetch danh sách slot đã đặt
+  // Fetch danh sách slot đã đặt (filter out cancelled slots)
   const fetchBookedSlots = useCallback(
     async (studentId: string) => {
       setBookedSlotsLoading(true);
@@ -735,7 +777,11 @@ const ScheduleScreen: React.FC = () => {
           pageIndex: 1,
           pageSize: 100, // Fetch nhiều để có đủ dữ liệu
         });
-        setBookedSlots(response.items || []);
+        // Filter out cancelled slots - chỉ giữ lại các slot active
+        const activeSlots = (response.items || []).filter(
+          (slot) => !slot.status || slot.status.toLowerCase() !== 'cancelled'
+        );
+        setBookedSlots(activeSlots);
       } catch (error: any) {
         // Không hiển thị lỗi, chỉ log để debug
         console.warn('Failed to fetch booked slots:', error?.message || error);
@@ -747,23 +793,54 @@ const ScheduleScreen: React.FC = () => {
     []
   );
 
-  // Kiểm tra xem slot đã được đặt chưa
+  // Kiểm tra xem slot đã được đặt chưa (chỉ tính các status active, không tính Cancelled)
   const isSlotBooked = useCallback(
     (slot: BranchSlotResponse): StudentSlotResponse | null => {
       const slotDate = computeSlotDateISO(slot, weekOffset);
       const slotDateObj = new Date(slotDate);
       slotDateObj.setHours(0, 0, 0, 0);
 
-      return (
-        bookedSlots.find((booked) => {
-          if (booked.branchSlotId !== slot.id) {
-            return false;
-          }
-          const bookedDate = new Date(booked.date);
-          bookedDate.setHours(0, 0, 0, 0);
-          return bookedDate.getTime() === slotDateObj.getTime();
-        }) || null
-      );
+      const booked = bookedSlots.find((booked) => {
+        if (booked.branchSlotId !== slot.id) {
+          return false;
+        }
+        const bookedDate = new Date(booked.date);
+        bookedDate.setHours(0, 0, 0, 0);
+        return bookedDate.getTime() === slotDateObj.getTime();
+      });
+
+      // Chỉ coi là "booked" nếu status không phải Cancelled
+      if (booked && booked.status && booked.status.toLowerCase() !== 'cancelled') {
+        return booked;
+      }
+      
+      return null;
+    },
+    [bookedSlots, weekOffset]
+  );
+
+  // Kiểm tra xem slot có bị cancelled không (để hiển thị thông tin cancelled)
+  const getCancelledSlot = useCallback(
+    (slot: BranchSlotResponse): StudentSlotResponse | null => {
+      const slotDate = computeSlotDateISO(slot, weekOffset);
+      const slotDateObj = new Date(slotDate);
+      slotDateObj.setHours(0, 0, 0, 0);
+
+      const booked = bookedSlots.find((booked) => {
+        if (booked.branchSlotId !== slot.id) {
+          return false;
+        }
+        const bookedDate = new Date(booked.date);
+        bookedDate.setHours(0, 0, 0, 0);
+        return bookedDate.getTime() === slotDateObj.getTime();
+      });
+
+      // Trả về nếu status là Cancelled
+      if (booked && booked.status && booked.status.toLowerCase() === 'cancelled') {
+        return booked;
+      }
+      
+      return null;
     },
     [bookedSlots, weekOffset]
   );
@@ -876,10 +953,13 @@ const ScheduleScreen: React.FC = () => {
             onPress: async () => {
               try {
                 await studentSlotService.cancelSlot(bookedSlot.id, selectedStudentId);
-                Alert.alert('Thành công', 'Đã hủy lịch học thành công.');
-                // Refresh lại danh sách slots và booked slots
-                fetchSlots({ page: 1 });
-                fetchBookedSlots(selectedStudentId);
+                Alert.alert('Thành công', 'Đã hủy lịch học thành công. Bạn có thể đặt lại nếu còn chỗ trống.');
+                // Refresh lại danh sách slots và booked slots sau khi hủy
+                // Thêm delay nhỏ để backend có thời gian update
+                setTimeout(() => {
+                  fetchSlots({ page: 1 });
+                  fetchBookedSlots(selectedStudentId);
+                }, 500);
               } catch (error: any) {
                 const message =
                   error?.response?.data?.message ||
@@ -1182,10 +1262,13 @@ const ScheduleScreen: React.FC = () => {
                   const statusStyle = getStatusBadgeStyle(slot.status);
                   const staffCount = slot.staff?.length ?? 0;
                   const roomState = slotRoomsState[slot.id];
-                  const roomsCount = roomState?.rooms?.length ?? 0;
+                  const roomsFromSlot = slot.rooms || [];
+                  const roomsCount = roomsFromSlot.length;
                   const isExpanded = roomState?.expanded ?? false;
                   const bookedSlot = isSlotBooked(slot);
+                  const cancelledSlot = getCancelledSlot(slot);
                   const isBooked = !!bookedSlot;
+                  const isCancelled = !!cancelledSlot;
                   const packageSubscriptionId = resolvePackageSubscriptionId(slot);
                   const packageName =
                     slot.packageSubscription?.name ||
@@ -1213,17 +1296,32 @@ const ScheduleScreen: React.FC = () => {
                     effectiveSubscription?.status === 'Active' ||
                     (!effectiveSubscription && Boolean(packageSubscriptionId));
                   const hasRemaining = computedRemaining === undefined || computedRemaining > 0;
+                  
+                  // Get selected room and check available capacity
+                  const selectedRoomId = roomState?.selectedRoomId;
+                  const selectedRoom = roomsFromSlot.find(
+                    (room) => (room.roomId || room.id) === selectedRoomId
+                  );
+                  const selectedRoomAvailableCapacity = selectedRoom?.availableCapacity ?? selectedRoom?.capacity ?? 0;
+                  const isRoomFull = selectedRoomAvailableCapacity <= 0;
+                  
                   const canBook =
                     !isBooked &&
-                    Boolean(packageSubscriptionId && roomState?.selectedRoomId && roomsCount > 0) &&
+                    Boolean(packageSubscriptionId && selectedRoomId && roomsCount > 0) &&
                     isSubscriptionActive &&
-                    hasRemaining;
+                    hasRemaining &&
+                    !isRoomFull; // Cannot book if room is full
+                  
+                  // Get rooms from slot or from state (fallback)
+                  const displayRooms = roomsFromSlot.length > 0 ? roomsFromSlot : (roomState?.rooms || []);
                   const subscriptionWarning = !packageSubscriptionId
                     ? 'Chưa tìm thấy gói áp dụng. Vui lòng chọn gói phù hợp trước khi đặt slot.'
                     : !isSubscriptionActive
                     ? 'Gói này đã hết hiệu lực. Vui lòng chọn gói khác.'
                     : !hasRemaining
                     ? 'Gói hiện không còn buổi khả dụng. Vui lòng gia hạn hoặc chọn gói khác.'
+                    : isRoomFull && selectedRoomId
+                    ? 'Phòng này đã đầy. Vui lòng chọn phòng khác.'
                     : null;
 
                   return (
@@ -1266,6 +1364,15 @@ const ScheduleScreen: React.FC = () => {
                             {isBooked ? 'Đã đặt' : statusStyle.label}
                           </Text>
                         </View>
+                        {/* Show "Đã full" status if all rooms are full */}
+                        {!isBooked && roomsFromSlot.length > 0 && roomsFromSlot.every(room => (room.availableCapacity ?? room.capacity ?? 0) <= 0) && (
+                          <View style={[styles.statusTag, { backgroundColor: COLORS.ERROR_BG, marginTop: SPACING.XS }]}>
+                            <MaterialIcons name="block" size={18} color={COLORS.ERROR} />
+                            <Text style={[styles.statusTagText, { color: COLORS.ERROR }]}>
+                              Tất cả phòng đã đầy
+                            </Text>
+                          </View>
+                        )}
           </View>
 
                       <View style={styles.slotMetaRow}>
@@ -1361,7 +1468,24 @@ const ScheduleScreen: React.FC = () => {
                             </TouchableOpacity>
                           )}
                         </View>
-                      ) : (
+                      ) : null}
+                      
+                      {isCancelled ? (
+                        <View>
+                          <View style={[styles.bookedSlotInfo, { backgroundColor: COLORS.WARNING_BG }]}>
+                            <MaterialIcons name="cancel" size={20} color={COLORS.WARNING} />
+                            <Text style={[styles.bookedSlotText, { color: COLORS.WARNING }]}>
+                              Đã hủy lịch cho ngày {formatDateDisplay(getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate)))}
+                              {cancelledSlot?.room?.roomName && ` • Phòng: ${cancelledSlot.room.roomName}`}
+                            </Text>
+                          </View>
+                          <Text style={styles.cancelledInfoText}>
+                            Bạn có thể đặt lại lịch này nếu còn chỗ trống.
+                          </Text>
+                        </View>
+                      ) : null}
+                      
+                      {!isBooked ? (
                         <>
                           <TouchableOpacity 
                             style={styles.roomsToggleButton}
@@ -1385,31 +1509,7 @@ const ScheduleScreen: React.FC = () => {
 
                           {isExpanded ? (
                             <View style={styles.roomsContainer}>
-                              {roomState?.loading && roomsCount === 0 ? (
-                                <View style={styles.roomsStateRow}>
-                                  <ActivityIndicator size="small" color={COLORS.PRIMARY} />
-                                  <Text style={styles.roomsStateText}>Đang tải danh sách phòng...</Text>
-                                </View>
-                              ) : null}
-
-                              {roomState?.error ? (
-                                <View style={styles.roomsStateColumn}>
-                                  <View style={styles.roomsStateRow}>
-                                    <MaterialIcons name="error-outline" size={20} color={COLORS.ERROR} />
-                                    <Text style={[styles.roomsStateText, { color: COLORS.ERROR }]}>
-                                      {roomState.error}
-                                    </Text>
-                                  </View>
-                                  <TouchableOpacity 
-                                    style={styles.roomsRetryButton}
-                                    onPress={() => handleRetryRooms(slot.id)}
-                                  >
-                                    <Text style={styles.roomsRetryButtonText}>Thử lại</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ) : null}
-
-                              {!roomState?.loading && !roomState?.error && roomsCount === 0 ? (
+                              {roomsCount === 0 ? (
                                 <View style={styles.roomsStateRow}>
                                   <MaterialIcons
                                     name="meeting-room"
@@ -1420,66 +1520,84 @@ const ScheduleScreen: React.FC = () => {
                                     Chưa có phòng phù hợp cho khung giờ này. Vui lòng liên hệ trung tâm.
                                   </Text>
                                 </View>
-                              ) : null}
-
-                              {roomState?.rooms.map((room) => (
-                                <TouchableOpacity
-                                  key={room.id}
-                                  style={[
-                                    styles.roomCard,
-                                    roomState.selectedRoomId === room.id && styles.roomCardSelected,
-                                  ]}
-                                  onPress={() => handleSelectRoom(slot.id, room.id)}
-                                  activeOpacity={0.85}
-                                >
-                                  <View style={styles.roomCardHeader}>
-                                    <Text style={styles.roomTitle}>{room.roomName}</Text>
-                                    {roomState.selectedRoomId === room.id ? (
-                                      <MaterialIcons name="check-circle" size={20} color={COLORS.PRIMARY} />
-                                    ) : null}
-                                  </View>
-                                  {room.branchName || slot.branch?.branchName ? (
-                                    <View style={styles.roomMetaRow}>
-                                      <MaterialIcons name="domain" size={18} color={COLORS.SECONDARY} />
-                                      <Text style={styles.roomMetaText}>
-                                        {room.branchName || slot.branch?.branchName || 'Chi nhánh đang cập nhật'}
-                                      </Text>
-                                    </View>
-                                  ) : null}
-                                  {room.facilityName ? (
-                                    <View style={styles.roomMetaRow}>
-                                      <MaterialIcons name="business" size={18} color={COLORS.ACCENT} />
-                                      <Text style={styles.roomMetaText}>{room.facilityName}</Text>
-                                    </View>
-                                  ) : null}
-                                  {typeof room.capacity === 'number' ? (
-                                    <View style={styles.roomMetaRow}>
-                                      <MaterialIcons name="event-seat" size={18} color={COLORS.PRIMARY} />
-                                      <Text style={styles.roomMetaText}>
-                                        Sức chứa tối đa: {room.capacity}
-                                      </Text>
-                                    </View>
-                                  ) : null}
-                                </TouchableOpacity>
-                              ))}
-
-                              {roomState?.pagination?.hasNextPage ? (
-                                <TouchableOpacity
-                                  style={styles.roomLoadMoreButton}
-                                  onPress={() => handleLoadMoreRooms(slot.id)}
-                                  disabled={roomState.loading}
-                                  activeOpacity={0.85}
-                                >
-                                  {roomState.loading ? (
-                                    <ActivityIndicator size="small" color={COLORS.PRIMARY} />
-                                  ) : (
-                                    <>
-                                      <MaterialIcons name="expand-more" size={20} color={COLORS.PRIMARY} />
-                                      <Text style={styles.roomLoadMoreText}>Xem thêm phòng</Text>
-                                    </>
-                                  )}
-                                </TouchableOpacity>
-                              ) : null}
+                              ) : (
+                                <>
+                                  {displayRooms.map((room) => {
+                                    const roomId = room.roomId || room.id;
+                                    if (!roomId) return null; // Skip if no roomId
+                                    
+                                    const isSelected = roomState?.selectedRoomId === roomId;
+                                    const availableCapacity = room.availableCapacity ?? room.capacity ?? 0;
+                                    const capacity = room.capacity ?? 0;
+                                    const isRoomFull = availableCapacity <= 0;
+                                    
+                                    return (
+                                      <TouchableOpacity
+                                        key={roomId}
+                                        style={[
+                                          styles.roomCard,
+                                          isSelected && styles.roomCardSelected,
+                                          isRoomFull && styles.roomCardFull,
+                                        ]}
+                                        onPress={() => {
+                                          if (!isRoomFull && roomId) {
+                                            handleSelectRoom(slot.id, roomId);
+                                          }
+                                        }}
+                                        disabled={isRoomFull}
+                                        activeOpacity={isRoomFull ? 1 : 0.85}
+                                      >
+                                        <View style={styles.roomCardHeader}>
+                                          <Text style={[styles.roomTitle, isRoomFull && { color: COLORS.TEXT_SECONDARY }]}>
+                                            {room.roomName}
+                                          </Text>
+                                          {isSelected && !isRoomFull ? (
+                                            <MaterialIcons name="check-circle" size={20} color={COLORS.PRIMARY} />
+                                          ) : isRoomFull ? (
+                                            <View style={[styles.fullBadge, { backgroundColor: COLORS.ERROR }]}>
+                                              <Text style={styles.fullBadgeText}>Đã full</Text>
+                                            </View>
+                                          ) : null}
+                                        </View>
+                                        {room.branchName || slot.branch?.branchName ? (
+                                          <View style={styles.roomMetaRow}>
+                                            <MaterialIcons name="domain" size={18} color={COLORS.SECONDARY} />
+                                            <Text style={styles.roomMetaText}>
+                                              {room.branchName || slot.branch?.branchName || 'Chi nhánh đang cập nhật'}
+                                            </Text>
+                                          </View>
+                                        ) : null}
+                                        {room.facilityName ? (
+                                          <View style={styles.roomMetaRow}>
+                                            <MaterialIcons name="business" size={18} color={COLORS.ACCENT} />
+                                            <Text style={styles.roomMetaText}>{room.facilityName}</Text>
+                                          </View>
+                                        ) : null}
+                                        <View style={styles.roomMetaRow}>
+                                          <MaterialIcons 
+                                            name="event-seat" 
+                                            size={18} 
+                                            color={isRoomFull ? COLORS.ERROR : COLORS.PRIMARY} 
+                                          />
+                                          <Text style={[styles.roomMetaText, isRoomFull && { color: COLORS.ERROR }]}>
+                                            Sức chứa: {availableCapacity} / {capacity}
+                                            {isRoomFull && ' (Đã đầy)'}
+                                          </Text>
+                                        </View>
+                                        {room.staff ? (
+                                          <View style={styles.roomMetaRow}>
+                                            <MaterialIcons name="person" size={18} color={COLORS.SECONDARY} />
+                                            <Text style={styles.roomMetaText}>
+                                              Nhân viên: {room.staff.staffName || 'Chưa có'}
+                                              {room.staff.staffRole ? ` (${room.staff.staffRole})` : ''}
+                                            </Text>
+                                          </View>
+                                        ) : null}
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </>
+                              )}
 
                               {roomsCount > 0 ? (
                                 <>
@@ -1517,7 +1635,7 @@ const ScheduleScreen: React.FC = () => {
                             </View>
                           ) : null}
                         </>
-                      )}
+                      ) : null}
             </View>
                   );
                 })
@@ -2037,6 +2155,21 @@ const styles = StyleSheet.create({
     borderColor: COLORS.PRIMARY,
     backgroundColor: COLORS.SUCCESS_BG,
   },
+  roomCardFull: {
+    borderColor: COLORS.ERROR,
+    backgroundColor: COLORS.ERROR_BG,
+    opacity: 0.7,
+  },
+  fullBadge: {
+    borderRadius: 12,
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: 2,
+  },
+  fullBadgeText: {
+    color: COLORS.SURFACE,
+    fontSize: FONTS.SIZES.XS,
+    fontWeight: '700',
+  },
   roomCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2297,6 +2430,13 @@ const styles = StyleSheet.create({
     color: COLORS.PRIMARY,
     fontWeight: '600',
     lineHeight: 20,
+  },
+  cancelledInfoText: {
+    marginTop: SPACING.XS,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontStyle: 'italic',
+    paddingHorizontal: SPACING.SM,
   },
   cancelButton: {
     marginTop: SPACING.SM,

@@ -35,10 +35,12 @@ const MySubscriptionsScreen: React.FC = () => {
   const { students, loading: studentsLoading } = useMyChildren();
 
   const [subscriptions, setSubscriptions] = useState<StudentPackageSubscription[]>([]);
+  const [allSubscriptions, setAllSubscriptions] = useState<StudentPackageSubscription[]>([]); // Store all subscriptions including refunded
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refundingId, setRefundingId] = useState<string | null>(null);
+  const [renewingId, setRenewingId] = useState<string | null>(null);
   const [packagePrices, setPackagePrices] = useState<Record<string, number>>({});
 
   const formatCurrency = useCallback((value: number | null | undefined) => {
@@ -65,13 +67,13 @@ const MySubscriptionsScreen: React.FC = () => {
   const fetchAllSubscriptions = useCallback(async () => {
     try {
       setError(null);
-      const allSubscriptions: StudentPackageSubscription[] = [];
+      const allSubsList: StudentPackageSubscription[] = [];
       const pricesMap: Record<string, number> = {};
 
       for (const student of students) {
         try {
           const studentSubs = await packageService.getStudentSubscriptions(student.id);
-          allSubscriptions.push(...studentSubs);
+          allSubsList.push(...studentSubs);
           
           // Fetch package prices for subscriptions that don't have priceFinal
           for (const sub of studentSubs) {
@@ -93,8 +95,11 @@ const MySubscriptionsScreen: React.FC = () => {
         }
       }
 
-      // Filter out refunded and cancelled subscriptions
-      const activeSubscriptions = allSubscriptions.filter(
+      // Store all subscriptions (including refunded/cancelled) for upgrade detection
+      setAllSubscriptions(allSubsList);
+
+      // Filter out refunded and cancelled subscriptions for display
+      const activeSubscriptions = allSubsList.filter(
         (sub) => {
           const status = sub.status?.toUpperCase();
           return status !== 'REFUNDED' && status !== 'CANCELLED';
@@ -131,10 +136,151 @@ const MySubscriptionsScreen: React.FC = () => {
     fetchAllSubscriptions();
   }, [fetchAllSubscriptions]);
 
+  // Check if subscription was upgraded to a newer package (this is the old package that was upgraded)
+  const wasUpgradedToNewerPackage = useCallback((subscription: StudentPackageSubscription): boolean => {
+    // Find all subscriptions of the same student (including refunded/cancelled)
+    const sameStudentSubs = allSubscriptions.filter(
+      (sub) => sub.studentId === subscription.studentId && sub.id !== subscription.id
+    );
+    
+    if (sameStudentSubs.length === 0) {
+      return false; // No other subscriptions, not upgraded
+    }
+    
+    // Sort by startDate to find newer subscriptions
+    const sortedSubs = [...sameStudentSubs, subscription].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+    );
+    
+    const currentIndex = sortedSubs.findIndex((sub) => sub.id === subscription.id);
+    if (currentIndex === sortedSubs.length - 1) {
+      return false; // This is the newest subscription, not an old one
+    }
+    
+    // Check if there's a newer subscription created shortly after this one
+    // (within 1 hour to account for upgrade timing)
+    for (let i = currentIndex + 1; i < sortedSubs.length; i++) {
+      const newerSub = sortedSubs[i];
+      const timeDiff = new Date(newerSub.startDate).getTime() - new Date(subscription.startDate).getTime();
+      const isRecentUpgrade = timeDiff > 0 && timeDiff < 3600000; // 1 hour in milliseconds
+      
+      // If this subscription was unused and there's a newer one created shortly after, it was upgraded
+      if (subscription.usedSlot === 0 && isRecentUpgrade) {
+        return true;
+      }
+    }
+    
+    return false;
+  }, [allSubscriptions]);
+
   const canRefund = useCallback((subscription: StudentPackageSubscription): boolean => {
     // Chỉ cho refund nếu chưa dùng slot nào (usedSlot === 0)
-    return subscription.usedSlot === 0;
+    if (subscription.usedSlot !== 0) {
+      return false;
+    }
+    
+    // Nếu gói này đã bị nâng cấp lên gói mới hơn (gói cũ), không cho hoàn tiền
+    if (wasUpgradedToNewerPackage(subscription)) {
+      return false;
+    }
+    
+    return true;
+  }, [wasUpgradedToNewerPackage]);
+
+  // Calculate total slots from subscription
+  const getTotalSlots = useCallback((subscription: StudentPackageSubscription): number | null => {
+    // Ưu tiên 1: totalSlotsSnapshot hoặc totalSlots từ subscription
+    if (typeof subscription.totalSlotsSnapshot === 'number') {
+      return subscription.totalSlotsSnapshot;
+    }
+    if (typeof subscription.totalSlots === 'number') {
+      return subscription.totalSlots;
+    }
+    // Ưu tiên 2: Tính từ usedSlot + remainingSlots
+    if (typeof subscription.remainingSlots === 'number') {
+      return (subscription.usedSlot || 0) + subscription.remainingSlots;
+    }
+    // Ưu tiên 3: Parse từ packageName
+    const nameMatch = subscription.packageName?.match(/(\d+)/);
+    if (nameMatch) {
+      const totalFromName = parseInt(nameMatch[1], 10);
+      if (!isNaN(totalFromName)) {
+        return totalFromName;
+      }
+    }
+    return null;
   }, []);
+
+  // Check if subscription can be renewed (used >= 50% of total slots)
+  const canRenew = useCallback((subscription: StudentPackageSubscription): boolean => {
+    // Chỉ cho gia hạn nếu status là ACTIVE
+    const status = subscription.status?.toUpperCase();
+    if (status !== 'ACTIVE') {
+      return false;
+    }
+
+    const totalSlots = getTotalSlots(subscription);
+    if (totalSlots === null || totalSlots === 0) {
+      return false; // Không thể tính được total slots
+    }
+
+    const usedSlot = subscription.usedSlot || 0;
+    // Phải dùng được ít nhất 1 nửa slot (usedSlot >= totalSlots / 2)
+    return usedSlot >= totalSlots / 2;
+  }, [getTotalSlots]);
+
+  const handleRenew = useCallback((subscription: StudentPackageSubscription) => {
+    if (!canRenew(subscription)) {
+      Alert.alert(
+        'Không thể gia hạn',
+        'Bạn cần sử dụng ít nhất 50% số slot trong gói hiện tại để có thể gia hạn.',
+        [{ text: 'Đóng', style: 'default' }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Xác nhận gia hạn',
+      `Bạn có chắc chắn muốn gia hạn gói "${subscription.packageName}" cho ${subscription.studentName}?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xác nhận',
+          style: 'default',
+          onPress: async () => {
+            try {
+              setRenewingId(subscription.id);
+              await packageService.renewSubscription(subscription.studentId);
+              
+              Alert.alert(
+                'Thành công',
+                'Đã gia hạn gói đăng ký thành công.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Refresh list
+                      fetchAllSubscriptions();
+                    },
+                  },
+                ]
+              );
+            } catch (err: any) {
+              const message =
+                err?.response?.data?.message ||
+                err?.response?.data?.error ||
+                err?.message ||
+                'Không thể gia hạn. Vui lòng thử lại.';
+              
+              Alert.alert('Lỗi', message);
+            } finally {
+              setRenewingId(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [canRenew, fetchAllSubscriptions]);
 
   const handleRefund = useCallback((subscription: StudentPackageSubscription) => {
     if (!canRefund(subscription)) {
@@ -268,7 +414,9 @@ const MySubscriptionsScreen: React.FC = () => {
         ) : (
           subscriptions.map((subscription) => {
             const canRefundThis = canRefund(subscription);
+            const canRenewThis = canRenew(subscription);
             const isRefunding = refundingId === subscription.id;
+            const isRenewing = renewingId === subscription.id;
 
             return (
               <View key={subscription.id} style={styles.subscriptionCard}>
@@ -343,34 +491,58 @@ const MySubscriptionsScreen: React.FC = () => {
                   </View>
                 </View>
 
-                {canRefundThis && (
-                  <TouchableOpacity
-                    style={[styles.refundButton, isRefunding && styles.refundButtonDisabled]}
-                    onPress={() => handleRefund(subscription)}
-                    disabled={isRefunding}
-                  >
-                    {isRefunding ? (
-                      <>
-                        <ActivityIndicator size="small" color={COLORS.SURFACE} />
-                        <Text style={styles.refundButtonText}>Đang xử lý...</Text>
-                      </>
-                    ) : (
-                      <>
-                        <MaterialIcons name="money-off" size={20} color={COLORS.SURFACE} />
-                        <Text style={styles.refundButtonText}>Hoàn tiền</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                )}
+                <View style={styles.actionButtonsContainer}>
+                  {canRenewThis && (
+                    <TouchableOpacity
+                      style={[styles.renewButton, isRenewing && styles.renewButtonDisabled]}
+                      onPress={() => handleRenew(subscription)}
+                      disabled={isRenewing || isRefunding}
+                    >
+                      {isRenewing ? (
+                        <>
+                          <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                          <Text style={styles.renewButtonText}>Đang xử lý...</Text>
+                        </>
+                      ) : (
+                        <>
+                          <MaterialIcons name="autorenew" size={20} color={COLORS.SURFACE} />
+                          <Text style={styles.renewButtonText}>Gia hạn</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
 
-                {!canRefundThis && (
-                  <View style={styles.cannotRefundNote}>
-                    <MaterialIcons name="info-outline" size={16} color={COLORS.TEXT_SECONDARY} />
-                    <Text style={styles.cannotRefundText}>
-                      Không thể hoàn tiền vì đã sử dụng slot
-                    </Text>
-                  </View>
-                )}
+                  {canRefundThis && (
+                    <TouchableOpacity
+                      style={[styles.refundButton, isRefunding && styles.refundButtonDisabled]}
+                      onPress={() => handleRefund(subscription)}
+                      disabled={isRefunding || isRenewing}
+                    >
+                      {isRefunding ? (
+                        <>
+                          <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                          <Text style={styles.refundButtonText}>Đang xử lý...</Text>
+                        </>
+                      ) : (
+                        <>
+                          <MaterialIcons name="money-off" size={20} color={COLORS.SURFACE} />
+                          <Text style={styles.refundButtonText}>Hoàn tiền</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  {!canRefundThis && !canRenewThis && (
+                    <View style={styles.cannotRefundNote}>
+                      <MaterialIcons name="info-outline" size={16} color={COLORS.TEXT_SECONDARY} />
+                      <Text style={styles.cannotRefundText}>
+                        {subscription.usedSlot === 0 
+                          ? 'Không thể hoàn tiền vì gói đã được nâng cấp'
+                          : 'Không thể hoàn tiền vì đã sử dụng slot'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
             );
           })
@@ -485,6 +657,28 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     fontWeight: '500',
   },
+  actionButtonsContainer: {
+    marginTop: SPACING.MD,
+    gap: SPACING.SM,
+  },
+  renewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+    borderRadius: 8,
+    gap: SPACING.XS,
+  },
+  renewButtonDisabled: {
+    opacity: 0.6,
+  },
+  renewButtonText: {
+    color: COLORS.SURFACE,
+    fontSize: 16,
+    fontWeight: '600',
+  },
   refundButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -493,7 +687,6 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.SM,
     paddingHorizontal: SPACING.MD,
     borderRadius: 8,
-    marginTop: SPACING.MD,
     gap: SPACING.XS,
   },
   refundButtonDisabled: {

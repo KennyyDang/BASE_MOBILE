@@ -271,9 +271,14 @@ export type RootStackParamList = {
   };
   MySubscriptions: undefined;
   OrderHistory: undefined;
+  OrderDetail: {
+    orderId: string;
+    order?: any; // Optional: pass order object to avoid API call
+  };
   Schools: undefined;
   CreateActivity: {
     studentSlotId: string;
+    studentId: string;
     studentName: string;
     slotDate?: string;
     slotTimeframe?: string;
@@ -281,6 +286,15 @@ export type RootStackParamList = {
   EditActivity: {
     activityId: string;
   };
+  Attendance: {
+    branchSlotId: string;
+    date: string;
+    roomId?: string;
+    slotTimeframe?: string;
+    branchName?: string;
+    roomName?: string;
+  };
+  RegisterChild: undefined;
   PurchaseService: {
     studentSlotId: string;
     studentId: string;

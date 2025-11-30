@@ -8,14 +8,14 @@ import {
   SafeAreaView,
   RefreshControl,
   ActivityIndicator,
-  Modal,
   Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../../types';
 import orderService from '../../services/orderService';
-import studentSlotService from '../../services/studentSlotService';
-import { OrderHistory, OrderHistoryItem, StudentSlotResponse } from '../../types/api';
+import { OrderHistory } from '../../types/api';
 import { COLORS } from '../../constants';
 
 const SPACING = {
@@ -38,17 +38,13 @@ const FONTS = {
 };
 
 const OrderHistoryScreen: React.FC = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [orders, setOrders] = useState<OrderHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [selectedOrder, setSelectedOrder] = useState<OrderHistory | null>(null);
-  const [selectedSlotInfo, setSelectedSlotInfo] = useState<StudentSlotResponse | null>(null);
-  const [detailModalVisible, setDetailModalVisible] = useState(false);
-  const [loadingDetail, setLoadingDetail] = useState(false);
 
   const formatCurrency = useCallback((amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -145,40 +141,12 @@ const OrderHistoryScreen: React.FC = () => {
     }
   }, [loading, hasMore, pageIndex, fetchOrders, refreshing]);
 
-  const handleViewDetail = async (order: OrderHistory) => {
-    setDetailModalVisible(true);
-    setLoadingDetail(true);
-    setSelectedOrder(order); // Show basic info first
-    setSelectedSlotInfo(null); // Reset slot info
-    
-    try {
-      // Fetch full order details from API
-      const orderDetail = await orderService.getOrderById(order.id);
-      setSelectedOrder(orderDetail);
-      
-      // If order has studentSlotId, fetch slot details
-      if (orderDetail.studentSlotId) {
-        try {
-          // Use studentId from order to help filter slots
-          const slotInfo = await studentSlotService.getStudentSlotById(
-            orderDetail.studentSlotId,
-            orderDetail.studentId || undefined
-          );
-          
-          if (slotInfo) {
-            setSelectedSlotInfo(slotInfo);
-          }
-        } catch (slotErr) {
-          // Slot fetch failed, continue without slot info
-        }
-      }
-    } catch (err: any) {
-      const errorMessage = err?.message || 'Không thể tải chi tiết đơn hàng';
-      Alert.alert('Lỗi', errorMessage);
-      // Keep showing the basic order info if detail fetch fails
-    } finally {
-      setLoadingDetail(false);
-    }
+  const handleViewDetail = (order: OrderHistory) => {
+    // Navigate to OrderDetailScreen
+    navigation.navigate('OrderDetail', {
+      orderId: order.id,
+      order: order, // Pass order object to avoid initial API call
+    });
   };
 
   const handleCloseDetail = () => {
@@ -325,283 +293,6 @@ const OrderHistoryScreen: React.FC = () => {
           </View>
         )}
       </ScrollView>
-
-      {/* Order Detail Modal */}
-      <Modal
-        visible={detailModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={handleCloseDetail}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chi tiết đơn hàng</Text>
-              <TouchableOpacity onPress={handleCloseDetail}>
-                <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
-              </TouchableOpacity>
-            </View>
-
-            {loadingDetail ? (
-              <View style={styles.modalLoadingContainer}>
-                <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-                <Text style={styles.modalLoadingText}>Đang tải chi tiết đơn hàng...</Text>
-              </View>
-            ) : selectedOrder ? (
-              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                {/* Order Info */}
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailSectionTitle}>Thông tin đơn hàng</Text>
-                  <View style={styles.detailRow}>
-                    <MaterialIcons name="receipt" size={20} color={COLORS.PRIMARY} />
-                    <View style={styles.detailContent}>
-                      <Text style={styles.detailLabel}>Mã đơn</Text>
-                      <Text style={styles.detailValue}>{selectedOrder.id}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <MaterialIcons name="calendar-today" size={20} color={COLORS.PRIMARY} />
-                    <View style={styles.detailContent}>
-                      <Text style={styles.detailLabel}>Ngày tạo</Text>
-                      <Text style={styles.detailValue}>{formatDateTime(selectedOrder.createdDate)}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <MaterialIcons name="check-circle" size={20} color={getStatusColor(selectedOrder.status)} />
-                    <View style={styles.detailContent}>
-                      <Text style={styles.detailLabel}>Trạng thái</Text>
-                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedOrder.status) + '20' }]}>
-                        <Text style={[styles.statusText, { color: getStatusColor(selectedOrder.status) }]}>
-                          {getStatusText(selectedOrder.status)}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Student Info */}
-                {(selectedOrder.studentName || selectedOrder.studentEmail) && (
-                  <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Thông tin học sinh</Text>
-                    {selectedOrder.studentName && (
-                      <View style={styles.detailRow}>
-                        <MaterialIcons name="person" size={20} color={COLORS.PRIMARY} />
-                        <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Tên học sinh</Text>
-                          <Text style={styles.detailValue}>{selectedOrder.studentName}</Text>
-                        </View>
-                      </View>
-                    )}
-                    {selectedOrder.studentEmail && (
-                      <View style={styles.detailRow}>
-                        <MaterialIcons name="email" size={20} color={COLORS.PRIMARY} />
-                        <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Email</Text>
-                          <Text style={styles.detailValue}>{selectedOrder.studentEmail}</Text>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* Student Slot Info - Always show this section */}
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailSectionTitle}>Thông tin slot học</Text>
-                  
-                  {/* Use slot info from API if available, otherwise fallback to order data */}
-                  {selectedSlotInfo ? (
-                    <>
-                      {/* Date from slot */}
-                      <View style={styles.detailRow}>
-                        <MaterialIcons name="event" size={20} color={COLORS.PRIMARY} />
-                        <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Ngày học</Text>
-                          <Text style={styles.detailValue}>
-                            {selectedSlotInfo.date ? formatDate(selectedSlotInfo.date) : 'Chưa có thông tin'}
-                          </Text>
-                        </View>
-                      </View>
-                      
-                      {/* Time from timeframe */}
-                      <View style={styles.detailRow}>
-                        <MaterialIcons name="schedule" size={20} color={COLORS.PRIMARY} />
-                        <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Thời gian học</Text>
-                          <Text style={styles.detailValue}>
-                            {selectedSlotInfo.timeframe?.startTime && selectedSlotInfo.timeframe?.endTime
-                              ? `${formatTime(selectedSlotInfo.timeframe.startTime)} - ${formatTime(selectedSlotInfo.timeframe.endTime)}`
-                              : selectedSlotInfo.timeframe?.startTime
-                              ? `Bắt đầu: ${formatTime(selectedSlotInfo.timeframe.startTime)}`
-                              : selectedSlotInfo.timeframe?.endTime
-                              ? `Kết thúc: ${formatTime(selectedSlotInfo.timeframe.endTime)}`
-                              : 'Chưa có thông tin'}
-                          </Text>
-                        </View>
-                      </View>
-                      
-                      {/* Room name */}
-                      {selectedSlotInfo.room?.roomName && (
-                        <View style={styles.detailRow}>
-                          <MaterialIcons name="meeting-room" size={20} color={COLORS.PRIMARY} />
-                          <View style={styles.detailContent}>
-                            <Text style={styles.detailLabel}>Phòng học</Text>
-                            <Text style={styles.detailValue}>{selectedSlotInfo.room.roomName}</Text>
-                          </View>
-                        </View>
-                      )}
-                      
-                      {/* Branch name */}
-                      {selectedSlotInfo.branchSlot?.branchName && (
-                        <View style={styles.detailRow}>
-                          <MaterialIcons name="location-on" size={20} color={COLORS.PRIMARY} />
-                          <View style={styles.detailContent}>
-                            <Text style={styles.detailLabel}>Chi nhánh</Text>
-                            <Text style={styles.detailValue}>{selectedSlotInfo.branchSlot.branchName}</Text>
-                          </View>
-                        </View>
-                      )}
-                      
-                      {/* Timeframe name */}
-                      {selectedSlotInfo.timeframe?.name && (
-                        <View style={styles.detailRow}>
-                          <MaterialIcons name="info" size={20} color={COLORS.PRIMARY} />
-                          <View style={styles.detailContent}>
-                            <Text style={styles.detailLabel}>Ca học</Text>
-                            <Text style={styles.detailValue}>{selectedSlotInfo.timeframe.name}</Text>
-                          </View>
-                        </View>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {/* Fallback to order data if slot info not available */}
-                      {selectedOrder.slotInfo && (
-                        <View style={styles.detailRow}>
-                          <MaterialIcons name="info" size={20} color={COLORS.PRIMARY} />
-                          <View style={styles.detailContent}>
-                            <Text style={styles.detailLabel}>Thông tin slot</Text>
-                            <Text style={styles.detailValue}>{selectedOrder.slotInfo}</Text>
-                          </View>
-                        </View>
-                      )}
-                      
-                      <View style={styles.detailRow}>
-                        <MaterialIcons name="schedule" size={20} color={COLORS.PRIMARY} />
-                        <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Thời gian học</Text>
-                          <Text style={styles.detailValue}>
-                            {selectedOrder.slotStartTime && selectedOrder.slotEndTime
-                              ? `${formatTime(selectedOrder.slotStartTime)} - ${formatTime(selectedOrder.slotEndTime)}`
-                              : selectedOrder.slotStartTime
-                              ? `Bắt đầu: ${formatTime(selectedOrder.slotStartTime)}`
-                              : selectedOrder.slotEndTime
-                              ? `Kết thúc: ${formatTime(selectedOrder.slotEndTime)}`
-                              : 'Chưa có thông tin'}
-                          </Text>
-                        </View>
-                      </View>
-                      
-                      <View style={styles.detailRow}>
-                        <MaterialIcons name="event" size={20} color={COLORS.PRIMARY} />
-                        <View style={styles.detailContent}>
-                          <Text style={styles.detailLabel}>Ngày học</Text>
-                          <Text style={styles.detailValue}>
-                            {selectedOrder.slotStartTime 
-                              ? formatDate(selectedOrder.slotStartTime)
-                              : selectedOrder.slotEndTime
-                              ? formatDate(selectedOrder.slotEndTime)
-                              : 'Chưa có thông tin'}
-                          </Text>
-                        </View>
-                      </View>
-                    </>
-                  )}
-                </View>
-
-                {/* Order Items */}
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailSectionTitle}>Danh sách mặt hàng</Text>
-                  {selectedOrder.items && selectedOrder.items.length > 0 ? (
-                    selectedOrder.items.map((item, index) => (
-                      <View key={index} style={styles.detailItemCard}>
-                        <View style={styles.detailItemHeader}>
-                          <MaterialIcons name="restaurant" size={24} color={COLORS.PRIMARY} />
-                          <View style={styles.detailItemInfo}>
-                            <Text style={styles.detailItemName}>{item.serviceName}</Text>
-                            <Text style={styles.detailItemType}>{item.serviceType}</Text>
-                          </View>
-                        </View>
-                        <View style={styles.detailItemRow}>
-                          <Text style={styles.detailItemLabel}>Số lượng:</Text>
-                          <Text style={styles.detailItemValue}>{item.quantity}</Text>
-                        </View>
-                        <View style={styles.detailItemRow}>
-                          <Text style={styles.detailItemLabel}>Đơn giá:</Text>
-                          <Text style={styles.detailItemValue}>{formatCurrency(item.unitPrice)}</Text>
-                        </View>
-                        <View style={styles.detailItemRow}>
-                          <Text style={styles.detailItemLabel}>Thành tiền:</Text>
-                          <Text style={[styles.detailItemValue, styles.detailItemTotal]}>
-                            {formatCurrency(item.lineTotal)}
-                          </Text>
-                        </View>
-                      </View>
-                    ))
-                  ) : (
-                    <View style={styles.emptyItemsContainer}>
-                      <Text style={styles.emptyItemsText}>Chưa có mặt hàng nào</Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Transactions */}
-                {selectedOrder.transactions && selectedOrder.transactions.length > 0 && (
-                  <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Giao dịch thanh toán</Text>
-                    {selectedOrder.transactions.map((transaction, index) => (
-                      <View key={index} style={styles.transactionCard}>
-                        <MaterialIcons 
-                          name={transaction.amount < 0 ? 'payment' : 'add-circle'} 
-                          size={20} 
-                          color={transaction.amount < 0 ? COLORS.ERROR : COLORS.SUCCESS} 
-                        />
-                        <View style={styles.transactionInfo}>
-                          <Text style={styles.transactionLabel}>
-                            {transaction.amount < 0 ? 'Đã thanh toán' : 'Hoàn tiền'}
-                          </Text>
-                          <Text style={[
-                            styles.transactionAmount,
-                            { color: transaction.amount < 0 ? COLORS.ERROR : COLORS.SUCCESS }
-                          ]}>
-                            {formatCurrency(Math.abs(transaction.amount))}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {/* Order Total */}
-                <View style={styles.detailTotalSection}>
-                  <Text style={styles.detailTotalLabel}>Tổng cộng:</Text>
-                  <Text style={styles.detailTotalAmount}>
-                    {formatCurrency(selectedOrder.totalAmount)}
-                  </Text>
-                </View>
-              </ScrollView>
-            ) : null}
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonFull]}
-                onPress={handleCloseDetail}
-              >
-                <Text style={styles.modalButtonText}>Đóng</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };

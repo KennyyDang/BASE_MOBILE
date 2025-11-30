@@ -61,13 +61,9 @@ export const authHandler = {
         await logoutHandler();
       }
 
-      // Navigate to login screen
-      if (navigationRef?.isReady()) {
-        navigationRef.reset({
-          index: 0,
-          routes: [{ name: 'Login' }],
-        });
-      }
+      // Note: Navigation will automatically switch to Login screen
+      // when isAuthenticated becomes false in AuthContext
+      // No need to manually reset navigation here
     } catch (error) {
       // Only log error once, silently handle subsequent errors
       if (__DEV__) {

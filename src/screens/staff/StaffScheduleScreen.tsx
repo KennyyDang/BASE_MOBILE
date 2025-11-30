@@ -178,6 +178,7 @@ const StaffScheduleScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState<number>(0);
+  const [expandedDays, setExpandedDays] = useState<Set<WeekdayKey>>(new Set()); // Mặc định đóng tất cả
   
   // Modal states
   const [slotDetailModalVisible, setSlotDetailModalVisible] = useState(false);
@@ -244,15 +245,22 @@ const StaffScheduleScreen: React.FC = () => {
     setSlotStudents([]);
 
     try {
-      // Fetch all students in this slot (same branchSlotId and date)
+      // Fetch all students in this slot (same branchSlotId, date, and roomId)
+      // Lọc để chỉ lấy các học sinh trong cùng phòng
       const response = await studentSlotService.getStaffSlots({
         branchSlotId: slot.branchSlotId,
         date: slot.date,
         pageSize: 100, // Get all students
       });
 
+      // Filter để chỉ lấy các student slots có cùng roomId
+      // (1 slot = 1 phòng, nên chỉ hiển thị học sinh trong cùng phòng)
+      const filteredItems = slot.roomId 
+        ? response.items.filter((item) => item.roomId === slot.roomId)
+        : response.items;
+
       // Map to SlotStudent format
-      const students: SlotStudent[] = response.items.map((item) => ({
+      const students: SlotStudent[] = filteredItems.map((item) => ({
         id: item.id,
         studentId: item.studentId,
         studentName: item.studentName,
@@ -305,6 +313,7 @@ const StaffScheduleScreen: React.FC = () => {
   }, [weekOffset]);
 
   // Lọc và nhóm slots theo ngày trong tuần
+  // Mỗi slot (branchSlotId + date + roomId) chỉ hiển thị một lần
   const groupedSlots = useMemo(() => {
     const groups: Record<WeekdayKey, StudentSlotResponse[]> = {
       0: [],
@@ -321,6 +330,9 @@ const StaffScheduleScreen: React.FC = () => {
     const weekEnd = getWeekDate(weekOffset, 0);
     weekEnd.setHours(23, 59, 59, 999);
 
+    // Map để lưu các slot unique theo key: branchSlotId + date + roomId
+    const uniqueSlotsMap = new Map<string, StudentSlotResponse>();
+
     slots.forEach((slot) => {
       if (!slot.date) return;
       
@@ -329,9 +341,27 @@ const StaffScheduleScreen: React.FC = () => {
       
       // Kiểm tra xem slot có nằm trong tuần đang xem không
       if (slotDate >= weekStart && slotDate <= weekEnd) {
-        const dayOfWeek = slotDate.getDay() as WeekdayKey;
-        groups[dayOfWeek].push(slot);
+        // Tạo key unique: branchSlotId + date (chỉ ngày, không có giờ) + roomId
+        const dateKey = slotDate.toISOString().split('T')[0]; // YYYY-MM-DD
+        const roomId = slot.roomId || 'no-room';
+        const uniqueKey = `${slot.branchSlotId}_${dateKey}_${roomId}`;
+        
+        // Chỉ giữ lại slot đầu tiên cho mỗi key unique
+        // (1 slot = 1 phòng theo quy định)
+        if (!uniqueSlotsMap.has(uniqueKey)) {
+          uniqueSlotsMap.set(uniqueKey, slot);
+        }
       }
+    });
+
+    // Phân loại các slot unique vào các ngày trong tuần
+    uniqueSlotsMap.forEach((slot) => {
+      if (!slot.date) return;
+      
+      const slotDate = new Date(slot.date);
+      slotDate.setHours(0, 0, 0, 0);
+      const dayOfWeek = slotDate.getDay() as WeekdayKey;
+      groups[dayOfWeek].push(slot);
     });
 
     // Sắp xếp slots trong mỗi ngày theo thời gian
@@ -419,93 +449,122 @@ const StaffScheduleScreen: React.FC = () => {
               const dayDate = getWeekDate(weekOffset, day);
               const dayDateDisplay = formatDateDisplay(dayDate);
 
+              const isExpanded = expandedDays.has(day);
+              const toggleDay = () => {
+                setExpandedDays((prev) => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(day)) {
+                    newSet.delete(day);
+                  } else {
+                    newSet.add(day);
+                  }
+                  return newSet;
+                });
+              };
+
               return (
                 <View key={day} style={styles.daySection}>
-                  <View style={styles.dayHeader}>
-                    <View>
+                  <TouchableOpacity
+                    style={styles.dayHeader}
+                    onPress={toggleDay}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1 }}>
                       <Text style={styles.dayTitle}>{title} - {dayDateDisplay}</Text>
                       <Text style={styles.daySubtitle}>{subtitle}</Text>
                     </View>
-                    <View style={styles.dayBadge}>
-                      <MaterialIcons name="event-available" size={18} color={COLORS.PRIMARY} />
-                      <Text style={styles.dayBadgeText}>{daySlots.length}</Text>
+                    <View style={styles.dayHeaderRight}>
+                      <View style={styles.dayBadge}>
+                        <MaterialIcons name="event-available" size={18} color={COLORS.PRIMARY} />
+                        <Text style={styles.dayBadgeText}>{daySlots.length}</Text>
+                      </View>
+                      <MaterialIcons
+                        name={isExpanded ? 'keyboard-arrow-down' : 'keyboard-arrow-right'}
+                        size={24}
+                        color={COLORS.PRIMARY}
+                        style={styles.dayChevron}
+                      />
                     </View>
-                  </View>
+                  </TouchableOpacity>
 
-                  {daySlots.length === 0 ? (
-                    <View style={styles.emptySlotCard}>
-                      <MaterialIcons name="watch-later" size={32} color={COLORS.TEXT_SECONDARY} />
-                      <Text style={styles.emptySlotText}>Không có ca làm việc trong ngày</Text>
-                    </View>
-                  ) : (
-                    daySlots.map((slot) => {
-                      return (
-                        <TouchableOpacity
-                          key={slot.id}
-                          style={styles.slotCard}
-                          onPress={() => handleSlotPress(slot)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.slotHeader}>
-                            <View style={styles.slotIcon}>
-                              <MaterialIcons name="access-time" size={22} color={COLORS.ACCENT} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.slotTime}>{formatTimeRange(slot.timeframe)}</Text>
-                              <Text style={styles.slotTitle}>
-                                {slot.timeframe?.name || 'Khung giờ chưa đặt tên'}
-                              </Text>
-                            </View>
-                            <View
-                              style={[
-                                styles.statusTag,
-                                {
-                                  backgroundColor: getStatusColor(slot.status) + '20',
-                                },
-                              ]}
+                  {isExpanded && (
+                    <>
+                      {daySlots.length === 0 ? (
+                        <View style={styles.emptySlotCard}>
+                          <MaterialIcons name="watch-later" size={32} color={COLORS.TEXT_SECONDARY} />
+                          <Text style={styles.emptySlotText}>Không có ca làm việc trong ngày</Text>
+                        </View>
+                      ) : (
+                        daySlots.map((slot) => {
+                          return (
+                            <TouchableOpacity
+                              key={slot.id}
+                              style={styles.slotCard}
+                              onPress={() => handleSlotPress(slot)}
+                              activeOpacity={0.7}
                             >
-                              <MaterialIcons
-                                name="check-circle"
-                                size={18}
-                                color={getStatusColor(slot.status)}
-                              />
-                              <Text
-                                style={[
-                                  styles.statusTagText,
-                                  { color: getStatusColor(slot.status) },
-                                ]}
-                              >
-                                {getStatusLabel(slot.status)}
-                              </Text>
-                            </View>
-                          </View>
+                              <View style={styles.slotHeader}>
+                                <View style={styles.slotIcon}>
+                                  <MaterialIcons name="access-time" size={22} color={COLORS.ACCENT} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.slotTime}>{formatTimeRange(slot.timeframe)}</Text>
+                                  <Text style={styles.slotTitle}>
+                                    {slot.timeframe?.name || 'Khung giờ chưa đặt tên'}
+                                  </Text>
+                                </View>
+                                <View
+                                  style={[
+                                    styles.statusTag,
+                                    {
+                                      backgroundColor: getStatusColor(slot.status) + '20',
+                                    },
+                                  ]}
+                                >
+                                  <MaterialIcons
+                                    name="check-circle"
+                                    size={18}
+                                    color={getStatusColor(slot.status)}
+                                  />
+                                  <Text
+                                    style={[
+                                      styles.statusTagText,
+                                      { color: getStatusColor(slot.status) },
+                                    ]}
+                                  >
+                                    {getStatusLabel(slot.status)}
+                                  </Text>
+                                </View>
+                              </View>
 
-                          <View style={styles.slotMetaRow}>
-                            <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
-                            <Text style={styles.slotMetaText}>
-                              {slot.branchSlot?.branchName || 'Chưa có thông tin chi nhánh'}
-                            </Text>
-                          </View>
+                              <View style={styles.slotMetaRow}>
+                                <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
+                                <Text style={styles.slotMetaText}>
+                                  {slot.branchSlot?.branchName || 'Chưa có thông tin chi nhánh'}
+                                </Text>
+                              </View>
 
-                          {slot.room?.roomName && (
-                            <View style={styles.slotMetaRow}>
-                              <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />
-                              <Text style={styles.slotMetaText}>
-                                Phòng: {slot.room.roomName}
-                              </Text>
-                            </View>
-                          )}
+                              {slot.room?.roomName && (
+                                <View style={styles.slotMetaRow}>
+                                  <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />
+                                  <Text style={styles.slotMetaText}>
+                                    Phòng: {slot.room.roomName}
+                                  </Text>
+                                </View>
+                              )}
 
-                          <View style={styles.slotMetaRow}>
-                            <MaterialIcons name="people" size={18} color={COLORS.ACCENT} />
-                            <Text style={styles.slotMetaText}>
-                              Chạm để xem danh sách học sinh
-                            </Text>
-                            <MaterialIcons name="chevron-right" size={20} color={COLORS.TEXT_SECONDARY} />
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })
+                              <View style={styles.slotMetaRow}>
+                                <MaterialIcons name="people" size={18} color={COLORS.ACCENT} />
+                                <Text style={styles.slotMetaText}>
+                                  Chạm để xem danh sách học sinh
+                                </Text>
+                                <MaterialIcons name="chevron-right" size={20} color={COLORS.TEXT_SECONDARY} />
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </>
                   )}
                 </View>
               );
@@ -525,9 +584,31 @@ const StaffScheduleScreen: React.FC = () => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Danh sách học sinh</Text>
-              <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
-                <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
-              </TouchableOpacity>
+              <View style={styles.modalHeaderActions}>
+                {selectedSlot && slotStudents.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.attendanceButton}
+                    onPress={() => {
+                      handleCloseModal();
+                      navigation.navigate('Attendance', {
+                        branchSlotId: selectedSlot.branchSlotId,
+                        date: selectedSlot.date,
+                        roomId: selectedSlot.roomId,
+                        slotTimeframe: selectedSlot.timeframe?.name,
+                        branchName: selectedSlot.branchSlot?.branchName,
+                        roomName: selectedSlot.room?.roomName,
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="check-circle" size={20} color={COLORS.SURFACE} />
+                    <Text style={styles.attendanceButtonText}>Điểm danh</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
+                  <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {selectedSlot && (
@@ -806,6 +887,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: SPACING.SM,
+    paddingVertical: SPACING.SM,
+  },
+  dayHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
   },
   dayTitle: {
     fontSize: FONTS.SIZES.LG,
@@ -829,6 +916,9 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.SM,
     color: COLORS.PRIMARY,
     fontWeight: '600',
+    marginLeft: SPACING.XS,
+  },
+  dayChevron: {
     marginLeft: SPACING.XS,
   },
   emptySlotCard: {
@@ -941,11 +1031,30 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.BORDER,
   },
+  modalHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
+  },
   modalTitle: {
     fontSize: FONTS.SIZES.LG,
     fontWeight: '700',
     color: COLORS.TEXT_PRIMARY,
     flex: 1,
+  },
+  attendanceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.SUCCESS,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    borderRadius: 12,
+    gap: SPACING.XS,
+  },
+  attendanceButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
   },
   closeButton: {
     padding: SPACING.XS,

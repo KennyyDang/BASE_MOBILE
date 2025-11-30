@@ -8,21 +8,29 @@ class BranchSlotService {
    * @param studentId Student ID (UUID)
    * @param pageIndex Page number (1-based)
    * @param pageSize Number of items per page
-   * @returns Paginated response with available branch slots
+   * @param date Optional date filter (ISO string)
+   * @returns Paginated response with available branch slots (includes rooms with staff)
    */
   async getAvailableSlotsForStudent(
     studentId: string,
     pageIndex: number = 1,
-    pageSize: number = 20
+    pageSize: number = 20,
+    date?: string
   ): Promise<PaginatedResponse<BranchSlotResponse>> {
     try {
+      const params: any = {
+        pageIndex,
+        pageSize,
+      };
+      
+      if (date) {
+        params.date = date;
+      }
+      
       const response = await axiosInstance.get<PaginatedResponse<BranchSlotResponse>>(
         `/api/BranchSlot/available-for-student/${studentId}`,
         {
-          params: {
-            pageIndex,
-            pageSize,
-          },
+          params,
         }
       );
       return response.data;

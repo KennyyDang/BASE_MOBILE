@@ -119,24 +119,76 @@ const parentProfileService = {
   },
 
   /**
-   * Update my profile (Name + PhoneNumber)
+   * Update my profile (Name + PhoneNumber + AvatarFile)
    * Endpoint: PUT /api/User/my-profile
+   * Body: multipart/form-data
    * @param name - User name
    * @param phoneNumber - User phone number
+   * @param avatarFileUri - Optional avatar image file URI
    * @returns Updated current user information
    */
-  updateMyProfile: async (name: string, phoneNumber: string): Promise<CurrentUserResponse> => {
+  updateMyProfile: async (
+    name: string,
+    phoneNumber: string,
+    avatarFileUri?: string
+  ): Promise<CurrentUserResponse> => {
     try {
+      const formData = new FormData();
+      
+      // Append text fields as strings
+      formData.append('Name', String(name));
+      formData.append('PhoneNumber', String(phoneNumber));
+      
+      // Add avatar file if provided
+      if (avatarFileUri) {
+        // Extract file extension from URI
+        let uri = avatarFileUri;
+        // Fix URI for Android - remove 'file://' prefix if exists
+        if (Platform.OS === 'android' && uri.startsWith('file://')) {
+          uri = uri.replace('file://', '');
+        }
+        const fileExtension = uri.split('.').pop() || 'jpg';
+        const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
+        const fileName = `profile_avatar_${Date.now()}.${fileExtension}`;
+        
+        // @ts-ignore - FormData type issue with React Native
+        formData.append('AvatarFile', {
+          uri: Platform.OS === 'android' ? uri : avatarFileUri,
+          type: mimeType,
+          name: fileName,
+        } as any);
+      }
+
+      // Don't set Content-Type header manually - axios will set it with boundary automatically
       const response = await axiosInstance.put<CurrentUserResponse>(
         '/api/User/my-profile',
+        formData,
         {
-          name,
-          phoneNumber,
+          timeout: 60000, // 60 seconds timeout for file upload
         }
       );
+      
       return response.data;
     } catch (error: any) {
-      throw error.response?.data || error.message || 'Failed to update profile';
+      const errorData = error?.response?.data;
+      let errorMessage = 'Không thể cập nhật profile';
+      
+      // Handle network errors
+      if (!error?.response) {
+        errorMessage = 'Lỗi kết nối mạng. Vui lòng kiểm tra kết nối internet và thử lại.';
+      } else if (errorData) {
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
     }
   },
 
