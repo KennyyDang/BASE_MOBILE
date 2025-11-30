@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 
 import packageService from '../../services/packageService';
 import { RootStackParamList } from '../../types';
-import { StudentPackageResponse } from '../../types/api';
+import { StudentPackageResponse, StudentPackageSubscription } from '../../types/api';
 import { COLORS } from '../../constants';
 
 type StudentPackagesRouteProp = RouteProp<RootStackParamList, 'StudentPackages'>;
@@ -44,6 +44,7 @@ const StudentPackagesScreen: React.FC = () => {
   } = useRoute<StudentPackagesRouteProp>();
 
   const [packages, setPackages] = useState<StudentPackageResponse[]>([]);
+  const [currentSubscription, setCurrentSubscription] = useState<StudentPackageSubscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -60,8 +61,23 @@ const StudentPackagesScreen: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await packageService.getSuitablePackages(studentId);
-      setPackages(data);
+      
+      // Fetch packages and subscriptions in parallel
+      const [packagesData, subscriptions] = await Promise.all([
+        packageService.getSuitablePackages(studentId),
+        packageService.getStudentSubscriptions(studentId),
+      ]);
+      
+      setPackages(packagesData);
+      
+      // Find active subscription - chỉ lấy subscription có status ACTIVE
+      // Không lấy CANCELLED, REFUNDED, COMPLETED, EXPIRED
+      const activeSubscription = subscriptions.find((sub) => {
+        const status = sub.status?.toUpperCase();
+        return status === 'ACTIVE';
+      });
+      
+      setCurrentSubscription(activeSubscription || null);
     } catch (err: any) {
       setError(err?.message || 'Không thể tải danh sách gói phù hợp');
     } finally {
@@ -102,6 +118,61 @@ const StudentPackagesScreen: React.FC = () => {
         },
       ]
     );
+  };
+
+  const handleUpgrade = (pkg: StudentPackageResponse) => {
+    Alert.alert(
+      'Xác nhận nâng cấp gói',
+      `Bạn muốn nâng cấp gói hiện tại lên "${pkg.name}" cho ${studentName}?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Đồng ý',
+          onPress: async () => {
+            try {
+              setProcessingId(pkg.id);
+              await packageService.upgradePackage(studentId, pkg.id);
+              Alert.alert('Thành công', 'Nâng cấp gói thành công.');
+              navigation.goBack();
+            } catch (err: any) {
+              Alert.alert(
+                'Lỗi',
+                err?.message || 'Không thể nâng cấp gói.'
+              );
+            } finally {
+              setProcessingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Filter packages based on current subscription
+  // Logic:
+  // 1. Chưa có subscription → hiện tất cả packages
+  // 2. Có subscription với gói giá thấp → chỉ hiện các gói giá cao hơn (để nâng cấp)
+  // 3. Có subscription với gói giá cao → không hiện gói giá thấp hơn
+  const filteredPackages = useMemo(() => {
+    if (!currentSubscription) {
+      // Chưa có subscription, hiện tất cả packages
+      return packages;
+    }
+    
+    // Tìm gói hiện tại trong danh sách để lấy giá chính xác
+    const currentPackage = packages.find((p) => p.id === currentSubscription.packageId);
+    const currentPackagePrice = currentPackage?.price || currentSubscription.priceFinal || 0;
+    
+    // Chỉ hiện các gói có giá cao hơn gói hiện tại (để nâng cấp)
+    return packages.filter((pkg) => {
+      const newPackagePrice = pkg.price || 0;
+      return newPackagePrice > currentPackagePrice;
+    });
+  }, [packages, currentSubscription]);
+
+  // Check if package should show upgrade button
+  const shouldShowUpgrade = (pkg: StudentPackageResponse): boolean => {
+    return !!currentSubscription; // If has subscription, show upgrade button
   };
 
   return (
@@ -148,15 +219,17 @@ const StudentPackagesScreen: React.FC = () => {
               <Text style={styles.retryButtonText}>Thử lại</Text>
             </TouchableOpacity>
           </View>
-        ) : packages.length === 0 ? (
+        ) : filteredPackages.length === 0 ? (
           <View style={styles.stateContainer}>
             <MaterialIcons name="info-outline" size={40} color={COLORS.TEXT_SECONDARY} />
             <Text style={[styles.stateText, { textAlign: 'center' }]}>
-              Chưa có gói phù hợp cho học sinh này. Vui lòng liên hệ trung tâm để được tư vấn thêm.
+              {currentSubscription
+                ? 'Bạn đã sử dụng gói cao cấp nhất. Không có gói nào để nâng cấp.'
+                : 'Chưa có gói phù hợp cho học sinh này. Vui lòng liên hệ trung tâm để được tư vấn thêm.'}
             </Text>
           </View>
         ) : (
-          packages.map((pkg) => {
+          filteredPackages.map((pkg) => {
             const isProcessing = processingId === pkg.id;
             return (
               <View key={pkg.id} style={styles.packageCard}>
@@ -192,7 +265,13 @@ const StudentPackagesScreen: React.FC = () => {
                     styles.purchaseButton,
                     isProcessing && { opacity: 0.75 },
                   ]}
-                  onPress={() => handlePurchase(pkg)}
+                  onPress={() => {
+                    if (shouldShowUpgrade(pkg)) {
+                      handleUpgrade(pkg);
+                    } else {
+                      handlePurchase(pkg);
+                    }
+                  }}
                   disabled={isProcessing}
                 >
                   {isProcessing ? (
@@ -200,12 +279,14 @@ const StudentPackagesScreen: React.FC = () => {
                   ) : (
                     <>
                       <MaterialIcons
-                        name="shopping-bag"
+                        name={shouldShowUpgrade(pkg) ? "trending-up" : "shopping-bag"}
                         size={20}
                         color="#fff"
                         style={{ marginRight: 8 }}
                       />
-                      <Text style={styles.purchaseText}>Đăng ký gói này</Text>
+                      <Text style={styles.purchaseText}>
+                        {shouldShowUpgrade(pkg) ? 'Nâng cấp gói' : 'Đăng ký gói này'}
+                      </Text>
                     </>
                   )}
                 </TouchableOpacity>

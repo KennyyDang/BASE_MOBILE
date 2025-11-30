@@ -17,6 +17,9 @@ if (typeof console !== 'undefined') {
     'SDK 53',
     'functionality is not fully supported',
     'was removed from Expo Go',
+    "The action 'RESET'",
+    'was not handled by any navigator',
+    'This is a development-only warning',
   ];
 
   const shouldSuppress = (message: any): boolean => {

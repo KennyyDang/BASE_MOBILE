@@ -112,8 +112,14 @@ const DashboardScreen: React.FC = () => {
 
           const studentSlots = response.items || [];
           
+          // Filter out cancelled slots
+          const activeSlots = studentSlots.filter((slot) => {
+            const status = (slot.status || '').toLowerCase();
+            return status !== 'cancelled';
+          });
+          
           // Enrich with branch slot and room info
-          for (const slot of studentSlots) {
+          for (const slot of activeSlots) {
             // Parse date và so sánh chính xác hơn (bỏ thời gian, chỉ so sánh ngày)
             const slotDate = new Date(slot.date);
             slotDate.setHours(0, 0, 0, 0);

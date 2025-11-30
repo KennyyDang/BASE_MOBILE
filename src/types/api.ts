@@ -121,7 +121,9 @@ export interface BranchSlotResponse {
   slotType?: BranchSlotTypeResponse | null;
   weekDate: number;
   status: string;
-  staff: BranchSlotStaffResponse[];
+  staff?: BranchSlotStaffResponse[];
+  rooms?: BranchSlotRoomResponse[];
+  allowedPackages?: any[];
   packageSubscriptionId?: string | null;
   studentPackageSubscriptionId?: string | null;
   packageSubscription?: {
@@ -135,13 +137,16 @@ export interface BranchSlotResponse {
 }
 
 export interface BranchSlotRoomResponse {
-  id: string;
+  id?: string;
+  roomId: string;
   roomName: string;
   facilityId?: string | null;
   facilityName?: string | null;
   branchId?: string | null;
   branchName?: string | null;
   capacity?: number | null;
+  availableCapacity?: number | null;
+  staff?: BranchSlotStaffResponse | null;
 }
 
 export interface StudentPackageSubscription {

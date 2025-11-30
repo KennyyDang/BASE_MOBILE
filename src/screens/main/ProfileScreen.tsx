@@ -245,13 +245,11 @@ const ProfileScreen: React.FC = () => {
     return new Date(year, month, 0).getDate();
   };
 
-  // Fetch schools and student levels when modal opens
+  // Note: Modal is no longer used, all child registration goes through RegisterChildScreen
+  // This useEffect is kept for backward compatibility but won't trigger
   useEffect(() => {
-    if (addChildModalVisible && currentUser?.branchId) {
-      fetchSchools();
-      fetchStudentLevels();
-    }
-  }, [addChildModalVisible, currentUser?.branchId]);
+    // Modal is disabled - all registration goes through RegisterChildScreen
+  }, [addChildModalVisible]);
 
   const fetchSchools = async () => {
     setLoadingSchools(true);
@@ -270,43 +268,15 @@ const ProfileScreen: React.FC = () => {
   };
 
   const fetchStudentLevels = async () => {
-    setLoadingStudentLevels(true);
-    try {
-      const response = await studentLevelService.getStudentLevelsPaged({
-        pageIndex: 1,
-        pageSize: 100,
-        branchId: currentUser?.branchId || undefined,
-      });
-      setStudentLevels(response.items.map(l => ({ id: l.id, name: l.name })));
-    } catch (err) {
-      console.warn('Failed to fetch student levels:', err);
-    } finally {
-      setLoadingStudentLevels(false);
-    }
+    // This function is no longer used - all registration goes through RegisterChildScreen
+    // Kept for backward compatibility
   };
 
   // Children Management Handlers
   const handleAddChild = async () => {
-    if (!currentUser) {
-      try {
-        const user = await parentProfileService.getCurrentUser();
-        setCurrentUser(user);
-        if (!user.branchId) {
-          Alert.alert('Lỗi', 'Bạn chưa được gán vào chi nhánh nào. Vui lòng liên hệ admin.');
-          return;
-        }
-      } catch (err) {
-        Alert.alert('Lỗi', 'Không thể tải thông tin người dùng.');
-        return;
-      }
-    }
-    
-    if (!currentUser?.branchId) {
-      Alert.alert('Lỗi', 'Bạn chưa được gán vào chi nhánh nào. Vui lòng liên hệ admin.');
-      return;
-    }
-
-    setAddChildModalVisible(true);
+    // Navigate to RegisterChildScreen instead of using modal
+    // This allows parent to select branch when registering child
+    navigation.navigate('RegisterChild' as never);
   };
 
   const handleCloseAddChildModal = () => {
@@ -331,62 +301,10 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handleRegisterChild = async () => {
-    if (!addName.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên của con.');
-      return;
-    }
-
-    if (!currentUser?.branchId) {
-      Alert.alert('Lỗi', 'Không tìm thấy thông tin chi nhánh.');
-      return;
-    }
-
-    setRegistering(true);
-    try {
-      const dateOfBirth = addDateOfBirth 
-        ? new Date(addDateOfBirth.getFullYear(), addDateOfBirth.getMonth(), addDateOfBirth.getDate(), 12, 0, 0, 0).toISOString()
-        : undefined;
-      
-      const issuedDate = addIssuedDate 
-        ? new Date(addIssuedDate.getFullYear(), addIssuedDate.getMonth(), addIssuedDate.getDate(), 12, 0, 0, 0).toISOString()
-        : undefined;
-      
-      const expirationDate = addExpirationDate 
-        ? new Date(addExpirationDate.getFullYear(), addExpirationDate.getMonth(), addExpirationDate.getDate(), 12, 0, 0, 0).toISOString()
-        : undefined;
-
-      await childrenService.registerChild({
-        name: addName.trim(),
-        dateOfBirth,
-        note: addNote.trim() || undefined,
-        image: addImageUri || undefined,
-        branchId: currentUser.branchId,
-        schoolId: addSchoolId || undefined,
-        studentLevelId: addStudentLevelId || undefined,
-        documentType: addDocumentType || undefined,
-        issuedBy: addIssuedBy.trim() || undefined,
-        issuedDate,
-        expirationDate,
-        documentFile: addDocumentFileUri || undefined,
-      });
-
-      Alert.alert('Thành công', 'Đã đăng ký con thành công!');
-      handleCloseAddChildModal();
-      refetchStudents();
-    } catch (error: any) {
-      let message = 'Không thể đăng ký con. Vui lòng thử lại.';
-      if (error?.response?.data) {
-        const errorData = error.response.data;
-        if (errorData.message) message = errorData.message;
-        else if (errorData.error) message = errorData.error;
-        else if (errorData.title) message = errorData.title;
-      } else if (error?.message) {
-        message = error.message;
-      }
-      Alert.alert('Lỗi', message);
-    } finally {
-      setRegistering(false);
-    }
+    // All child registration now goes through RegisterChildScreen
+    // Navigate to RegisterChildScreen instead of using modal
+    handleCloseAddChildModal();
+    navigation.navigate('RegisterChild' as never);
   };
 
   const handlePickAddImage = async () => {
@@ -598,7 +516,12 @@ const ProfileScreen: React.FC = () => {
     });
   };
 
-  const fetchStudentPackages = useCallback(async (studentId: string) => {
+  const fetchStudentPackages = useCallback(async (studentId: string, forceRefresh: boolean = false) => {
+    // If not forcing refresh and already fetched, skip
+    if (!forceRefresh && fetchedStudentsRef.current.has(studentId)) {
+      return;
+    }
+    
     fetchedStudentsRef.current.add(studentId);
     setStudentPackages((prev) => ({
       ...prev,
@@ -657,8 +580,8 @@ const ProfileScreen: React.FC = () => {
   }, [students.length]); // Only depend on students.length to avoid infinite loop
 
   const handleRetryPackages = (studentId: string) => {
-    fetchedStudentsRef.current.delete(studentId);
-    fetchStudentPackages(studentId);
+    // Force refresh for this student
+    fetchStudentPackages(studentId, true);
   };
 
   const handlePickChildImage = async (child: StudentResponse) => {
@@ -874,6 +797,8 @@ const ProfileScreen: React.FC = () => {
       setCurrentUser(updatedUser);
       setEditing(false);
       Alert.alert('Thành công', 'Đã cập nhật thông tin profile thành công!');
+      // Refresh lại để đảm bảo có dữ liệu mới nhất
+      await fetchCurrentUser();
     } catch (err: any) {
       const errorMessage = err?.response?.data?.message || err?.message || 'Không thể cập nhật profile';
       setError(errorMessage);
@@ -923,6 +848,8 @@ const ProfileScreen: React.FC = () => {
       setCurrentUser(updatedUser);
       
       Alert.alert('Thành công', 'Đã cập nhật ảnh profile thành công!');
+      // Refresh lại để đảm bảo có dữ liệu mới nhất
+      await fetchCurrentUser();
     } catch (err: any) {
       const errorMessage = err?.message || 'Không thể upload ảnh profile';
       
@@ -1640,6 +1567,13 @@ const ProfileScreen: React.FC = () => {
                     <View style={styles.packageHeader}>
                       <MaterialIcons name="card-membership" size={18} color={COLORS.PRIMARY} />
                       <Text style={styles.packageTitle}>Gói đã đăng ký</Text>
+                      <TouchableOpacity 
+                        onPress={() => fetchStudentPackages(child.id, true)} 
+                        style={styles.packageRefresh}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons name="refresh" size={20} color={COLORS.PRIMARY} />
+                      </TouchableOpacity>
                     </View>
                     {studentPackages[child.id]?.loading ? (
                       <View style={styles.packageStateRow}>
@@ -3339,6 +3273,15 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  packageRefresh: {
+    padding: SPACING.SM,
+    marginLeft: SPACING.SM,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 40,
+    minHeight: 40,
   },
   packageStateRow: {
     flexDirection: 'row',

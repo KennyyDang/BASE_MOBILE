@@ -44,6 +44,7 @@ import ActivitiesScreen from '../screens/staff/ActivitiesScreen';
 import StaffDashboardScreen from '../screens/staff/StaffDashboardScreen';
 import CreateActivityScreen from '../screens/staff/CreateActivityScreen';
 import EditActivityScreen from '../screens/staff/EditActivityScreen';
+import AttendanceScreen from '../screens/staff/AttendanceScreen';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ScheduleScreen from '../screens/main/ScheduleScreen';
 import WalletScreen from '../screens/main/WalletScreen';
@@ -60,7 +61,9 @@ import TransactionDetailScreen from '../screens/main/TransactionDetailScreen';
 import MySubscriptionsScreen from '../screens/main/MySubscriptionsScreen';
 import BookedClassesScreen from '../screens/main/BookedClassesScreen';
 import OrderHistoryScreen from '../screens/main/OrderHistoryScreen';
+import OrderDetailScreen from '../screens/main/OrderDetailScreen';
 import PurchaseServiceScreen from '../screens/main/PurchaseServiceScreen';
+import RegisterChildScreen from '../screens/main/RegisterChildScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 import BadgeIcon from '../components/BadgeIcon';
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount';
@@ -372,15 +375,39 @@ const AppNavigator = () => {
 
   // Register navigation ref for auth handler
   useEffect(() => {
-    authHandler.setNavigationRef(navigationRef.current);
+    // Update navigation ref when it becomes available
+    const updateNavigationRef = () => {
+      if (navigationRef.current) {
+        authHandler.setNavigationRef(navigationRef.current);
+      }
+    };
+    
+    // Update immediately
+    updateNavigationRef();
+    
+    // Also update after a short delay to ensure NavigationContainer is mounted
+    const timer = setTimeout(updateNavigationRef, 100);
+    
     return () => {
+      clearTimeout(timer);
       authHandler.setNavigationRef(null);
     };
   }, []);
+  
+  // Also update ref when navigation container is ready
+  const onNavigationReady = () => {
+    if (navigationRef.current) {
+      authHandler.setNavigationRef(navigationRef.current);
+    }
+  };
 
   return (
     <PaperProvider theme={theme}>
-      <NavigationContainer ref={navigationRef} linking={linking}>
+      <NavigationContainer 
+        ref={navigationRef} 
+        linking={linking}
+        onReady={onNavigationReady}
+      >
         {isAuthenticated && <NotificationWatcher enabled />}
         <Stack.Navigator
           screenOptions={{
@@ -591,6 +618,15 @@ const AppNavigator = () => {
               }}
             />
             <Stack.Screen
+              name="OrderDetail"
+              component={OrderDetailScreen}
+              options={{
+                title: 'Chi tiết đơn hàng',
+                headerTitle: 'Chi tiết đơn hàng',
+                headerShown: false, // Use custom header in screen
+              }}
+            />
+            <Stack.Screen
               name="CreateActivity"
               component={CreateActivityScreen}
               options={{
@@ -604,6 +640,22 @@ const AppNavigator = () => {
               options={{
                 title: 'Chỉnh sửa hoạt động',
                 headerTitle: 'Chỉnh sửa hoạt động',
+              }}
+            />
+            <Stack.Screen
+              name="Attendance"
+              component={AttendanceScreen}
+              options={{
+                title: 'Điểm danh',
+                headerTitle: 'Điểm danh học sinh',
+              }}
+            />
+            <Stack.Screen
+              name="RegisterChild"
+              component={RegisterChildScreen}
+              options={{
+                title: 'Đăng ký học sinh',
+                headerTitle: 'Đăng ký học sinh',
               }}
             />
             <Stack.Screen

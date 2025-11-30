@@ -57,6 +57,51 @@ class PackageService {
     const response = await axiosInstance.post<StudentPackageSubscription>(endpoint);
     return response.data;
   }
+
+  /**
+   * Upgrade student's current active subscription to a higher package
+   * Endpoint: POST /api/PackageSubscription/upgrade/{studentId}/{newPackageId}
+   * @param studentId Student ID (UUID)
+   * @param newPackageId New package ID to upgrade to (UUID)
+   * @returns Upgrade response with subscription ID
+   */
+  async upgradePackage(studentId: string, newPackageId: string): Promise<{ id: string }> {
+    try {
+      const endpoint = `/api/PackageSubscription/upgrade/${studentId}/${newPackageId}`;
+      const response = await axiosInstance.post<{ id: string }>(endpoint);
+      return response.data;
+    } catch (error: any) {
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.response?.data?.title ||
+        error?.message ||
+        'Không thể nâng cấp gói';
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
+   * Renew student's current active subscription
+   * Endpoint: POST /api/PackageSubscription/renew/{studentId}
+   * @param studentId Student ID (UUID)
+   * @returns Renewed subscription details
+   */
+  async renewSubscription(studentId: string): Promise<StudentPackageSubscription> {
+    try {
+      const endpoint = `/api/PackageSubscription/renew/${studentId}`;
+      const response = await axiosInstance.post<StudentPackageSubscription>(endpoint);
+      return response.data;
+    } catch (error: any) {
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.response?.data?.title ||
+        error?.message ||
+        'Không thể gia hạn gói';
+      throw new Error(errorMessage);
+    }
+  }
 }
 
 export const packageService = new PackageService();
