@@ -64,6 +64,7 @@ import OrderHistoryScreen from '../screens/main/OrderHistoryScreen';
 import OrderDetailScreen from '../screens/main/OrderDetailScreen';
 import PurchaseServiceScreen from '../screens/main/PurchaseServiceScreen';
 import RegisterChildScreen from '../screens/main/RegisterChildScreen';
+import ClassDetailScreen from '../screens/main/ClassDetailScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 import BadgeIcon from '../components/BadgeIcon';
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount';
@@ -235,9 +236,6 @@ const MainTabNavigator = () => {
             case 'Dashboard':
               iconName = 'dashboard';
               break;
-            case 'Schedule':
-              iconName = 'schedule';
-              break;
             case 'Wallet':
               iconName = 'account-balance-wallet';
               break;
@@ -292,14 +290,6 @@ const MainTabNavigator = () => {
         }}
       />
       <Tab.Screen 
-        name="Schedule" 
-        component={ScheduleScreen}
-        options={{
-          title: 'Lịch Học',
-          headerTitle: 'Lịch Học',
-        }}
-      />
-      <Tab.Screen 
         name="Wallet" 
         component={WalletScreen}
         options={{
@@ -335,11 +325,12 @@ const linking: LinkingOptions<any> = {
       Main: {
         screens: {
           Dashboard: 'dashboard',
-          Schedule: 'schedule',
           Wallet: 'wallet',
           Profile: 'profile',
         },
       },
+      Schedule: 'schedule',
+      ClassDetail: 'class/:slotId',
       TopUp: 'topup',
       Login: 'login',
       PaymentSuccess: 'payment/success',
@@ -542,6 +533,14 @@ const AppNavigator = () => {
               }}
             />
             <Stack.Screen 
+              name="Schedule" 
+              component={ScheduleScreen}
+              options={{
+                title: 'Đặt Lịch Học',
+                headerTitle: 'Đặt Lịch Học',
+              }}
+            />
+            <Stack.Screen 
               name="TopUp" 
               component={TopUpScreen}
               options={{
@@ -664,6 +663,14 @@ const AppNavigator = () => {
               options={{
                 title: 'Mua dịch vụ bổ sung',
                 headerTitle: 'Mua dịch vụ bổ sung',
+              }}
+            />
+            <Stack.Screen
+              name="ClassDetail"
+              component={ClassDetailScreen}
+              options={{
+                title: 'Chi tiết lớp học',
+                headerTitle: 'Chi tiết lớp học',
               }}
             />
           </>

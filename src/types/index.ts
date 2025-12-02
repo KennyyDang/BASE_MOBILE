@@ -238,6 +238,7 @@ export interface PaginatedResponse<T> {
 
 // Navigation Types
 export type RootStackParamList = {
+  ClassDetail: { slotId: string; studentId?: string };
   Login: undefined;
   ForgotPassword: undefined;
   Main: undefined;
@@ -276,6 +277,7 @@ export type RootStackParamList = {
     order?: any; // Optional: pass order object to avoid API call
   };
   Schools: undefined;
+  Schedule: undefined;
   CreateActivity: {
     studentSlotId: string;
     studentId: string;
@@ -309,7 +311,6 @@ export type StaffStackParamList = {
 
 export type MainTabParamList = {
   Dashboard: undefined;
-  Schedule: undefined;
   Wallet: undefined;
   BookedClasses: undefined;
   Profile: undefined;

@@ -17,8 +17,6 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 import { useMyChildren } from '../../hooks/useChildrenApi';
 import studentSlotService from '../../services/studentSlotService';
-import activityService from '../../services/activityService';
-import childrenService from '../../services/childrenService';
 import {
   StudentResponse,
   StudentSlotResponse,
@@ -117,23 +115,6 @@ const formatDateDisplay = (date: Date): string => {
   return `${day}/${month}/${year}`;
 };
 
-const formatDateTime = (dateString: string) => {
-  try {
-    const date = new Date(dateString);
-    const dateStr = date.toLocaleDateString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-    const timeStr = date.toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    return { date: dateStr, time: timeStr };
-  } catch (e) {
-    return { date: dateString, time: '' };
-  }
-};
 
 
 type BookedClassesNavigationProp = BottomTabNavigationProp<MainTabParamList, 'BookedClasses'>;
@@ -141,7 +122,19 @@ type RootNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const BookedClassesScreen: React.FC = () => {
   const tabNavigation = useNavigation<BookedClassesNavigationProp>();
-  const rootNavigation = useNavigation<RootNavigationProp>();
+  
+  // Get root navigator from parent - use useMemo to get it once
+  const rootNavigation = useMemo(() => {
+    let currentNavigator: any = tabNavigation;
+    while (currentNavigator?.getParent) {
+      const parent = currentNavigator.getParent();
+      if (!parent) {
+        break;
+      }
+      currentNavigator = parent;
+    }
+    return currentNavigator ?? tabNavigation;
+  }, [tabNavigation]);
   const {
     students,
     loading: studentsLoading,
@@ -155,11 +148,6 @@ const BookedClassesScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState<number>(0);
-  const [selectedSlot, setSelectedSlot] = useState<StudentSlotResponse | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [attendance, setAttendance] = useState<any[]>([]);
-  const [activities, setActivities] = useState<any[]>([]);
-  const [loadingDetails, setLoadingDetails] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<WeekdayKey>>(new Set()); // Mặc định đóng tất cả
 
@@ -276,55 +264,39 @@ const BookedClassesScreen: React.FC = () => {
     return groups;
   }, [bookedSlots, weekRange]);
 
-  const handleSlotPress = useCallback(async (slot: StudentSlotResponse) => {
-    setSelectedSlot(slot);
-    setModalVisible(true);
-    setLoadingDetails(true);
-    setAttendance([]);
-    setActivities([]);
-
+  const handleSlotPress = useCallback((slot: StudentSlotResponse) => {
+    // Navigate to ClassDetailScreen instead of opening modal
+    console.log('Navigating to ClassDetail with:', {
+      slotId: slot.id,
+      studentId: slot.studentId,
+    });
+    
     try {
-      // Fetch attendance
-      if (slot.studentId) {
-        const slotDate = new Date(slot.date);
-        const startDate = new Date(slotDate);
-        startDate.setHours(0, 0, 0, 0);
-        const endDate = new Date(slotDate);
-        endDate.setHours(23, 59, 59, 999);
-
-        try {
-          const attendanceData = await childrenService.getChildAttendanceHistory(
-            slot.studentId,
-            startDate.toISOString(),
-            endDate.toISOString()
-          );
-          setAttendance(Array.isArray(attendanceData) ? attendanceData : []);
-        } catch (err) {
-          // API chưa có, bỏ qua lỗi
-          setAttendance([]);
-        }
+      // Try using push instead of navigate
+      if (rootNavigation && typeof rootNavigation.push === 'function') {
+        console.log('Using push method');
+        rootNavigation.push('ClassDetail', {
+          slotId: slot.id,
+          studentId: slot.studentId,
+        });
+        console.log('Push called successfully');
+      } else if (rootNavigation && typeof rootNavigation.navigate === 'function') {
+        console.log('Using navigate method');
+        rootNavigation.navigate('ClassDetail', {
+          slotId: slot.id,
+          studentId: slot.studentId,
+        });
+        console.log('Navigate called successfully');
+      } else {
+        console.error('Root navigator is not available');
+        Alert.alert('Lỗi', 'Không thể chuyển trang. Navigator không khả dụng.');
       }
-
-      // Fetch activities
-      if (slot.id && slot.studentId) {
-        try {
-          const activitiesResponse = await activityService.getMyChildrenActivities({
-            studentId: slot.studentId,
-            studentSlotId: slot.id,
-            pageIndex: 1,
-            pageSize: 50,
-          });
-          setActivities(activitiesResponse.items || []);
-        } catch (err) {
-          console.warn('Failed to fetch activities:', err);
-        }
-      }
-    } catch (err: any) {
-      console.error('Failed to fetch slot details:', err);
-    } finally {
-      setLoadingDetails(false);
+    } catch (error: any) {
+      console.error('Navigation error:', error);
+      console.error('Error details:', error?.message, error?.stack);
+      Alert.alert('Lỗi', `Không thể chuyển trang: ${error?.message || 'Unknown error'}`);
     }
-  }, []);
+  }, [rootNavigation]);
 
   const handlePurchaseService = useCallback((slot: StudentSlotResponse) => {
     // Navigate to PurchaseService screen with slot info
@@ -659,193 +631,6 @@ const BookedClassesScreen: React.FC = () => {
           </>
         ) : null}
       </ScrollView>
-
-      {/* Modal hiển thị chi tiết slot */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chi tiết lớp học</Text>
-              <TouchableOpacity
-                onPress={() => setModalVisible(false)}
-                style={styles.modalCloseButton}
-              >
-                <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              {loadingDetails ? (
-                <View style={styles.modalLoadingContainer}>
-                  <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-                  <Text style={styles.modalLoadingText}>Đang tải thông tin...</Text>
-                </View>
-              ) : (
-                <>
-                  {selectedSlot && (
-                    <>
-                      <View style={styles.detailSection}>
-                        <Text style={styles.detailSectionTitle}>Thông tin lớp học</Text>
-                        <View style={styles.detailRow}>
-                          <MaterialIcons name="calendar-today" size={18} color={COLORS.PRIMARY} />
-                          <Text style={styles.detailText}>
-                            {formatDateDisplay(new Date(selectedSlot.date))}
-                          </Text>
-                        </View>
-                        {selectedSlot.timeframe && (
-                          <View style={styles.detailRow}>
-                            <MaterialIcons name="access-time" size={18} color={COLORS.PRIMARY} />
-                            <Text style={styles.detailText}>
-                              {formatTimeRange(selectedSlot.timeframe)}
-                            </Text>
-                          </View>
-                        )}
-                        {selectedSlot.room?.roomName && (
-                          <View style={styles.detailRow}>
-                            <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />
-                            <Text style={styles.detailText}>Phòng: {selectedSlot.room.roomName}</Text>
-                          </View>
-                        )}
-                        {selectedSlot.branchSlot?.branchName && (
-                          <View style={styles.detailRow}>
-                            <MaterialIcons name="location-on" size={18} color={COLORS.PRIMARY} />
-                            <Text style={styles.detailText}>
-                              {selectedSlot.branchSlot.branchName}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Điểm danh */}
-                      <View style={styles.detailSection}>
-                        <Text style={styles.detailSectionTitle}>Điểm danh</Text>
-                        {attendance.length === 0 ? (
-                          <Text style={styles.emptyText}>Chưa có thông tin điểm danh</Text>
-                        ) : (
-                          attendance.map((record, index) => (
-                            <View key={index} style={styles.attendanceCard}>
-                              <View style={styles.attendanceRow}>
-                                <MaterialIcons
-                                  name={
-                                    record.status === 'PRESENT'
-                                      ? 'check-circle'
-                                      : record.status === 'ABSENT'
-                                      ? 'cancel'
-                                      : record.status === 'LATE'
-                                      ? 'schedule'
-                                      : 'info'
-                                  }
-                                  size={20}
-                                  color={
-                                    record.status === 'PRESENT'
-                                      ? COLORS.PRIMARY
-                                      : record.status === 'ABSENT'
-                                      ? COLORS.ERROR
-                                      : COLORS.ACCENT
-                                  }
-                                />
-                                <Text style={styles.attendanceStatus}>
-                                  {record.status === 'PRESENT'
-                                    ? 'Có mặt'
-                                    : record.status === 'ABSENT'
-                                    ? 'Vắng mặt'
-                                    : record.status === 'LATE'
-                                    ? 'Đi muộn'
-                                    : record.status || 'Chưa cập nhật'}
-                                </Text>
-                              </View>
-                              {record.checkInTime && (
-                                <Text style={styles.attendanceTime}>
-                                  Giờ vào: {formatDateTime(record.checkInTime).time}
-                                </Text>
-                              )}
-                              {record.checkOutTime && (
-                                <Text style={styles.attendanceTime}>
-                                  Giờ ra: {formatDateTime(record.checkOutTime).time}
-                                </Text>
-                              )}
-                            </View>
-                          ))
-                        )}
-                      </View>
-
-                      {/* Hoạt động */}
-                      <View style={styles.detailSection}>
-                        <Text style={styles.detailSectionTitle}>
-                          Hoạt động ({activities.length})
-                        </Text>
-                        {activities.length === 0 ? (
-                          <Text style={styles.emptyText}>Chưa có hoạt động nào</Text>
-                        ) : (
-                          activities.map((activity) => {
-                            const timeInfo = formatDateTime(activity.createdTime);
-                            return (
-                              <View key={activity.id} style={styles.activityCard}>
-                                <View style={styles.activityHeader}>
-                                  <MaterialIcons
-                                    name="event-note"
-                                    size={20}
-                                    color={COLORS.PRIMARY}
-                                  />
-                                  <Text style={styles.activityTypeName}>
-                                    {activity.activityType?.name || 'Hoạt động'}
-                                  </Text>
-                                </View>
-                                {activity.note && (
-                                  <Text style={styles.activityNote}>{activity.note}</Text>
-                                )}
-                                {activity.imageUrl && (
-                                  <TouchableOpacity
-                                    onPress={() => setSelectedImage(activity.imageUrl)}
-                                    style={styles.activityImageContainer}
-                                  >
-                                    <Image
-                                      source={{ uri: activity.imageUrl }}
-                                      style={styles.activityImage}
-                                      resizeMode="cover"
-                                    />
-                                  </TouchableOpacity>
-                                )}
-                                <View style={styles.activityMeta}>
-                                  <Text style={styles.activityMetaText}>
-                                    {activity.staffName || 'Nhân viên'} • {timeInfo.date} {timeInfo.time}
-                                  </Text>
-                                </View>
-                              </View>
-                            );
-                          })
-                        )}
-                      </View>
-
-                      {/* Mua dịch vụ */}
-                      <View style={styles.detailSection}>
-                        <Text style={styles.detailSectionTitle}>Mua dịch vụ bổ sung</Text>
-                        <TouchableOpacity
-                          style={styles.purchaseServiceButton}
-                          onPress={() => selectedSlot && handlePurchaseService(selectedSlot)}
-                        >
-                          <MaterialIcons name="shopping-cart" size={24} color={COLORS.SURFACE} />
-                          <Text style={styles.purchaseServiceButtonText}>Mua dịch vụ bổ sung</Text>
-                          <MaterialIcons name="arrow-forward" size={24} color={COLORS.SURFACE} />
-                        </TouchableOpacity>
-                        <Text style={styles.purchaseServiceHint}>
-                          Bấm để xem và mua các dịch vụ bổ sung cho lớp học này
-                        </Text>
-                      </View>
-                    </>
-                  )}
-                </>
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
 
       {/* Image Modal */}
       <Modal
@@ -1198,131 +983,6 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.SM,
     fontWeight: '600',
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: COLORS.SURFACE,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACING.MD,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.BORDER,
-  },
-  modalTitle: {
-    fontSize: FONTS.SIZES.LG,
-    fontWeight: '700',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  modalCloseButton: {
-    padding: SPACING.XS,
-  },
-  modalBody: {
-    padding: SPACING.MD,
-  },
-  modalLoadingContainer: {
-    padding: SPACING.LG,
-    alignItems: 'center',
-  },
-  modalLoadingText: {
-    marginTop: SPACING.SM,
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-  },
-  detailSection: {
-    marginBottom: SPACING.LG,
-  },
-  detailSectionTitle: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '700',
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.MD,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.SM,
-  },
-  detailText: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_PRIMARY,
-    marginLeft: SPACING.SM,
-  },
-  emptyText: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    fontStyle: 'italic',
-  },
-  attendanceCard: {
-    backgroundColor: COLORS.INFO_BG,
-    borderRadius: 12,
-    padding: SPACING.MD,
-    marginBottom: SPACING.SM,
-  },
-  attendanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  attendanceStatus: {
-    fontSize: FONTS.SIZES.SM,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-    marginLeft: SPACING.SM,
-  },
-  attendanceTime: {
-    fontSize: FONTS.SIZES.XS,
-    color: COLORS.TEXT_SECONDARY,
-    marginTop: SPACING.XS,
-    marginLeft: SPACING.MD + 20,
-  },
-  activityCard: {
-    backgroundColor: COLORS.INFO_BG,
-    borderRadius: 12,
-    padding: SPACING.MD,
-    marginBottom: SPACING.SM,
-  },
-  activityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.SM,
-  },
-  activityTypeName: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-    marginLeft: SPACING.SM,
-  },
-  activityNote: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.SM,
-    lineHeight: 20,
-  },
-  activityImageContainer: {
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginBottom: SPACING.SM,
-  },
-  activityImage: {
-    width: '100%',
-    height: 200,
-    backgroundColor: COLORS.BORDER,
-  },
-  activityMeta: {
-    marginTop: SPACING.XS,
-  },
-  activityMetaText: {
-    fontSize: FONTS.SIZES.XS,
-    color: COLORS.TEXT_SECONDARY,
-  },
   imageModalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
@@ -1341,29 +1001,6 @@ const styles = StyleSheet.create({
   fullImage: {
     width: SCREEN_WIDTH,
     height: '80%',
-  },
-  purchaseServiceButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.PRIMARY,
-    borderRadius: 12,
-    padding: SPACING.MD,
-    marginTop: SPACING.SM,
-  },
-  purchaseServiceButtonText: {
-    flex: 1,
-    marginLeft: SPACING.SM,
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '700',
-    color: COLORS.SURFACE,
-  },
-  purchaseServiceHint: {
-    marginTop: SPACING.SM,
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    fontStyle: 'italic',
-    textAlign: 'center',
   },
 });
 

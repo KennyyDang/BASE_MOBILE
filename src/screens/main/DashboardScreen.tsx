@@ -333,7 +333,7 @@ const DashboardScreen: React.FC = () => {
   const handleQuickAction = (action: string) => {
     switch (action) {
       case 'schedule':
-        navigation.navigate('Main', { screen: 'Schedule' });
+        navigation.navigate('Schedule');
         break;
       case 'wallet':
         navigation.navigate('Main', { screen: 'Wallet' });
@@ -481,8 +481,8 @@ const DashboardScreen: React.FC = () => {
               style={styles.quickActionCard}
               onPress={() => handleQuickAction('schedule')}
             >
-              <MaterialIcons name="schedule" size={32} color={COLORS.PRIMARY} />
-              <Text style={styles.quickActionText}>Xem lịch học</Text>
+              <MaterialIcons name="event-available" size={32} color={COLORS.PRIMARY} />
+              <Text style={styles.quickActionText}>Đặt Lịch Học</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
