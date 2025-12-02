@@ -278,6 +278,20 @@ const RegisterChildScreen: React.FC = () => {
       return;
     }
 
+    // Validate document fields when IdentityCard or Passport is selected
+    if (documentType === 'IdentityCard' || documentType === 'Passport') {
+      if (!issuedBy.trim()) {
+        Alert.alert('Lỗi', 'Vui lòng nhập nơi cấp giấy tờ.');
+        return;
+      }
+      if (!issuedDate) {
+        Alert.alert('Lỗi', 'Vui lòng chọn ngày cấp giấy tờ.');
+        return;
+      }
+      // DocumentFile might be required for IdentityCard/Passport
+      // But we'll let server validate this to avoid blocking user unnecessarily
+    }
+
     try {
       setLoading(true);
 

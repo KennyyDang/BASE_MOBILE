@@ -165,7 +165,7 @@ const ActivitiesScreen: React.FC = () => {
   useEffect(() => {
     setPageIndex(1);
     fetchActivities(false, 1);
-  }, [selectedSlotId]);
+  }, [selectedSlotId, fetchActivities]);
 
   // Refresh when coming back from edit screen
   useEffect(() => {
@@ -173,7 +173,7 @@ const ActivitiesScreen: React.FC = () => {
       fetchActivities(true, pageIndex);
     });
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, fetchActivities, pageIndex]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);

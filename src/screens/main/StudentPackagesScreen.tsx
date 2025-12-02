@@ -178,11 +178,6 @@ const StudentPackagesScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <MaterialIcons name="arrow-back" size={24} color={COLORS.PRIMARY} />
-          <Text style={styles.backButtonText}>Quay lại</Text>
-        </TouchableOpacity>
-
         <View style={styles.header}>
           <Text style={styles.title}>Gói học phù hợp</Text>
           <Text style={styles.subtitle}>

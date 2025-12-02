@@ -363,9 +363,13 @@ class ChildrenService {
       }
 
       // Axios interceptor will automatically handle FormData Content-Type with boundary
+      // Increase timeout for file uploads (60 seconds)
       const response = await axiosInstance.post<StudentResponse>(
         '/api/Student/register-child',
-        multipartFormData
+        multipartFormData,
+        {
+          timeout: 60000, // 60 seconds for file uploads
+        }
       );
       
       return response.data;

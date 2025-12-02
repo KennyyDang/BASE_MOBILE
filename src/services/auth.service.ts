@@ -483,6 +483,62 @@ const authService = {
       throw new Error(errorMessage);
     }
   },
+
+  /**
+   * Change password for authenticated user
+   * @param currentPassword - Current password
+   * @param newPassword - New password
+   * @returns Success message
+   */
+  changePassword: async (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const response = await axiosInstance.post('/api/Auth/change-password', {
+        currentPassword: currentPassword.trim(),
+        newPassword: newPassword.trim(),
+      });
+
+      return {
+        success: true,
+        message: response.data?.message || 'Đổi mật khẩu thành công.',
+      };
+    } catch (error: any) {
+      let errorMessage = 'Không thể đổi mật khẩu. Vui lòng thử lại.';
+      
+      if (error.response) {
+        const errorData = error.response.data;
+        const status = error.response.status;
+        
+        if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData?.message) {
+          errorMessage = errorData.message;
+        } else if (errorData?.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData?.title) {
+          errorMessage = errorData.title;
+        } else if (errorData?.error) {
+          errorMessage = errorData.error;
+        }
+        
+        if (status === 400) {
+          errorMessage = errorMessage || 'Mật khẩu hiện tại không đúng hoặc mật khẩu mới không hợp lệ.';
+        } else if (status === 401) {
+          errorMessage = 'Mật khẩu hiện tại không đúng.';
+        } else if (status >= 500) {
+          errorMessage = 'Lỗi server. Vui lòng thử lại sau.';
+        }
+      } else if (error.request) {
+        errorMessage = 'Không thể kết nối đến server. Vui lòng kiểm tra kết nối mạng.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      throw new Error(errorMessage);
+    }
+  },
 };
 
 export default authService;

@@ -45,13 +45,12 @@ class ImageService {
         name: defaultFileName,
       } as any);
 
+      // Don't set Content-Type header manually - axios will set it with boundary automatically
       const response = await axiosInstance.post(
         '/api/Image/upload',
         formData,
         {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+          timeout: 60000, // 60 seconds timeout for file upload
         }
       );
       

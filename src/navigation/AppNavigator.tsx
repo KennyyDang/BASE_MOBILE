@@ -40,11 +40,12 @@ import ManagerHomeScreen from '../screens/manager/ManagerHomeScreen';
 import ManagerRegisterParentScreen from '../screens/manager/ManagerRegisterParentScreen';
 import StaffScheduleScreen from '../screens/staff/StaffScheduleScreen';
 import ActivityTypesScreen from '../screens/staff/ActivityTypesScreen';
-import ActivitiesScreen from '../screens/staff/ActivitiesScreen';
 import StaffDashboardScreen from '../screens/staff/StaffDashboardScreen';
+import StaffProfileScreen from '../screens/staff/StaffProfileScreen';
 import CreateActivityScreen from '../screens/staff/CreateActivityScreen';
 import EditActivityScreen from '../screens/staff/EditActivityScreen';
 import AttendanceScreen from '../screens/staff/AttendanceScreen';
+import StudentManagementScreen from '../screens/staff/StudentManagementScreen';
 import DashboardScreen from '../screens/main/DashboardScreen';
 import ScheduleScreen from '../screens/main/ScheduleScreen';
 import WalletScreen from '../screens/main/WalletScreen';
@@ -56,6 +57,7 @@ import NotificationScreen from '../screens/main/NotificationScreen';
 import StudentPackagesScreen from '../screens/main/StudentPackagesScreen';
 import StudentClassesScreen from '../screens/main/StudentClassesScreen';
 import StudentActivityScreen from '../screens/main/StudentActivityScreen';
+import ActivityDetailScreen from '../screens/main/ActivityDetailScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import TransactionDetailScreen from '../screens/main/TransactionDetailScreen';
 import MySubscriptionsScreen from '../screens/main/MySubscriptionsScreen';
@@ -149,11 +151,11 @@ const StaffTabNavigator = () => {
             case 'ActivityTypes':
               iconName = 'category';
               break;
-            case 'Activities':
-              iconName = 'event-note';
-              break;
             case 'StaffSchedule':
               iconName = 'schedule';
+              break;
+            case 'StaffProfile':
+              iconName = 'person';
               break;
             default:
               iconName = 'help-outline';
@@ -205,19 +207,19 @@ const StaffTabNavigator = () => {
         }}
       />
       <StaffTab.Screen
-        name="Activities"
-        component={ActivitiesScreen}
-        options={{
-          title: 'Hoạt Động',
-          headerTitle: 'Hoạt Động',
-        }}
-      />
-      <StaffTab.Screen
         name="StaffSchedule"
         component={StaffScheduleScreen}
         options={{
           title: 'Lịch Làm Việc',
           headerTitle: 'Lịch Làm Việc',
+        }}
+      />
+      <StaffTab.Screen
+        name="StaffProfile"
+        component={StaffProfileScreen}
+        options={{
+          title: 'Hồ Sơ',
+          headerTitle: 'Hồ Sơ Cá Nhân',
         }}
       />
     </StaffTab.Navigator>
@@ -589,6 +591,14 @@ const AppNavigator = () => {
               }}
             />
             <Stack.Screen
+              name="ActivityDetail"
+              component={ActivityDetailScreen}
+              options={{
+                title: 'Chi tiết hoạt động',
+                headerTitle: 'Chi tiết hoạt động',
+              }}
+            />
+            <Stack.Screen
               name="TransactionHistory"
               component={TransactionHistoryScreen}
             />
@@ -647,6 +657,15 @@ const AppNavigator = () => {
               options={{
                 title: 'Điểm danh',
                 headerTitle: 'Điểm danh học sinh',
+              }}
+            />
+            <Stack.Screen
+              name="StudentManagement"
+              component={StudentManagementScreen}
+              options={{
+                title: 'Quản lý học sinh',
+                headerTitle: 'Quản lý học sinh',
+                headerShown: false, // Use custom header in screen
               }}
             />
             <Stack.Screen

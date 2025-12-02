@@ -59,13 +59,6 @@ const WEEKDAY_LABELS: Record<WeekdayKey, { title: string; subtitle: string }> = 
   6: { title: 'Thứ 7', subtitle: 'Cuối tuần tại trung tâm' },
 };
 
-const normalizeWeekDate = (value: number): WeekdayKey => {
-  if (value >= 0 && value <= 6) {
-    return value as WeekdayKey;
-  }
-  return 0;
-};
-
 const formatTime = (time?: string | null) => {
   if (!time) {
     return '--:--';
@@ -84,28 +77,6 @@ const formatTimeRange = (timeframe: StudentSlotResponse['timeframe']) => {
     return 'Chưa có khung giờ';
   }
   return `${formatTime(timeframe.startTime)} - ${formatTime(timeframe.endTime)}`;
-};
-
-const getWeekDate = (weekOffset: number, targetWeekday: WeekdayKey): Date => {
-  const now = new Date();
-  const currentDay = now.getDay();
-  
-  const currentMonday = new Date(now);
-  const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1;
-  currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
-  currentMonday.setHours(0, 0, 0, 0);
-  
-  const targetMonday = new Date(currentMonday);
-  targetMonday.setDate(targetMonday.getDate() + (weekOffset * 7));
-  
-  const targetDate = new Date(targetMonday);
-  if (targetWeekday === 0) {
-    targetDate.setDate(targetMonday.getDate() + 6);
-  } else {
-    targetDate.setDate(targetMonday.getDate() + (targetWeekday - 1));
-  }
-  
-  return targetDate;
 };
 
 const formatDateDisplay = (date: Date): string => {
@@ -222,6 +193,28 @@ const BookedClassesScreen: React.FC = () => {
     setWeekOffset(0);
   }, []);
 
+  const getWeekDate = useCallback((weekOffset: number, targetWeekday: number): Date => {
+    const now = new Date();
+    const currentDay = now.getDay();
+    
+    const currentMonday = new Date(now);
+    const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1;
+    currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
+    currentMonday.setHours(0, 0, 0, 0);
+    
+    const targetMonday = new Date(currentMonday);
+    targetMonday.setDate(targetMonday.getDate() + (weekOffset * 7));
+    
+    const targetDate = new Date(targetMonday);
+    if (targetWeekday === 0) {
+      targetDate.setDate(targetMonday.getDate() + 6);
+    } else {
+      targetDate.setDate(targetMonday.getDate() + (targetWeekday - 1));
+    }
+    
+    return targetDate;
+  }, []);
+
   const getWeekRange = useCallback((): { startDate: Date; endDate: Date; displayText: string } => {
     const monday = getWeekDate(weekOffset, 1);
     const sunday = getWeekDate(weekOffset, 0);
@@ -230,10 +223,11 @@ const BookedClassesScreen: React.FC = () => {
       endDate: sunday,
       displayText: `${formatDateDisplay(monday)} - ${formatDateDisplay(sunday)}`,
     };
-  }, [weekOffset]);
+  }, [weekOffset, getWeekDate]);
 
-  const weekRange = useMemo(() => getWeekRange(), [weekOffset]);
+  const weekRange = useMemo(() => getWeekRange(), [getWeekRange]);
 
+  // Group slots by weekday within the current week (restore old logic)
   const groupedSlots = useMemo(() => {
     const groups: Record<WeekdayKey, StudentSlotResponse[]> = {
       0: [],
@@ -396,7 +390,23 @@ const BookedClassesScreen: React.FC = () => {
         <View style={[styles.stateCard, styles.surfaceCard, styles.sectionSpacing]}>
           <MaterialIcons name="event-busy" size={40} color={COLORS.TEXT_SECONDARY} />
           <Text style={styles.stateText}>
-            Chưa có lớp học nào đã đặt trong tuần này. Vui lòng đặt lịch tại mục Lịch Học.
+            Chưa có lớp học nào đã đặt trong tuần này. Vui lòng đặt lịch tại mục Đặt Lịch Học.
+          </Text>
+        </View>
+      );
+    }
+
+    // Filter to only show weekdays that have slots
+    const weekdaysWithSlots = WEEKDAY_ORDER.filter((day) => {
+      return groupedSlots[day] && groupedSlots[day].length > 0;
+    });
+
+    if (weekdaysWithSlots.length === 0) {
+      return (
+        <View style={[styles.stateCard, styles.surfaceCard, styles.sectionSpacing]}>
+          <MaterialIcons name="event-busy" size={40} color={COLORS.TEXT_SECONDARY} />
+          <Text style={styles.stateText}>
+            Chưa có lớp học nào đã đặt trong tuần này. Vui lòng đặt lịch tại mục Đặt Lịch Học.
           </Text>
         </View>
       );
@@ -404,7 +414,7 @@ const BookedClassesScreen: React.FC = () => {
 
     return (
       <View style={styles.slotListContainer}>
-        {WEEKDAY_ORDER.map((day) => {
+        {weekdaysWithSlots.map((day) => {
           const daySlots = groupedSlots[day];
           const { title, subtitle } = WEEKDAY_LABELS[day];
           const dayDate = getWeekDate(weekOffset, day);
@@ -451,68 +461,68 @@ const BookedClassesScreen: React.FC = () => {
               {isExpanded && (
                 <>
                   {daySlots.length === 0 ? (
-                <View style={styles.emptySlotCard}>
-                  <MaterialIcons name="watch-later" size={32} color={COLORS.TEXT_SECONDARY} />
-                  <Text style={styles.emptySlotText}>Chưa có lớp học nào trong ngày</Text>
-                </View>
-              ) : (
-                daySlots.map((slot) => {
-                  const slotDate = new Date(slot.date);
-                  const slotDateDisplay = formatDateDisplay(slotDate);
+                    <View style={styles.emptySlotCard}>
+                      <MaterialIcons name="watch-later" size={32} color={COLORS.TEXT_SECONDARY} />
+                      <Text style={styles.emptySlotText}>Chưa có lớp học nào trong ngày</Text>
+                    </View>
+                  ) : (
+                    daySlots.map((slot) => {
+                      const slotDate = new Date(slot.date);
+                      const slotDateDisplay = formatDateDisplay(slotDate);
 
-                  return (
-                    <TouchableOpacity
-                      key={slot.id}
-                      style={styles.slotCard}
-                      onPress={() => handleSlotPress(slot)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.slotHeader}>
-                        <View style={styles.slotIcon}>
-                          <MaterialIcons name="event-available" size={22} color={COLORS.PRIMARY} />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.slotTime}>
-                            {slot.timeframe ? formatTimeRange(slot.timeframe) : 'Chưa có khung giờ'}
-                          </Text>
-                          <Text style={styles.slotTitle}>
-                            {slot.timeframe?.name || 'Khung giờ chưa đặt tên'}
-                          </Text>
-                        </View>
-                        <View style={styles.statusTag}>
-                          <MaterialIcons name="check-circle" size={18} color={COLORS.PRIMARY} />
-                          <Text style={styles.statusTagText}>Đã đặt</Text>
-                        </View>
-                      </View>
+                      return (
+                        <TouchableOpacity
+                          key={slot.id}
+                          style={styles.slotCard}
+                          onPress={() => handleSlotPress(slot)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.slotHeader}>
+                            <View style={styles.slotIcon}>
+                              <MaterialIcons name="event-available" size={22} color={COLORS.PRIMARY} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.slotTime}>
+                                {slot.timeframe ? formatTimeRange(slot.timeframe) : 'Chưa có khung giờ'}
+                              </Text>
+                              <Text style={styles.slotTitle}>
+                                {slot.timeframe?.name || 'Khung giờ chưa đặt tên'}
+                              </Text>
+                            </View>
+                            <View style={styles.statusTag}>
+                              <MaterialIcons name="check-circle" size={18} color={COLORS.PRIMARY} />
+                              <Text style={styles.statusTagText}>Đã đặt</Text>
+                            </View>
+                          </View>
 
-                      <View style={styles.slotMetaRow}>
-                        <MaterialIcons name="calendar-today" size={18} color={COLORS.SECONDARY} />
-                        <Text style={styles.slotMetaText}>{slotDateDisplay}</Text>
-                      </View>
+                          <View style={styles.slotMetaRow}>
+                            <MaterialIcons name="calendar-today" size={18} color={COLORS.SECONDARY} />
+                            <Text style={styles.slotMetaText}>{slotDateDisplay}</Text>
+                          </View>
 
-                      {slot.branchSlot?.branchName && (
-                        <View style={styles.slotMetaRow}>
-                          <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
-                          <Text style={styles.slotMetaText}>
-                            {slot.branchSlot.branchName}
-                          </Text>
-                        </View>
-                      )}
+                          {slot.branchSlot?.branchName && (
+                            <View style={styles.slotMetaRow}>
+                              <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
+                              <Text style={styles.slotMetaText}>
+                                {slot.branchSlot.branchName}
+                              </Text>
+                            </View>
+                          )}
 
-                      {slot.room?.roomName && (
-                        <View style={styles.slotMetaRow}>
-                          <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />
-                          <Text style={styles.slotMetaText}>Phòng: {slot.room.roomName}</Text>
-                        </View>
-                      )}
+                          {slot.room?.roomName && (
+                            <View style={styles.slotMetaRow}>
+                              <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />
+                              <Text style={styles.slotMetaText}>Phòng: {slot.room.roomName}</Text>
+                            </View>
+                          )}
 
-                      <View style={styles.slotActionRow}>
-                        <MaterialIcons name="info-outline" size={18} color={COLORS.PRIMARY} />
-                        <Text style={styles.slotActionText}>Chạm để xem điểm danh và hoạt động</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })
+                          <View style={styles.slotActionRow}>
+                            <MaterialIcons name="info-outline" size={18} color={COLORS.PRIMARY} />
+                            <Text style={styles.slotActionText}>Chạm để xem điểm danh và hoạt động</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })
                   )}
                 </>
               )}

@@ -105,29 +105,108 @@ const AttendanceScreen: React.FC = () => {
 
     try {
       setLoading(true);
+      
+      // Format date để đảm bảo đúng format (YYYY-MM-DD)
+      let formattedDate = date;
+      if (date && date.includes('T')) {
+        // Nếu date là ISO string, lấy phần date
+        const dateObj = new Date(date);
+        formattedDate = dateObj.toISOString().split('T')[0];
+      }
+
+      // Gọi API không có filter, rồi filter ở client để đảm bảo lấy đúng
+      // Vì API có thể không filter đúng ở server
       const response = await studentSlotService.getStaffSlots({
-        branchSlotId,
-        date,
-        pageSize: 100,
+        pageSize: 1000, // Lấy nhiều để đảm bảo có đủ data
       });
 
-      // Filter để chỉ lấy các student slots có cùng roomId
-      const filteredItems = roomId
-        ? response.items.filter((item) => item.roomId === roomId)
-        : response.items;
+      // Kiểm tra response hợp lệ
+      if (!response || !response.items || !Array.isArray(response.items)) {
+        console.warn('Invalid API response:', response);
+        setStudents([]);
+        setLoading(false);
+        return;
+      }
 
-      // Map to SlotStudent format
+      // Response mới có structure khác: mỗi item là branchSlot với studentSlots array
+      // Filter để chỉ lấy slots có cùng branchSlotId và date
+      let matchingSlots = response.items.filter((item: any) => {
+        if (!item || !item.id) {
+          return false;
+        }
+        
+        // So sánh branchSlotId
+        const slotIdMatch = item.id === branchSlotId;
+        
+        // So sánh date (chỉ so sánh phần date, không so sánh time)
+        let dateMatch = true;
+        if (item.date && formattedDate) {
+          try {
+            const itemDate = new Date(item.date);
+            if (isNaN(itemDate.getTime())) {
+              // Invalid date, skip this item
+              return false;
+            }
+            const itemDateStr = itemDate.toISOString().split('T')[0];
+            dateMatch = itemDateStr === formattedDate;
+          } catch (e) {
+            console.warn('Error parsing date:', item.date, e);
+            return false;
+          }
+        }
+        
+        return slotIdMatch && dateMatch;
+      });
+
+      // Nếu có roomId, filter thêm theo roomId
+      if (roomId) {
+        matchingSlots = matchingSlots.filter((item: any) => item.roomId === roomId);
+      }
+
+      if (!matchingSlots || matchingSlots.length === 0) {
+        setStudents([]);
+        return;
+      }
+
+      // Lấy tất cả studentSlots từ tất cả các slots phù hợp và merge lại
+      const allStudentSlots: any[] = [];
+      matchingSlots.forEach((slot: any) => {
+        if (slot.studentSlots && Array.isArray(slot.studentSlots)) {
+          allStudentSlots.push(...slot.studentSlots);
+        }
+      });
+
+      // Deduplicate dựa trên studentId để tránh hiển thị duplicate học sinh
+      // Nếu cùng một học sinh có nhiều studentSlotId, chỉ lấy một cái (ưu tiên cái đầu tiên)
+      const uniqueStudentSlotsMap = new Map<string, any>();
+      allStudentSlots.forEach((studentSlot: any) => {
+        const studentId = studentSlot.student?.id;
+        if (studentId && !uniqueStudentSlotsMap.has(studentId)) {
+          uniqueStudentSlotsMap.set(studentId, studentSlot);
+        }
+      });
+
+      // Map từ studentSlots array sang SlotStudent format
       // TODO: Cần kiểm tra trạng thái check-in thực tế từ API
       // Hiện tại giả định tất cả đều chưa check-in
-      const studentsList: SlotStudent[] = filteredItems.map((item) => ({
-        id: item.id,
-        studentId: item.studentId,
-        studentName: item.studentName,
-        parentName: item.parentName,
-        status: item.status,
-        parentNote: item.parentNote || undefined,
-        isCheckedIn: false, // TODO: Lấy từ API thực tế
-      }));
+      const studentsList: SlotStudent[] = Array.from(uniqueStudentSlotsMap.values())
+        .filter((studentSlot: any) => {
+          // Chỉ lấy những studentSlot có student hợp lệ
+          return studentSlot && studentSlot.student && studentSlot.student.id;
+        })
+        .map((studentSlot: any) => ({
+          id: studentSlot.studentSlotId || studentSlot.id || '',
+          studentId: studentSlot.student?.id || '',
+          studentName: studentSlot.student?.name || 'Chưa có tên',
+          parentName: studentSlot.parent?.name || '',
+          status: studentSlot.status || 'Booked',
+          parentNote: studentSlot.parentNote || undefined,
+          isCheckedIn: false, // TODO: Lấy từ API thực tế
+        }))
+        .filter((student: SlotStudent) => {
+          // Lọc bỏ những student không có id hoặc studentId
+          return student.id && student.studentId;
+        });
 
       setStudents(studentsList);
     } catch (error: any) {
@@ -136,6 +215,7 @@ const AttendanceScreen: React.FC = () => {
         error?.message ||
         'Không thể tải danh sách học sinh.';
       Alert.alert('Lỗi', message);
+      setStudents([]);
     } finally {
       setLoading(false);
     }

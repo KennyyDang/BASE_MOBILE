@@ -197,6 +197,12 @@ export interface StudentSlotResponse {
   room?: {
     id: string;
     roomName: string;
+    // Optional fields returned from API for richer display
+    facilityId?: string | null;
+    facilityName?: string | null;
+    branchId?: string | null;
+    branchName?: string | null;
+    staff?: BranchSlotStaffResponse | null;
   } | null;
   studentId: string;
   studentName: string;
