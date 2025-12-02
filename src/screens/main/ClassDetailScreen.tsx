@@ -304,11 +304,6 @@ const ClassDetailScreen: React.FC = () => {
               <View style={styles.activitiesContainer} pointerEvents="box-none">
                 {activities.map((activity) => {
                   const handlePress = () => {
-                    console.log('Activity pressed:', activity);
-                    console.log('Slot:', slot);
-                    console.log('SlotId:', slotId);
-                    console.log('StudentId:', studentId);
-                    
                     const targetStudentId = slot?.studentId || studentId;
                     const targetStudentName = slot?.studentName || 'Học sinh';
                     
@@ -322,7 +317,6 @@ const ClassDetailScreen: React.FC = () => {
                           slotTimeframe: slot?.timeframe?.name || formatTimeRange(slot?.timeframe),
                         });
                       } catch (error) {
-                        console.error('Navigation error:', error);
                         Alert.alert('Lỗi', 'Không thể chuyển trang. Vui lòng thử lại.');
                       }
                     } else {

@@ -266,34 +266,21 @@ const BookedClassesScreen: React.FC = () => {
 
   const handleSlotPress = useCallback((slot: StudentSlotResponse) => {
     // Navigate to ClassDetailScreen instead of opening modal
-    console.log('Navigating to ClassDetail with:', {
-      slotId: slot.id,
-      studentId: slot.studentId,
-    });
-    
     try {
-      // Try using push instead of navigate
       if (rootNavigation && typeof rootNavigation.push === 'function') {
-        console.log('Using push method');
         rootNavigation.push('ClassDetail', {
           slotId: slot.id,
           studentId: slot.studentId,
         });
-        console.log('Push called successfully');
       } else if (rootNavigation && typeof rootNavigation.navigate === 'function') {
-        console.log('Using navigate method');
         rootNavigation.navigate('ClassDetail', {
           slotId: slot.id,
           studentId: slot.studentId,
         });
-        console.log('Navigate called successfully');
       } else {
-        console.error('Root navigator is not available');
         Alert.alert('Lỗi', 'Không thể chuyển trang. Navigator không khả dụng.');
       }
     } catch (error: any) {
-      console.error('Navigation error:', error);
-      console.error('Error details:', error?.message, error?.stack);
       Alert.alert('Lỗi', `Không thể chuyển trang: ${error?.message || 'Unknown error'}`);
     }
   }, [rootNavigation]);
