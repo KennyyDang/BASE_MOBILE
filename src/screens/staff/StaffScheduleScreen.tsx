@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -15,7 +15,9 @@ import {
   TextInput,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { StaffTabParamList } from '../../types';
 
 import studentSlotService from '../../services/studentSlotService';
 import { StudentSlotResponse } from '../../types/api';
@@ -41,19 +43,9 @@ const FONTS = {
   },
 };
 
-const PAGE_SIZE = 100; // Lấy nhiều để có đủ dữ liệu cho tuần
+const PAGE_SIZE = 100;
 
 type WeekdayKey = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-const WEEKDAY_ORDER: WeekdayKey[] = [1, 2, 3, 4, 5, 6, 0];
-const WEEKDAY_LABELS: Record<WeekdayKey, { title: string; subtitle: string }> = {
-  0: { title: 'Chủ nhật', subtitle: 'Ngày nghỉ' },
-  1: { title: 'Thứ 2', subtitle: 'Khởi động tuần mới' },
-  2: { title: 'Thứ 3', subtitle: 'Duy trì nhịp làm việc' },
-  3: { title: 'Thứ 4', subtitle: 'Tăng tốc giữa tuần' },
-  4: { title: 'Thứ 5', subtitle: 'Hoạt động chuyên môn' },
-  5: { title: 'Thứ 6', subtitle: 'Chuẩn bị cuối tuần' },
-  6: { title: 'Thứ 7', subtitle: 'Cuối tuần tại trung tâm' },
-};
 
 const normalizeWeekDate = (value: number): WeekdayKey => {
   if (value >= 0 && value <= 6) {
@@ -83,63 +75,20 @@ const formatTimeRange = (timeframe: StudentSlotResponse['timeframe']) => {
 };
 
 const formatDateDisplay = (date: Date): string => {
+  const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const dayName = days[date.getDay()];
   const day = date.getDate().toString().padStart(2, '0');
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
   const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
+  return `${dayName}, ${day}/${month}/${year}`;
 };
 
-const getWeekDate = (weekOffset: number, targetWeekday: WeekdayKey): Date => {
-  const now = new Date();
-  const currentDay = now.getDay();
-  
-  const currentMonday = new Date(now);
-  const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1;
-  currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
-  currentMonday.setHours(0, 0, 0, 0);
-  
-  const targetMonday = new Date(currentMonday);
-  targetMonday.setDate(targetMonday.getDate() + (weekOffset * 7));
-  
-  const targetDate = new Date(targetMonday);
-  if (targetWeekday === 0) {
-    targetDate.setDate(targetMonday.getDate() + 6);
-  } else {
-    targetDate.setDate(targetMonday.getDate() + (targetWeekday - 1));
-  }
-  
-  return targetDate;
-};
-
-const getStatusLabel = (status: string) => {
-  const normalized = (status || '').toLowerCase();
-  switch (normalized) {
-    case 'booked':
-      return 'Đã đặt';
-    case 'confirmed':
-      return 'Đã xác nhận';
-    case 'completed':
-      return 'Đã hoàn thành';
-    case 'cancelled':
-      return 'Đã hủy';
-    default:
-      return status || 'Chưa xác định';
-  }
-};
-
-const getStatusColor = (status: string) => {
-  const normalized = (status || '').toLowerCase();
-  switch (normalized) {
-    case 'booked':
-    case 'confirmed':
-      return COLORS.PRIMARY;
-    case 'completed':
-      return COLORS.SUCCESS;
-    case 'cancelled':
-      return COLORS.ERROR;
-    default:
-      return COLORS.TEXT_SECONDARY;
-  }
+const formatDateShort = (date: Date): string => {
+  const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const dayName = days[date.getDay()];
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  return `${dayName}, ${day}/${month}`;
 };
 
 interface SlotStudent {
@@ -151,10 +100,36 @@ interface SlotStudent {
   parentNote?: string;
 }
 
+type StaffScheduleRouteProp = RouteProp<StaffTabParamList, 'StaffSchedule'>;
+
 const StaffScheduleScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute<StaffScheduleRouteProp>();
   const { user } = useAuth();
   
+  // Lấy initialDate từ params nếu có
+  const initialDateParam = route.params?.initialDate;
+  const getInitialDate = (): Date => {
+    if (initialDateParam) {
+      const date = new Date(initialDateParam);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+    return new Date();
+  };
+  
+  // Cập nhật selectedDate khi initialDateParam thay đổi
+  useEffect(() => {
+    if (initialDateParam) {
+      const date = new Date(initialDateParam);
+      if (!isNaN(date.getTime())) {
+        date.setHours(0, 0, 0, 0);
+        setSelectedDate(date);
+      }
+    }
+  }, [initialDateParam]);
+
   // Kiểm tra quyền truy cập - chỉ dành cho staff, không phải manager
   useEffect(() => {
     const userRole = (user?.role || '').toUpperCase();
@@ -177,8 +152,9 @@ const StaffScheduleScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [weekOffset, setWeekOffset] = useState<number>(0);
-  const [expandedDays, setExpandedDays] = useState<Set<WeekdayKey>>(new Set()); // Mặc định đóng tất cả
+  const [selectedDate, setSelectedDate] = useState<Date>(getInitialDate());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const dateScrollViewRef = useRef<ScrollView>(null); // Ref để scroll date selector
   
   // Modal states
   const [slotDetailModalVisible, setSlotDetailModalVisible] = useState(false);
@@ -198,10 +174,69 @@ const StaffScheduleScreen: React.FC = () => {
         const response = await studentSlotService.getStaffSlots({
           pageIndex: 1,
           pageSize: PAGE_SIZE,
-          upcomingOnly: false, // Lấy tất cả để có thể xem cả quá khứ
+          upcomingOnly: false,
         });
-        const items = response?.items ?? [];
-        setSlots(items);
+        const rawItems = response?.items ?? [];
+        
+        // Map response từ API sang format StudentSlotResponse
+        // API trả về structure khác: có branch (không phải branchSlot), roomId/roomName trực tiếp, studentSlots array
+        const mappedItems: StudentSlotResponse[] = rawItems.map((item: any) => {
+          // Lấy student đầu tiên từ studentSlots array (nếu có)
+          const firstStudentSlot = item.studentSlots?.[0];
+          
+          return {
+            id: item.id, // branchSlotId
+            branchSlotId: item.id,
+            branchSlot: item.branch ? {
+              id: item.branch.id,
+              branchName: item.branch.branchName,
+            } : null,
+            packageSubscriptionId: '', // Không có trong response
+            date: item.date,
+            status: item.status,
+            parentNote: firstStudentSlot?.parentNote || null,
+            roomId: item.roomId || '',
+            room: item.roomName ? {
+              id: item.roomId || '',
+              roomName: item.roomName,
+            } : null,
+            studentId: firstStudentSlot?.student?.id || '',
+            studentName: firstStudentSlot?.student?.name || '',
+            parentId: firstStudentSlot?.parent?.id || '',
+            parentName: firstStudentSlot?.parent?.name || '',
+            timeframe: item.timeframe ? {
+              id: item.timeframe.id,
+              name: item.timeframe.name,
+              startTime: item.timeframe.startTime,
+              endTime: item.timeframe.endTime,
+            } : null,
+            // Lưu thêm thông tin gốc để dùng sau
+            _rawData: item,
+          } as StudentSlotResponse & { _rawData?: any };
+        });
+        
+        // Deduplicate: Mỗi branchSlot (id + roomId + date) chỉ nên xuất hiện 1 lần
+        // Vì 1 slot = 1 branchSlotId + 1 roomId + 1 date
+        const uniqueSlots = new Map<string, StudentSlotResponse>();
+        mappedItems.forEach((slot) => {
+          // Key là branchSlotId + roomId + date để đảm bảo mỗi slot (branchSlot + room + date) chỉ có 1 instance
+          const dateStr = slot.date ? new Date(slot.date).toISOString().split('T')[0] : '';
+          const uniqueKey = `${slot.branchSlotId}_${slot.roomId}_${dateStr}`;
+          if (!uniqueSlots.has(uniqueKey)) {
+            uniqueSlots.set(uniqueKey, slot);
+          } else {
+            // Nếu đã có slot với key này, kiểm tra xem slot mới có nhiều studentSlots hơn không
+            const existingSlot = uniqueSlots.get(uniqueKey)!;
+            const existingCount = (existingSlot as any)?._rawData?.studentSlots?.length || 0;
+            const newCount = (slot as any)?._rawData?.studentSlots?.length || 0;
+            // Giữ slot có nhiều studentSlots hơn (đầy đủ thông tin hơn)
+            if (newCount > existingCount) {
+              uniqueSlots.set(uniqueKey, slot);
+            }
+          }
+        });
+        
+        setSlots(Array.from(uniqueSlots.values()));
       } catch (error: any) {
         const message =
           error?.message ||
@@ -226,50 +261,184 @@ const StaffScheduleScreen: React.FC = () => {
     fetchSlots({ silent: true });
   }, [fetchSlots]);
 
-  const handlePreviousWeek = useCallback(() => {
-    setWeekOffset((prev) => prev - 1);
-  }, []);
+  // Get available dates for date selector: tất cả các ngày trong tháng của selectedDate
+  const getAvailableDates = useMemo(() => {
+    const dates: Date[] = [];
+    // Sử dụng selectedDate thay vì today để khi chọn tháng khác, thanh sẽ hiển thị tháng đó
+    const baseDate = selectedDate || new Date();
+    baseDate.setHours(0, 0, 0, 0);
 
-  const handleNextWeek = useCallback(() => {
-    setWeekOffset((prev) => prev + 1);
-  }, []);
+    // Lấy tháng và năm của selectedDate
+    const currentMonth = baseDate.getMonth();
+    const currentYear = baseDate.getFullYear();
+    
+    // Tính số ngày trong tháng
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    
+    // Generate tất cả các ngày trong tháng
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(currentYear, currentMonth, day);
+      date.setHours(0, 0, 0, 0);
+      dates.push(date);
+    }
+    
+    return dates;
+  }, [selectedDate]);
 
-  const handleGoToCurrentWeek = useCallback(() => {
-    setWeekOffset(0);
-  }, []);
+  // Group slots by weekday for badge count
+  const groupedSlots = useMemo(() => {
+    const groups: Record<WeekdayKey, StudentSlotResponse[]> = {
+      0: [],
+      1: [],
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+      6: [],
+    };
 
-  const handleSlotPress = async (slot: StudentSlotResponse) => {
+    slots.forEach((slot) => {
+      if (!slot.date) return;
+      const slotDate = new Date(slot.date);
+      slotDate.setHours(0, 0, 0, 0);
+      const dayOfWeek = slotDate.getDay() as WeekdayKey;
+      groups[dayOfWeek].push(slot);
+    });
+
+    return groups;
+  }, [slots]);
+
+  // Get slots for selected date
+  const getSlotsForSelectedDate = useMemo(() => {
+    if (!selectedDate || !slots.length) return [];
+    const selectedDay = selectedDate.getDay();
+    const normalizedDay = selectedDay === 0 ? 0 : selectedDay;
+    let daySlots = groupedSlots[normalizedDay as WeekdayKey] || [];
+    
+    // Filter by exact date match
+    const selectedDateStr = selectedDate.toISOString().split('T')[0];
+    daySlots = daySlots.filter((slot) => {
+      if (!slot.date) return false;
+      const slotDateStr = new Date(slot.date).toISOString().split('T')[0];
+      return slotDateStr === selectedDateStr;
+    });
+    
+    // Sort by time
+    daySlots.sort((a, b) => {
+      const timeA = a.timeframe?.startTime || '';
+      const timeB = b.timeframe?.startTime || '';
+      return timeA.localeCompare(timeB);
+    });
+    
+    return daySlots;
+  }, [selectedDate, groupedSlots, slots]);
+
+  // Check if date has slots
+  const dateHasSlots = useCallback((date: Date): boolean => {
+    const day = date.getDay();
+    const normalizedDay = day === 0 ? 0 : day;
+    const daySlots = groupedSlots[normalizedDay as WeekdayKey] || [];
+    const dateStr = date.toISOString().split('T')[0];
+    return daySlots.some((slot) => {
+      if (!slot.date) return false;
+      const slotDateStr = new Date(slot.date).toISOString().split('T')[0];
+      return slotDateStr === dateStr;
+    });
+  }, [groupedSlots]);
+
+  // Handle date selection from horizontal selector
+  const handleDateSelect = (date: Date) => {
+    setSelectedDate(date);
+  };
+
+  // Handle date picker change
+  const handleDateChange = (event: any, date?: Date) => {
+    setShowDatePicker(false);
+    if (date) {
+      setSelectedDate(date);
+      
+      // Scroll to selected date after a short delay to ensure dates are rendered
+      setTimeout(() => {
+        const dateIndex = getAvailableDates.findIndex(
+          (d) => d.toDateString() === date.toDateString()
+        );
+        if (dateIndex >= 0 && dateScrollViewRef.current) {
+          const scrollPosition = dateIndex * 70;
+          dateScrollViewRef.current.scrollTo({
+            x: Math.max(0, scrollPosition - 100),
+            animated: true,
+          });
+        }
+      }, 200);
+    }
+  };
+
+  // Scroll to selected date in date selector when selectedDate changes
+  useEffect(() => {
+    if (dateScrollViewRef.current && selectedDate && getAvailableDates.length > 0) {
+      const dateIndex = getAvailableDates.findIndex(
+        (date) => date.toDateString() === selectedDate.toDateString()
+      );
+      if (dateIndex >= 0) {
+        // Calculate approximate scroll position (each date item is about 70px wide)
+        const scrollPosition = dateIndex * 70;
+        setTimeout(() => {
+          dateScrollViewRef.current?.scrollTo({
+            x: Math.max(0, scrollPosition - 100), // Offset to show some context
+            animated: true,
+          });
+        }, 300);
+      }
+    }
+  }, [selectedDate, getAvailableDates]);
+
+  const handleSlotPress = async (slot: StudentSlotResponse & { _rawData?: any }) => {
     setSelectedSlot(slot);
     setSlotDetailModalVisible(true);
     setLoadingStudents(true);
     setSlotStudents([]);
 
     try {
-      // Fetch all students in this slot (same branchSlotId, date, and roomId)
-      // Lọc để chỉ lấy các học sinh trong cùng phòng
-      const response = await studentSlotService.getStaffSlots({
-        branchSlotId: slot.branchSlotId,
-        date: slot.date,
-        pageSize: 100, // Get all students
-      });
+      // Lấy studentSlots từ rawData nếu có, nếu không thì fetch lại
+      if (slot._rawData?.studentSlots) {
+        // Map từ studentSlots array trong response
+        const students: SlotStudent[] = slot._rawData.studentSlots.map((studentSlot: any) => ({
+          id: studentSlot.studentSlotId,
+          studentId: studentSlot.student?.id || '',
+          studentName: studentSlot.student?.name || '',
+          parentName: studentSlot.parent?.name || '',
+          status: studentSlot.status || 'Booked',
+          parentNote: studentSlot.parentNote || undefined,
+        }));
+        setSlotStudents(students);
+      } else {
+        // Fallback: fetch lại từ API
+        const response = await studentSlotService.getStaffSlots({
+          branchSlotId: slot.branchSlotId,
+          date: slot.date,
+          pageSize: 100,
+        });
 
-      // Filter để chỉ lấy các student slots có cùng roomId
-      // (1 slot = 1 phòng, nên chỉ hiển thị học sinh trong cùng phòng)
-      const filteredItems = slot.roomId 
-        ? response.items.filter((item) => item.roomId === slot.roomId)
-        : response.items;
+        // Tìm slot có cùng roomId
+        const matchingSlot = response.items.find((item: any) => {
+          const itemRoomId = item.roomId || (item as any).roomId;
+          return itemRoomId === slot.roomId;
+        });
 
-      // Map to SlotStudent format
-      const students: SlotStudent[] = filteredItems.map((item) => ({
-        id: item.id,
-        studentId: item.studentId,
-        studentName: item.studentName,
-        parentName: item.parentName,
-        status: item.status,
-        parentNote: item.parentNote || undefined,
-      }));
-
-      setSlotStudents(students);
+        if (matchingSlot?._rawData?.studentSlots) {
+          const students: SlotStudent[] = matchingSlot._rawData.studentSlots.map((studentSlot: any) => ({
+            id: studentSlot.studentSlotId,
+            studentId: studentSlot.student?.id || '',
+            studentName: studentSlot.student?.name || '',
+            parentName: studentSlot.parent?.name || '',
+            status: studentSlot.status || 'Booked',
+            parentNote: studentSlot.parentNote || undefined,
+          }));
+          setSlotStudents(students);
+        } else {
+          setSlotStudents([]);
+        }
+      }
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
@@ -302,80 +471,12 @@ const StaffScheduleScreen: React.FC = () => {
     );
   }, [slotStudents, searchQuery]);
 
-  const getWeekRange = useCallback((): { startDate: Date; endDate: Date; displayText: string } => {
-    const monday = getWeekDate(weekOffset, 1);
-    const sunday = getWeekDate(weekOffset, 0);
-    return {
-      startDate: monday,
-      endDate: sunday,
-      displayText: `${formatDateDisplay(monday)} - ${formatDateDisplay(sunday)}`,
-    };
-  }, [weekOffset]);
-
-  // Lọc và nhóm slots theo ngày trong tuần
-  // Mỗi slot (branchSlotId + date + roomId) chỉ hiển thị một lần
-  const groupedSlots = useMemo(() => {
-    const groups: Record<WeekdayKey, StudentSlotResponse[]> = {
-      0: [],
-      1: [],
-      2: [],
-      3: [],
-      4: [],
-      5: [],
-      6: [],
-    };
-
-    const weekStart = getWeekDate(weekOffset, 1);
-    weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = getWeekDate(weekOffset, 0);
-    weekEnd.setHours(23, 59, 59, 999);
-
-    // Map để lưu các slot unique theo key: branchSlotId + date + roomId
-    const uniqueSlotsMap = new Map<string, StudentSlotResponse>();
-
-    slots.forEach((slot) => {
-      if (!slot.date) return;
-      
-      const slotDate = new Date(slot.date);
-      slotDate.setHours(0, 0, 0, 0);
-      
-      // Kiểm tra xem slot có nằm trong tuần đang xem không
-      if (slotDate >= weekStart && slotDate <= weekEnd) {
-        // Tạo key unique: branchSlotId + date (chỉ ngày, không có giờ) + roomId
-        const dateKey = slotDate.toISOString().split('T')[0]; // YYYY-MM-DD
-        const roomId = slot.roomId || 'no-room';
-        const uniqueKey = `${slot.branchSlotId}_${dateKey}_${roomId}`;
-        
-        // Chỉ giữ lại slot đầu tiên cho mỗi key unique
-        // (1 slot = 1 phòng theo quy định)
-        if (!uniqueSlotsMap.has(uniqueKey)) {
-          uniqueSlotsMap.set(uniqueKey, slot);
-        }
-      }
-    });
-
-    // Phân loại các slot unique vào các ngày trong tuần
-    uniqueSlotsMap.forEach((slot) => {
-      if (!slot.date) return;
-      
-      const slotDate = new Date(slot.date);
-      slotDate.setHours(0, 0, 0, 0);
-      const dayOfWeek = slotDate.getDay() as WeekdayKey;
-      groups[dayOfWeek].push(slot);
-    });
-
-    // Sắp xếp slots trong mỗi ngày theo thời gian
-    Object.keys(groups).forEach((key) => {
-      const dayKey = Number(key) as WeekdayKey;
-      groups[dayKey].sort((a, b) => {
-        const timeA = a.timeframe?.startTime || '';
-        const timeB = b.timeframe?.startTime || '';
-        return timeA.localeCompare(timeB);
-      });
-    });
-
-    return groups;
-  }, [slots, weekOffset]);
+  // Get branch name from slots
+  const getBranchName = useMemo(() => {
+    if (!slots.length) return 'Chưa có thông tin';
+    const firstSlot = slots[0];
+    return firstSlot.branchSlot?.branchName || 'Chưa có thông tin';
+  }, [slots]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -385,195 +486,224 @@ const StaffScheduleScreen: React.FC = () => {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[COLORS.PRIMARY]} tintColor={COLORS.PRIMARY} />
         }
       >
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Lịch làm việc</Text>
-          <Text style={styles.headerSubtitle}>
-            Xem lịch làm việc của bạn theo tuần
-          </Text>
-        </View>
-
-        {/* Điều hướng tuần */}
-        <View style={[styles.sectionCard, styles.sectionSpacing]}>
-          <View style={styles.weekNavigator}>
-            <TouchableOpacity
-              style={styles.weekNavButton}
-              onPress={handlePreviousWeek}
-              activeOpacity={0.7}
-            >
-              <MaterialIcons name="chevron-left" size={24} color={COLORS.PRIMARY} />
-              <Text style={styles.weekNavButtonText}>Tuần trước</Text>
+        {/* Header */}
+        <View style={styles.resultsHeader}>
+          <View style={styles.resultsHeaderTop}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <MaterialIcons name="arrow-back" size={24} color={COLORS.SURFACE} />
             </TouchableOpacity>
-
-            <View style={styles.weekInfo}>
-              <Text style={styles.weekRangeText}>{getWeekRange().displayText}</Text>
-              {weekOffset !== 0 && (
-                <TouchableOpacity
-                  style={styles.goToCurrentWeekButton}
-                  onPress={handleGoToCurrentWeek}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.goToCurrentWeekText}>Về tuần này</Text>
-                </TouchableOpacity>
-              )}
+            <View style={styles.resultsHeaderInfo}>
+              <View style={styles.resultsHeaderInfoContent}>
+                <MaterialIcons name="person" size={20} color={COLORS.SURFACE} />
+                <Text style={styles.resultsHeaderTitle} numberOfLines={1}>
+                  {user?.email || 'Nhân viên'} • {getBranchName}
+                </Text>
+              </View>
             </View>
-
-            <TouchableOpacity
-              style={styles.weekNavButton}
-              onPress={handleNextWeek}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.weekNavButtonText}>Tuần sau</Text>
-              <MaterialIcons name="chevron-right" size={24} color={COLORS.PRIMARY} />
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton}>
+              <MaterialIcons name="close" size={24} color={COLORS.SURFACE} />
             </TouchableOpacity>
+          </View>
+          
+          {/* Date Selector */}
+          <View style={styles.resultsDateSelector}>
+            <TouchableOpacity
+              style={styles.resultsDateButton}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text style={styles.resultsDateText}>{formatDateDisplay(selectedDate)}</Text>
+              <MaterialIcons name="arrow-drop-down" size={20} color={COLORS.SURFACE} />
+            </TouchableOpacity>
+            
+            {/* Horizontal Date Scroll with Fixed Calendar Button */}
+            <View style={styles.dateScrollWrapper}>
+              <ScrollView
+                ref={dateScrollViewRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.dateScrollContainer}
+                style={styles.dateScrollView}
+                nestedScrollEnabled={true}
+                scrollEnabled={true}
+                bounces={false}
+              >
+                {getAvailableDates.map((date, index) => {
+                  const isSelected = date.toDateString() === selectedDate.toDateString();
+                  const hasSlots = dateHasSlots(date);
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.dateItem,
+                        isSelected && styles.dateItemActive,
+                        !hasSlots && styles.dateItemNoSlots,
+                      ]}
+                      onPress={() => handleDateSelect(date)}
+                    >
+                      <Text style={[styles.dateItemDay, isSelected && styles.dateItemDayActive]}>
+                        {formatDateShort(date).split(',')[0]}
+                      </Text>
+                      <Text style={[styles.dateItemDate, isSelected && styles.dateItemDateActive]}>
+                        {formatDateShort(date).split(',')[1].trim()}
+                      </Text>
+                      {hasSlots && (
+                        <View style={styles.dateItemBadge}>
+                          <Text style={styles.dateItemBadgeText}>
+                            {groupedSlots[date.getDay() === 0 ? 0 : date.getDay() as WeekdayKey]?.filter((slot) => {
+                              if (!slot.date) return false;
+                              const slotDateStr = new Date(slot.date).toISOString().split('T')[0];
+                              const dateStr = date.toISOString().split('T')[0];
+                              return slotDateStr === dateStr;
+                            }).length || 0}
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              
+              {/* Fixed Calendar Button */}
+              <TouchableOpacity
+                style={styles.calendarButtonFixed}
+                onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.7}
+              >
+                <MaterialIcons name="calendar-today" size={20} color={COLORS.SURFACE} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
-        {loading && slots.length === 0 ? (
-          <View style={[styles.stateCard, styles.surfaceCard]}>
-            <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-            <Text style={styles.stateText}>Đang tải lịch làm việc...</Text>
-          </View>
-        ) : error ? (
-          <View style={[styles.stateCard, styles.surfaceCard]}>
-            <MaterialIcons name="error-outline" size={42} color={COLORS.ERROR} />
-            <Text style={[styles.stateText, { color: COLORS.ERROR }]}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={() => fetchSlots()}>
-              <Text style={styles.retryButtonText}>Thử lại</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.slotListContainer}>
-            {WEEKDAY_ORDER.map((day) => {
-              const daySlots = groupedSlots[day];
-              const { title, subtitle } = WEEKDAY_LABELS[day];
-              const dayDate = getWeekDate(weekOffset, day);
-              const dayDateDisplay = formatDateDisplay(dayDate);
-
-              const isExpanded = expandedDays.has(day);
-              const toggleDay = () => {
-                setExpandedDays((prev) => {
-                  const newSet = new Set(prev);
-                  if (newSet.has(day)) {
-                    newSet.delete(day);
-                  } else {
-                    newSet.add(day);
-                  }
-                  return newSet;
-                });
-              };
-
-              return (
-                <View key={day} style={styles.daySection}>
+        {/* Slots List */}
+        <View style={styles.resultsSlotsContainer}>
+          <Text style={styles.resultsSlotsTitle}>Chọn slot</Text>
+          
+          {loading ? (
+            <View style={styles.resultsLoadingContainer}>
+              <ActivityIndicator size="large" color={COLORS.PRIMARY} />
+              <Text style={styles.resultsLoadingText}>Đang tải...</Text>
+            </View>
+          ) : getSlotsForSelectedDate.length === 0 ? (
+            <View style={styles.resultsEmptyContainer}>
+              <MaterialIcons name="event-busy" size={48} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.resultsEmptyText}>Không có ca làm việc nào vào ngày này</Text>
+            </View>
+          ) : (
+            <View style={styles.resultsSlotsList}>
+              {getSlotsForSelectedDate.map((slot) => {
+                const rawData = (slot as any)?._rawData;
+                // Get room info from slot
+                const roomName = slot.room?.roomName || rawData?.roomName;
+                const slotTypeName = rawData?.slotType?.name;
+                const studentSlotsCount = rawData?.studentSlots?.length || 0;
+                const hasStudents = studentSlotsCount > 0;
+                
+                return (
                   <TouchableOpacity
-                    style={styles.dayHeader}
-                    onPress={toggleDay}
-                    activeOpacity={0.7}
+                    key={slot.id}
+                    style={styles.resultsSlotCard}
+                    activeOpacity={0.9}
+                    onPress={() => handleSlotPress(slot)}
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.dayTitle}>{title} - {dayDateDisplay}</Text>
-                      <Text style={styles.daySubtitle}>{subtitle}</Text>
-                    </View>
-                    <View style={styles.dayHeaderRight}>
-                      <View style={styles.dayBadge}>
-                        <MaterialIcons name="event-available" size={18} color={COLORS.PRIMARY} />
-                        <Text style={styles.dayBadgeText}>{daySlots.length}</Text>
+                    {/* Time Section */}
+                    <View style={styles.resultsSlotTimeSection}>
+                      <View style={styles.resultsSlotTimeLeft}>
+                        <Text style={styles.resultsSlotTime}>{formatTime(slot.timeframe?.startTime)}</Text>
+                        <Text style={styles.resultsSlotLocation}>{slot.branchSlot?.branchName || 'Chưa có'}</Text>
                       </View>
-                      <MaterialIcons
-                        name={isExpanded ? 'keyboard-arrow-down' : 'keyboard-arrow-right'}
-                        size={24}
-                        color={COLORS.PRIMARY}
-                        style={styles.dayChevron}
-                      />
+                      
+                      <View style={styles.resultsSlotDuration}>
+                        <View style={styles.resultsSlotDurationLine} />
+                        <Text style={styles.resultsSlotDurationText}>
+                          {(() => {
+                            if (!slot.timeframe?.startTime || !slot.timeframe?.endTime) return '--';
+                            try {
+                              const startParts = slot.timeframe.startTime.split(':');
+                              const endParts = slot.timeframe.endTime.split(':');
+                              const startHours = parseInt(startParts[0] || '0', 10);
+                              const startMins = parseInt(startParts[1] || '0', 10);
+                              const endHours = parseInt(endParts[0] || '0', 10);
+                              const endMins = parseInt(endParts[1] || '0', 10);
+                              
+                              const startTotal = startHours * 60 + startMins;
+                              const endTotal = endHours * 60 + endMins;
+                              const diffMinutes = endTotal - startTotal;
+                              const hours = Math.floor(diffMinutes / 60);
+                              
+                              return `${hours}h`;
+                            } catch {
+                              return '--';
+                            }
+                          })()}
+                        </Text>
+                        <View style={styles.resultsSlotDurationLine} />
+                      </View>
+                      
+                      <View style={styles.resultsSlotTimeRight}>
+                        <Text style={styles.resultsSlotTime}>{formatTime(slot.timeframe?.endTime)}</Text>
+                        <Text style={styles.resultsSlotLocation}>
+                          {slotTypeName || 'Chưa có học sinh'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Info Section */}
+                    <View style={styles.resultsSlotInfoSection}>
+                      <View style={styles.resultsSlotInfoRow}>
+                        <MaterialIcons name="location-on" size={16} color={COLORS.TEXT_SECONDARY} />
+                        <Text style={styles.resultsSlotInfoText}>{slot.branchSlot?.branchName || 'Chưa có'}</Text>
+                      </View>
+                      {slotTypeName && (
+                        <View style={styles.resultsSlotInfoRow}>
+                          <MaterialIcons name="category" size={16} color={COLORS.TEXT_SECONDARY} />
+                          <Text style={styles.resultsSlotInfoText}>{slotTypeName}</Text>
+                        </View>
+                      )}
+                      {slot.timeframe?.name && (
+                        <View style={styles.resultsSlotInfoRow}>
+                          <MaterialIcons name="access-time" size={16} color={COLORS.TEXT_SECONDARY} />
+                          <Text style={styles.resultsSlotInfoText}>{slot.timeframe.name}</Text>
+                        </View>
+                      )}
+                      {roomName && (
+                        <View style={styles.resultsSlotInfoRow}>
+                          <MaterialIcons name="meeting-room" size={16} color={COLORS.TEXT_SECONDARY} />
+                          <Text style={styles.resultsSlotInfoText}>{roomName}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Action Section */}
+                    <View style={styles.resultsSlotActionSection}>
+                      <View style={styles.resultsSlotAvailability}>
+                        <MaterialIcons name="event-available" size={16} color={COLORS.SUCCESS} />
+                        <Text style={styles.resultsSlotAvailabilityText}>
+                          {hasStudents ? `${studentSlotsCount} học sinh` : 'Chưa có học sinh'}
+                        </Text>
+                      </View>
+                      <MaterialIcons name="chevron-right" size={24} color={COLORS.PRIMARY} />
                     </View>
                   </TouchableOpacity>
-
-                  {isExpanded && (
-                    <>
-                      {daySlots.length === 0 ? (
-                        <View style={styles.emptySlotCard}>
-                          <MaterialIcons name="watch-later" size={32} color={COLORS.TEXT_SECONDARY} />
-                          <Text style={styles.emptySlotText}>Không có ca làm việc trong ngày</Text>
-                        </View>
-                      ) : (
-                        daySlots.map((slot) => {
-                          return (
-                            <TouchableOpacity
-                              key={slot.id}
-                              style={styles.slotCard}
-                              onPress={() => handleSlotPress(slot)}
-                              activeOpacity={0.7}
-                            >
-                              <View style={styles.slotHeader}>
-                                <View style={styles.slotIcon}>
-                                  <MaterialIcons name="access-time" size={22} color={COLORS.ACCENT} />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                  <Text style={styles.slotTime}>{formatTimeRange(slot.timeframe)}</Text>
-                                  <Text style={styles.slotTitle}>
-                                    {slot.timeframe?.name || 'Khung giờ chưa đặt tên'}
-                                  </Text>
-                                </View>
-                                <View
-                                  style={[
-                                    styles.statusTag,
-                                    {
-                                      backgroundColor: getStatusColor(slot.status) + '20',
-                                    },
-                                  ]}
-                                >
-                                  <MaterialIcons
-                                    name="check-circle"
-                                    size={18}
-                                    color={getStatusColor(slot.status)}
-                                  />
-                                  <Text
-                                    style={[
-                                      styles.statusTagText,
-                                      { color: getStatusColor(slot.status) },
-                                    ]}
-                                  >
-                                    {getStatusLabel(slot.status)}
-                                  </Text>
-                                </View>
-                              </View>
-
-                              <View style={styles.slotMetaRow}>
-                                <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
-                                <Text style={styles.slotMetaText}>
-                                  {slot.branchSlot?.branchName || 'Chưa có thông tin chi nhánh'}
-                                </Text>
-                              </View>
-
-                              {slot.room?.roomName && (
-                                <View style={styles.slotMetaRow}>
-                                  <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />
-                                  <Text style={styles.slotMetaText}>
-                                    Phòng: {slot.room.roomName}
-                                  </Text>
-                                </View>
-                              )}
-
-                              <View style={styles.slotMetaRow}>
-                                <MaterialIcons name="people" size={18} color={COLORS.ACCENT} />
-                                <Text style={styles.slotMetaText}>
-                                  Chạm để xem danh sách học sinh
-                                </Text>
-                                <MaterialIcons name="chevron-right" size={20} color={COLORS.TEXT_SECONDARY} />
-                              </View>
-                            </TouchableOpacity>
-                          );
-                        })
-                      )}
-                    </>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        )}
+                );
+              })}
+            </View>
+          )}
+        </View>
       </ScrollView>
 
-      {/* Slot Detail Modal - Danh sách học sinh */}
+      {/* Date Picker Modal */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={selectedDate}
+          mode="date"
+          display="default"
+          onChange={handleDateChange}
+          minimumDate={new Date()}
+        />
+      )}
+
+      {/* Slot Detail Modal - Thông tin slot và số lượng học sinh */}
       <Modal
         visible={slotDetailModalVisible}
         animationType="slide"
@@ -583,32 +713,10 @@ const StaffScheduleScreen: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Danh sách học sinh</Text>
-              <View style={styles.modalHeaderActions}>
-                {selectedSlot && slotStudents.length > 0 && (
-                  <TouchableOpacity
-                    style={styles.attendanceButton}
-                    onPress={() => {
-                      handleCloseModal();
-                      navigation.navigate('Attendance', {
-                        branchSlotId: selectedSlot.branchSlotId,
-                        date: selectedSlot.date,
-                        roomId: selectedSlot.roomId,
-                        slotTimeframe: selectedSlot.timeframe?.name,
-                        branchName: selectedSlot.branchSlot?.branchName,
-                        roomName: selectedSlot.room?.roomName,
-                      });
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialIcons name="check-circle" size={20} color={COLORS.SURFACE} />
-                    <Text style={styles.attendanceButtonText}>Điểm danh</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
-                  <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
-                </TouchableOpacity>
-              </View>
+              <Text style={styles.modalTitle}>Thông tin slot</Text>
+              <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
+                <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
+              </TouchableOpacity>
             </View>
 
             {selectedSlot && (
@@ -638,128 +746,50 @@ const StaffScheduleScreen: React.FC = () => {
               </View>
             )}
 
-            {/* Search Bar */}
-            {slotStudents.length > 0 && (
-              <View style={styles.searchContainer}>
-                <MaterialIcons name="search" size={20} color={COLORS.TEXT_SECONDARY} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Tìm kiếm học sinh..."
-                  placeholderTextColor={COLORS.TEXT_SECONDARY}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity
-                    onPress={() => setSearchQuery('')}
-                    style={styles.clearSearchButton}
-                  >
-                    <MaterialIcons name="close" size={18} color={COLORS.TEXT_SECONDARY} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-
-            {/* Students List */}
+            {/* Student Count */}
             {loadingStudents ? (
               <View style={styles.modalLoadingContainer}>
                 <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-                <Text style={styles.modalLoadingText}>Đang tải danh sách học sinh...</Text>
-              </View>
-            ) : slotStudents.length === 0 ? (
-              <View style={styles.modalEmptyContainer}>
-                <MaterialIcons name="person-off" size={48} color={COLORS.TEXT_SECONDARY} />
-                <Text style={styles.modalEmptyText}>Chưa có học sinh nào trong slot này</Text>
-              </View>
-            ) : filteredStudents.length === 0 ? (
-              <View style={styles.modalEmptyContainer}>
-                <MaterialIcons name="search-off" size={48} color={COLORS.TEXT_SECONDARY} />
-                <Text style={styles.modalEmptyText}>
-                  Không tìm thấy học sinh nào phù hợp với "{searchQuery}"
-                </Text>
+                <Text style={styles.modalLoadingText}>Đang tải thông tin...</Text>
               </View>
             ) : (
-              <FlatList
-                data={filteredStudents}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item: student }) => (
-                  <TouchableOpacity
-                    style={styles.studentCard}
-                    onPress={() => {
-                      handleCloseModal();
-                      navigation.navigate('CreateActivity', {
-                        studentSlotId: student.id,
-                        studentId: student.studentId,
-                        studentName: student.studentName,
-                        slotDate: selectedSlot?.date
-                          ? formatDateDisplay(new Date(selectedSlot.date))
-                          : undefined,
-                        slotTimeframe: selectedSlot?.timeframe?.name,
-                      });
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.studentHeader}>
-                      <View style={styles.studentIcon}>
-                        <MaterialIcons name="person" size={24} color={COLORS.PRIMARY} />
-                      </View>
-                      <View style={styles.studentContent}>
-                        <Text style={styles.studentName}>{student.studentName}</Text>
-                        {student.parentName && (
-                          <Text style={styles.studentParent}>
-                            Phụ huynh: {student.parentName}
-                          </Text>
-                        )}
-                      </View>
-                      <View
-                        style={[
-                          styles.studentStatusBadge,
-                          {
-                            backgroundColor: getStatusColor(student.status) + '20',
-                          },
-                        ]}
-                      >
-                        <MaterialIcons
-                          name="check-circle"
-                          size={16}
-                          color={getStatusColor(student.status)}
-                        />
-                        <Text
-                          style={[
-                            styles.studentStatusText,
-                            { color: getStatusColor(student.status) },
-                          ]}
-                        >
-                          {getStatusLabel(student.status)}
-                        </Text>
-                      </View>
-                    </View>
-                    {student.parentNote && (
-                      <View style={styles.studentNoteBox}>
-                        <MaterialIcons name="note" size={16} color={COLORS.TEXT_SECONDARY} />
-                        <Text style={styles.studentNoteText}>{student.parentNote}</Text>
-                      </View>
-                    )}
-                    <View style={styles.studentActionHint}>
-                      <MaterialIcons name="add-circle" size={16} color={COLORS.PRIMARY} />
-                      <Text style={styles.studentActionHintText}>
-                        Chạm để tạo hoạt động
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-                style={styles.modalBody}
-                contentContainerStyle={styles.studentsList}
-                showsVerticalScrollIndicator={false}
-                ListHeaderComponent={
-                  slotStudents.length > 0 ? (
-                    <Text style={styles.studentsCount}>
-                      Tìm thấy {filteredStudents.length} / {slotStudents.length} học sinh
-                    </Text>
-                  ) : null
-                }
-              />
+              <View style={styles.modalStudentCountContainer}>
+                <View style={styles.modalStudentCountIcon}>
+                  <MaterialIcons name="people" size={32} color={COLORS.PRIMARY} />
+                </View>
+                <Text style={styles.modalStudentCountText}>
+                  {slotStudents.length > 0 
+                    ? `${slotStudents.length} học sinh` 
+                    : 'Chưa có học sinh nào trong slot này'}
+                </Text>
+              </View>
             )}
+
+            {/* Manage Students Button */}
+            <TouchableOpacity
+              style={[
+                styles.manageStudentsButton,
+                loadingStudents && styles.manageStudentsButtonDisabled
+              ]}
+              onPress={() => {
+                if (!loadingStudents && selectedSlot) {
+                  handleCloseModal();
+                  navigation.navigate('StudentManagement', {
+                    branchSlotId: selectedSlot.branchSlotId,
+                    date: selectedSlot.date,
+                    roomId: selectedSlot.roomId,
+                    slotTimeframe: selectedSlot.timeframe?.name,
+                    branchName: selectedSlot.branchSlot?.branchName,
+                    roomName: selectedSlot.room?.roomName,
+                  });
+                }
+              }}
+              activeOpacity={0.7}
+              disabled={loadingStudents}
+            >
+              <MaterialIcons name="manage-accounts" size={20} color={COLORS.SURFACE} />
+              <Text style={styles.manageStudentsButtonText}>Quản lý học sinh</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -773,243 +803,260 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.BACKGROUND,
   },
   content: {
-    padding: SPACING.MD,
-    paddingBottom: SPACING.XL,
+    flexGrow: 1,
   },
-  header: {
-    marginBottom: SPACING.SM,
-  },
-  headerTitle: {
-    fontSize: FONTS.SIZES.XXL,
-    fontWeight: '700',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  headerSubtitle: {
-    marginTop: SPACING.XS,
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    lineHeight: 20,
-  },
-  sectionSpacing: {
-    marginTop: SPACING.MD,
-  },
-  sectionCard: {
-    backgroundColor: COLORS.SURFACE,
-    borderRadius: 16,
-    padding: SPACING.MD,
-    shadowColor: COLORS.SHADOW,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  stateCard: {
-    borderRadius: 16,
-    padding: SPACING.LG,
-    alignItems: 'center',
-  },
-  surfaceCard: {
-    backgroundColor: COLORS.SURFACE,
-    borderWidth: 1,
-    borderColor: COLORS.BORDER,
-  },
-  stateText: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: SPACING.SM,
-  },
-  retryButton: {
-    marginTop: SPACING.XS,
+  resultsHeader: {
     backgroundColor: COLORS.PRIMARY,
-    paddingHorizontal: SPACING.LG,
-    paddingVertical: SPACING.SM,
-    borderRadius: 12,
+    paddingTop: Platform.OS === 'ios' ? 0 : SPACING.MD,
+    paddingBottom: SPACING.MD,
   },
-  retryButtonText: {
-    color: COLORS.SURFACE,
-    fontWeight: '600',
-    fontSize: FONTS.SIZES.SM,
-  },
-  weekNavigator: {
+  resultsHeaderTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: SPACING.MD,
+    marginBottom: SPACING.SM,
   },
-  weekNavButton: {
+  backButton: {
+    padding: SPACING.XS,
+  },
+  resultsHeaderInfo: {
+    flex: 1,
+    marginHorizontal: SPACING.SM,
+  },
+  resultsHeaderInfoContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.SM,
-    paddingVertical: SPACING.XS,
-    borderRadius: 12,
-    backgroundColor: COLORS.INFO_BG,
-    borderWidth: 1,
-    borderColor: COLORS.PRIMARY_LIGHT,
+    justifyContent: 'center',
   },
-  weekNavButtonText: {
-    fontSize: FONTS.SIZES.SM,
+  resultsHeaderTitle: {
+    fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
-    color: COLORS.PRIMARY,
-    marginHorizontal: SPACING.XS,
+    color: COLORS.SURFACE,
+    marginLeft: SPACING.XS,
   },
-  weekInfo: {
+  closeButton: {
+    padding: SPACING.XS,
+  },
+  resultsDateSelector: {
+    paddingHorizontal: SPACING.MD,
+  },
+  resultsDateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 8,
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+    marginBottom: SPACING.MD,
+  },
+  resultsDateText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.SURFACE,
+    fontWeight: '600',
+    marginRight: SPACING.XS,
+  },
+  dateScrollWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+    height: 80, // Fixed height to ensure scroll works
+  },
+  dateScrollView: {
     flex: 1,
+    marginRight: 60, // Space for fixed calendar button
+  },
+  dateScrollContainer: {
+    paddingRight: SPACING.MD,
+    alignItems: 'center',
+  },
+  dateItem: {
+    alignItems: 'center',
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+    marginRight: SPACING.SM,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    minWidth: 60,
+  },
+  dateItemActive: {
+    backgroundColor: COLORS.SURFACE,
+    borderBottomWidth: 3,
+    borderBottomColor: COLORS.SURFACE,
+  },
+  dateItemNoSlots: {
+    opacity: 0.5,
+  },
+  dateItemDay: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.SURFACE,
+    fontWeight: '500',
+  },
+  dateItemDayActive: {
+    color: COLORS.PRIMARY,
+  },
+  dateItemDate: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.SURFACE,
+    marginTop: SPACING.XS,
+  },
+  dateItemDateActive: {
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  dateItemBadge: {
+    marginTop: SPACING.XS,
+    backgroundColor: COLORS.PRIMARY,
+    borderRadius: 10,
+    paddingHorizontal: SPACING.XS,
+    paddingVertical: 2,
+  },
+  dateItemBadgeText: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.SURFACE,
+    fontWeight: '700',
+  },
+  calendarButtonFixed: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    minWidth: 48,
+    marginLeft: SPACING.SM,
+    position: 'absolute',
+    right: 0,
+    zIndex: 10,
+  },
+  resultsSlotsContainer: {
+    padding: SPACING.MD,
+  },
+  resultsSlotsTitle: {
+    fontSize: FONTS.SIZES.XXL,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.LG,
+  },
+  resultsSlotsList: {
+    gap: SPACING.MD,
+  },
+  resultsSlotCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    marginBottom: SPACING.MD,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  resultsSlotTimeSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.MD,
+    paddingBottom: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  resultsSlotTimeLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  resultsSlotTimeRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  resultsSlotTime: {
+    fontSize: FONTS.SIZES.XL,
+    fontWeight: 'bold',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS,
+  },
+  resultsSlotLocation: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  resultsSlotDuration: {
     alignItems: 'center',
     marginHorizontal: SPACING.MD,
   },
-  weekRangeText: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '700',
+  resultsSlotDurationLine: {
+    width: 40,
+    height: 1,
+    backgroundColor: COLORS.BORDER,
+    marginVertical: SPACING.XS,
+  },
+  resultsSlotDurationText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '500',
+  },
+  resultsSlotInfoSection: {
+    marginBottom: SPACING.MD,
+  },
+  resultsSlotInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.XS,
+  },
+  resultsSlotInfoText: {
+    fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
-    textAlign: 'center',
+    marginLeft: SPACING.SM,
+    flex: 1,
   },
-  goToCurrentWeekButton: {
-    marginTop: SPACING.XS,
-    paddingHorizontal: SPACING.SM,
-    paddingVertical: SPACING.XS,
-    borderRadius: 8,
-    backgroundColor: COLORS.PRIMARY,
-  },
-  goToCurrentWeekText: {
-    fontSize: FONTS.SIZES.XS,
-    fontWeight: '600',
-    color: COLORS.SURFACE,
-  },
-  slotListContainer: {
-    marginTop: SPACING.LG,
-  },
-  daySection: {
-    marginTop: SPACING.LG,
-  },
-  dayHeader: {
+  resultsSlotActionSection: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.SM,
-    paddingVertical: SPACING.SM,
   },
-  dayHeaderRight: {
+  resultsSlotAvailability: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.SM,
+    flex: 1,
   },
-  dayTitle: {
-    fontSize: FONTS.SIZES.LG,
-    fontWeight: '700',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  daySubtitle: {
+  resultsSlotAvailabilityText: {
     fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    marginTop: 4,
+    color: COLORS.SUCCESS,
+    fontWeight: '600',
+    marginLeft: SPACING.XS,
   },
-  dayBadge: {
+  resultsSlotBookedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.SUCCESS_BG,
-    paddingHorizontal: SPACING.SM,
-    paddingVertical: SPACING.XS,
-    borderRadius: 16,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    borderRadius: 20,
   },
-  dayBadgeText: {
+  resultsSlotBookedText: {
     fontSize: FONTS.SIZES.SM,
-    color: COLORS.PRIMARY,
+    color: COLORS.SUCCESS,
     fontWeight: '600',
     marginLeft: SPACING.XS,
   },
-  dayChevron: {
-    marginLeft: SPACING.XS,
-  },
-  emptySlotCard: {
-    borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    borderStyle: 'dashed',
-    borderRadius: 16,
-    paddingVertical: SPACING.LG,
-    justifyContent: 'center',
+  resultsLoadingContainer: {
     alignItems: 'center',
-    backgroundColor: 'transparent',
+    padding: SPACING.XL,
   },
-  emptySlotText: {
-    marginTop: SPACING.SM,
+  resultsLoadingText: {
+    marginTop: SPACING.MD,
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
   },
-  slotCard: {
-    backgroundColor: COLORS.SURFACE,
-    borderRadius: 16,
-    padding: SPACING.MD,
-    marginBottom: SPACING.SM,
-    borderWidth: 1,
-    borderColor: COLORS.BORDER,
-    shadowColor: COLORS.SHADOW,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  slotHeader: {
-    flexDirection: 'row',
+  resultsEmptyContainer: {
     alignItems: 'center',
+    padding: SPACING.XL,
   },
-  slotIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: COLORS.INFO_BG,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  slotTime: {
-    fontSize: FONTS.SIZES.LG,
-    fontWeight: '700',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  slotTitle: {
-    fontSize: FONTS.SIZES.SM,
+  resultsEmptyText: {
+    marginTop: SPACING.MD,
+    fontSize: FONTS.SIZES.MD,
     color: COLORS.TEXT_SECONDARY,
-    marginTop: 2,
-  },
-  statusTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.SM,
-    paddingVertical: SPACING.XS,
-    borderRadius: 16,
-  },
-  statusTagText: {
-    fontSize: FONTS.SIZES.SM,
-    fontWeight: '600',
-    marginLeft: SPACING.XS,
-  },
-  slotMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.SM,
-  },
-  slotMetaText: {
-    flex: 1,
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_PRIMARY,
-    lineHeight: 20,
-    marginLeft: SPACING.SM,
-  },
-  noteBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: COLORS.SECONDARY_50,
-    padding: SPACING.MD,
-    borderRadius: 12,
-    marginTop: SPACING.SM,
-  },
-  noteText: {
-    flex: 1,
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_PRIMARY,
-    marginLeft: SPACING.SM,
-    lineHeight: 20,
-    fontStyle: 'italic',
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,
@@ -1055,9 +1102,6 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.SM,
     fontWeight: '600',
     color: COLORS.SURFACE,
-  },
-  closeButton: {
-    padding: SPACING.XS,
   },
   modalSlotInfo: {
     padding: SPACING.MD,
@@ -1205,7 +1249,46 @@ const styles = StyleSheet.create({
     color: COLORS.PRIMARY,
     fontWeight: '500',
   },
+  modalStudentCountContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.XL,
+    paddingHorizontal: SPACING.MD,
+  },
+  modalStudentCountIcon: {
+    marginBottom: SPACING.MD,
+  },
+  modalStudentCountText: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    textAlign: 'center',
+  },
+  manageStudentsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.LG,
+    marginHorizontal: SPACING.MD,
+    marginBottom: SPACING.MD,
+    borderRadius: 12,
+    gap: SPACING.SM,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  manageStudentsButtonDisabled: {
+    opacity: 0.5,
+  },
+  manageStudentsButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
+  },
 });
 
 export default StaffScheduleScreen;
-

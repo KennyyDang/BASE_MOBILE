@@ -18,7 +18,8 @@ import { Card, Surface, Divider } from 'react-native-paper';
 
 import studentSlotService from '../../services/studentSlotService';
 import activityService from '../../services/activityService';
-import { StudentSlotResponse, ActivityResponse } from '../../types/api';
+import branchSlotService from '../../services/branchSlotService';
+import { StudentSlotResponse, ActivityResponse, BranchSlotRoomResponse } from '../../types/api';
 import { RootStackParamList } from '../../types';
 import { COLORS } from '../../constants';
 
@@ -90,6 +91,8 @@ const ClassDetailScreen: React.FC = () => {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [attendance, setAttendance] = useState<any | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [roomDetails, setRoomDetails] = useState<BranchSlotRoomResponse | null>(null);
+  const [roomLoading, setRoomLoading] = useState(false);
 
   const fetchSlotDetails = useCallback(async (silent = false) => {
     if (!silent) {
@@ -115,6 +118,29 @@ const ClassDetailScreen: React.FC = () => {
       setRefreshing(false);
     }
   }, [slotId, studentId]);
+
+  // Fetch room details (facility, staff...) based on branchSlotId + roomId
+  const fetchRoomDetails = useCallback(async () => {
+    if (!slot?.branchSlotId || !slot?.roomId) {
+      setRoomDetails(null);
+      return;
+    }
+
+    setRoomLoading(true);
+    try {
+      const response = await branchSlotService.getRoomsBySlot(slot.branchSlotId, 1, 20);
+      // studentSlot.roomId thường là roomId (not branchSlotRoom.id)
+      const foundRoom =
+        response.items.find(
+          (r) => r.roomId === slot.roomId || r.id === slot.roomId
+        ) || null;
+      setRoomDetails(foundRoom);
+    } catch {
+      setRoomDetails(null);
+    } finally {
+      setRoomLoading(false);
+    }
+  }, [slot]);
 
   const fetchActivities = useCallback(async () => {
     if (!slotId || !studentId) return;
@@ -159,8 +185,9 @@ const ClassDetailScreen: React.FC = () => {
     if (slot) {
       fetchActivities();
       fetchAttendance();
+      fetchRoomDetails();
     }
-  }, [slot, fetchActivities, fetchAttendance]);
+  }, [slot, fetchActivities, fetchAttendance, fetchRoomDetails]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -170,8 +197,19 @@ const ClassDetailScreen: React.FC = () => {
   }, [fetchSlotDetails, fetchActivities, fetchAttendance]);
 
   const handlePurchaseServices = () => {
-    // TODO: Navigate to purchase services screen
-    Alert.alert('Thông báo', 'Tính năng mua dịch vụ bổ sung đang được phát triển');
+    if (!slot) {
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin lớp học để mua dịch vụ bổ sung');
+      return;
+    }
+
+    try {
+      navigation.navigate('PurchaseService', {
+        studentSlotId: slot.id,
+        studentId: slot.studentId,
+      });
+    } catch (error: any) {
+      Alert.alert('Lỗi', error?.message || 'Không thể chuyển sang trang mua dịch vụ bổ sung');
+    }
   };
 
   if (loading && !slot) {
@@ -244,8 +282,45 @@ const ClassDetailScreen: React.FC = () => {
                 <MaterialIcons name="meeting-room" size={20} color={COLORS.PRIMARY} />
               </View>
               <Text style={styles.infoLabel}>Phòng</Text>
-              <Text style={styles.infoValue}>{slot?.room?.roomName || 'Chưa có'}</Text>
+              <Text style={styles.infoValue}>
+                {slot?.room?.roomName || roomDetails?.roomName || 'Chưa có'}
+              </Text>
             </View>
+
+            <Divider style={styles.divider} />
+
+            {/* Facility (Cơ sở) */}
+            {roomDetails?.facilityName ? (
+              <>
+                <View style={styles.infoRow}>
+                  <View style={styles.infoIconContainer}>
+                    <MaterialIcons name="business" size={20} color={COLORS.PRIMARY} />
+                  </View>
+                  <Text style={styles.infoLabel}>Cơ sở</Text>
+                  <Text style={styles.infoValue}>{roomDetails.facilityName}</Text>
+                </View>
+
+                <Divider style={styles.divider} />
+              </>
+            ) : null}
+
+            {/* Staff (Giáo viên / Nhân viên phụ trách) */}
+            {roomDetails?.staff ? (
+              <View style={styles.infoRow}>
+                <View style={styles.infoIconContainer}>
+                  <MaterialIcons name="person" size={20} color={COLORS.PRIMARY} />
+                </View>
+                <Text style={styles.infoLabel}>Nhân viên</Text>
+                <Text style={styles.infoValue}>
+                  {roomDetails.staff.staffName ||
+                    roomDetails.staff.fullName ||
+                    'Chưa có'} 
+                  {roomDetails.staff.staffRole || roomDetails.staff.role
+                    ? ` (${roomDetails.staff.staffRole || roomDetails.staff.role})`
+                    : ''}
+                </Text>
+              </View>
+            ) : null}
 
             <Divider style={styles.divider} />
 

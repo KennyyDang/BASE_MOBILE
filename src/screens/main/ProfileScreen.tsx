@@ -30,6 +30,8 @@ import packageService from '../../services/packageService';
 import childrenService from '../../services/childrenService';
 import studentLevelService from '../../services/studentLevelService';
 import schoolService from '../../services/schoolService';
+import activityService, { StaffActivityResponse } from '../../services/activityService';
+import studentSlotService from '../../services/studentSlotService';
 import { COLORS } from '../../constants';
 
 const SPACING = {
@@ -147,6 +149,11 @@ const ProfileScreen: React.FC = () => {
   >({});
   const fetchedStudentsRef = useRef<Set<string>>(new Set());
 
+  // Activities states
+  const [activities, setActivities] = useState<StaffActivityResponse[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+
   const fetchCurrentUser = useCallback(async () => {
     try {
       setError(null);
@@ -203,6 +210,91 @@ const ProfileScreen: React.FC = () => {
     };
   }, []); // Empty dependency array - only run once on mount
 
+  const fetchActivities = useCallback(async () => {
+    if (students.length === 0) {
+      setActivities([]);
+      return;
+    }
+
+    setLoadingActivities(true);
+    setActivitiesError(null);
+    try {
+      // Fetch activities for all children
+      const allActivities: StaffActivityResponse[] = [];
+      
+      for (const student of students) {
+        try {
+          // Get student slots first to get studentSlotIds
+          const slotsResponse = await studentSlotService.getStudentSlots({
+            studentId: student.id,
+            pageIndex: 1,
+            pageSize: 100,
+          });
+          
+          // Fetch activities for each slot
+          for (const slot of slotsResponse.items) {
+            try {
+              const activitiesResponse = await activityService.getMyChildrenActivities({
+                studentId: student.id,
+                studentSlotId: slot.id,
+                pageIndex: 1,
+                pageSize: 50,
+              });
+              
+              // Map to StaffActivityResponse format
+              const mappedActivities: StaffActivityResponse[] = activitiesResponse.items.map((activity: any) => ({
+                id: activity.id,
+                note: activity.note,
+                imageUrl: activity.imageUrl,
+                createdDate: activity.createdDate,
+                createdById: activity.createdById,
+                staffName: activity.staffName || 'Nhân viên',
+                activityTypeId: activity.activityTypeId,
+                activityType: activity.activityType,
+                studentSlotId: activity.studentSlotId,
+                studentId: student.id,
+                studentName: student.name,
+                isViewed: activity.isViewed || false,
+                viewedTime: activity.viewedTime,
+                createdTime: activity.createdTime || activity.createdDate,
+              }));
+              
+              allActivities.push(...mappedActivities);
+            } catch (err) {
+              console.warn(`Failed to fetch activities for slot ${slot.id}:`, err);
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to fetch slots for student ${student.id}:`, err);
+        }
+      }
+      
+      // Sort by createdTime (newest first)
+      allActivities.sort((a, b) => {
+        const timeA = new Date(a.createdTime || a.createdDate).getTime();
+        const timeB = new Date(b.createdTime || b.createdDate).getTime();
+        return timeB - timeA;
+      });
+      
+      // Limit to latest 20 activities
+      setActivities(allActivities.slice(0, 20));
+    } catch (error: any) {
+      const message = error?.response?.data?.message || error?.message || 'Không thể tải hoạt động';
+      setActivitiesError(message);
+      setActivities([]);
+    } finally {
+      setLoadingActivities(false);
+    }
+  }, [students]);
+
+  useEffect(() => {
+    if (students.length > 0) {
+      fetchActivities();
+    } else {
+      setActivities([]);
+    }
+  }, [students, fetchActivities]);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -211,6 +303,7 @@ const ProfileScreen: React.FC = () => {
         fetchFamilyProfiles(),
         refetchStudents(),
       ]);
+      // Activities will be fetched automatically when students update
     } catch (err) {
       console.warn('Error refreshing:', err);
     } finally {
@@ -906,6 +999,23 @@ const ProfileScreen: React.FC = () => {
         },
       ]
     );
+  };
+
+  const handleActivityPress = (activity: StaffActivityResponse) => {
+    // Navigate to ClassDetail screen with studentSlotId and studentId
+    if (activity.studentSlotId && activity.studentId) {
+      try {
+        navigation.navigate('ClassDetail', {
+          slotId: activity.studentSlotId,
+          studentId: activity.studentId,
+        });
+      } catch (error: any) {
+        Alert.alert('Lỗi', 'Không thể chuyển đến chi tiết lớp học. Vui lòng thử lại.');
+        console.error('Navigation error:', error);
+      }
+    } else {
+      Alert.alert('Thông báo', 'Không tìm thấy thông tin lớp học cho hoạt động này.');
+    }
   };
 
   // Student Relationship Options
@@ -1652,6 +1762,81 @@ const ProfileScreen: React.FC = () => {
                     )}
                   </View>
                 </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Activities Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Hoạt động gần đây</Text>
+            {activities.length > 0 && (
+              <Text style={styles.activitiesCount}>{activities.length} hoạt động</Text>
+            )}
+          </View>
+
+          {loadingActivities ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+              <Text style={styles.familyLoadingText}>Đang tải hoạt động...</Text>
+            </View>
+          ) : activitiesError ? (
+            <View style={styles.emptyContainer}>
+              <MaterialIcons name="error-outline" size={48} color={COLORS.ERROR} />
+              <Text style={[styles.emptyText, { color: COLORS.ERROR }]}>{activitiesError}</Text>
+            </View>
+          ) : activities.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MaterialIcons name="event-note" size={48} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.emptyText}>Chưa có hoạt động nào</Text>
+              <Text style={styles.emptySubtext}>Hoạt động của các con sẽ hiển thị ở đây</Text>
+            </View>
+          ) : (
+            <View style={styles.activitiesList}>
+              {activities.map((activity) => (
+                <TouchableOpacity
+                  key={activity.id}
+                  style={styles.activityCard}
+                  onPress={() => handleActivityPress(activity)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.activityHeader}>
+                    <View style={styles.activityIcon}>
+                      <MaterialIcons 
+                        name={activity.activityType?.name?.toLowerCase().includes('bài tập') ? 'assignment' : 'event-note'} 
+                        size={20} 
+                        color={COLORS.PRIMARY} 
+                      />
+                    </View>
+                    <View style={styles.activityContent}>
+                      <Text style={styles.activityStudentName}>{activity.studentName}</Text>
+                      <Text style={styles.activityType}>{activity.activityType?.name || 'Hoạt động'}</Text>
+                      <Text style={styles.activityNote} numberOfLines={2}>
+                        {activity.note || 'Không có ghi chú'}
+                      </Text>
+                      <Text style={styles.activityTime}>
+                        {new Date(activity.createdTime || activity.createdDate).toLocaleString('vi-VN', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </Text>
+                    </View>
+                    {activity.imageUrl && (
+                      <Image
+                        source={{ uri: activity.imageUrl }}
+                        style={styles.activityImage}
+                        resizeMode="cover"
+                      />
+                    )}
+                    {!activity.isViewed && (
+                      <View style={styles.unreadBadge} />
+                    )}
+                  </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}
@@ -3620,6 +3805,83 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.SURFACE,
+  },
+  // Activities Section Styles
+  activitiesCount: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '500',
+  },
+  activitiesList: {
+    gap: SPACING.SM,
+  },
+  activityCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  activityIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.INFO_BG,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.MD,
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityStudentName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS,
+  },
+  activityType: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '500',
+    marginBottom: SPACING.XS,
+  },
+  activityNote: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginBottom: SPACING.XS,
+    lineHeight: 18,
+  },
+  activityTime: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.XS,
+  },
+  activityImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginLeft: SPACING.SM,
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.PRIMARY,
+    borderWidth: 2,
+    borderColor: COLORS.SURFACE,
   },
 });
 

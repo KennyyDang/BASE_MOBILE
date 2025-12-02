@@ -233,6 +233,7 @@ const ScheduleScreen: React.FC = () => {
   const [showTimeframePicker, setShowTimeframePicker] = useState(false); // Hiển thị timeframe picker
   const [recentSearches, setRecentSearches] = useState<Array<{ studentId: string; studentName: string; date: string }>>([]); // Lịch sử tìm kiếm
   const scrollViewRef = useRef<ScrollView>(null); // Ref để scroll đến slots section
+  const dateScrollViewRef = useRef<ScrollView>(null); // Ref để scroll date selector
   const [slotsSectionY, setSlotsSectionY] = useState(0); // Vị trí Y của slots section
   const [showResults, setShowResults] = useState(false); // Hiển thị trang kết quả sau khi tìm kiếm
   const [availableDates, setAvailableDates] = useState<Date[]>([]); // Danh sách các ngày có slot
@@ -1747,21 +1748,29 @@ const ScheduleScreen: React.FC = () => {
     });
   }, [slots]);
 
-  // Get available dates from slots (next 7 days)
+  // Get available dates for date selector: tất cả các ngày trong tháng của selectedDate
   const getAvailableDates = useMemo(() => {
     const dates: Date[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Sử dụng selectedDate thay vì today để khi chọn tháng khác, thanh sẽ hiển thị tháng đó
+    const baseDate = selectedDate || new Date();
+    baseDate.setHours(0, 0, 0, 0);
+
+    // Lấy tháng và năm của selectedDate
+    const currentMonth = baseDate.getMonth();
+    const currentYear = baseDate.getFullYear();
     
-    // Generate next 7 days
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() + i);
+    // Tính số ngày trong tháng
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    
+    // Generate tất cả các ngày trong tháng
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(currentYear, currentMonth, day);
+      date.setHours(0, 0, 0, 0);
       dates.push(date);
     }
     
     return dates;
-  }, []);
+  }, [selectedDate]);
 
   // Update available dates when slots change
   useEffect(() => {
@@ -1830,6 +1839,25 @@ const ScheduleScreen: React.FC = () => {
       setWeekOffset(diffWeeks);
     }
   };
+
+  // Scroll to selected date in date selector when selectedDate changes
+  useEffect(() => {
+    if (dateScrollViewRef.current && selectedDate && getAvailableDates.length > 0) {
+      const dateIndex = getAvailableDates.findIndex(
+        (date) => date.toDateString() === selectedDate.toDateString()
+      );
+      if (dateIndex >= 0) {
+        // Calculate approximate scroll position (each date item is about 70px wide)
+        const scrollPosition = dateIndex * 70;
+        setTimeout(() => {
+          dateScrollViewRef.current?.scrollTo({
+            x: Math.max(0, scrollPosition - 100), // Offset to show some context
+            animated: true,
+          });
+        }, 300);
+      }
+    }
+  }, [selectedDate, getAvailableDates]);
 
   // Handle search
   const handleSearch = () => {
@@ -1958,48 +1986,58 @@ const ScheduleScreen: React.FC = () => {
                 <MaterialIcons name="arrow-drop-down" size={20} color={COLORS.SURFACE} />
               </TouchableOpacity>
               
-              {/* Horizontal Date Scroll */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.dateScrollContainer}
-              >
-                {getAvailableDates.map((date, index) => {
-                  const isSelected = date.toDateString() === selectedDate.toDateString();
-                  const hasSlots = dateHasSlots(date);
-                  return (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
-                        styles.dateItem,
-                        isSelected && styles.dateItemActive,
-                        !hasSlots && styles.dateItemNoSlots,
-                      ]}
-                      onPress={() => handleDateSelect(date)}
-                    >
-                      <Text style={[styles.dateItemDay, isSelected && styles.dateItemDayActive]}>
-                        {formatDateShort(date).split(',')[0]}
-                      </Text>
-                      <Text style={[styles.dateItemDate, isSelected && styles.dateItemDateActive]}>
-                        {formatDateShort(date).split(',')[1].trim()}
-                      </Text>
-                      {hasSlots && (
-                        <View style={styles.dateItemBadge}>
-                          <Text style={styles.dateItemBadgeText}>
-                            {groupedSlots[date.getDay() === 0 ? 0 : date.getDay() as WeekdayKey]?.length || 0}
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
+              {/* Horizontal Date Scroll with Fixed Calendar Button */}
+              <View style={styles.dateScrollWrapper}>
+                <ScrollView
+                  ref={dateScrollViewRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.dateScrollContainer}
+                  style={styles.dateScrollView}
+                  nestedScrollEnabled={true}
+                  scrollEnabled={true}
+                  bounces={false}
+                >
+                  {getAvailableDates.map((date, index) => {
+                    const isSelected = date.toDateString() === selectedDate.toDateString();
+                    const hasSlots = dateHasSlots(date);
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.dateItem,
+                          isSelected && styles.dateItemActive,
+                          !hasSlots && styles.dateItemNoSlots,
+                        ]}
+                        onPress={() => handleDateSelect(date)}
+                      >
+                        <Text style={[styles.dateItemDay, isSelected && styles.dateItemDayActive]}>
+                          {formatDateShort(date).split(',')[0]}
+                        </Text>
+                        <Text style={[styles.dateItemDate, isSelected && styles.dateItemDateActive]}>
+                          {formatDateShort(date).split(',')[1].trim()}
+                        </Text>
+                        {hasSlots && (
+                          <View style={styles.dateItemBadge}>
+                            <Text style={styles.dateItemBadgeText}>
+                              {groupedSlots[date.getDay() === 0 ? 0 : date.getDay() as WeekdayKey]?.length || 0}
+                            </Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                
+                {/* Fixed Calendar Button */}
                 <TouchableOpacity
-                  style={styles.calendarButton}
+                  style={styles.calendarButtonFixed}
                   onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
                 >
                   <MaterialIcons name="calendar-today" size={20} color={COLORS.SURFACE} />
                 </TouchableOpacity>
-              </ScrollView>
+              </View>
             </View>
           </View>
 
@@ -2036,7 +2074,12 @@ const ScheduleScreen: React.FC = () => {
                   const selectedRoomId = roomState?.selectedRoomId;
                   
                   return (
-                    <View key={slot.id} style={styles.resultsSlotCard}>
+                    <TouchableOpacity
+                      key={slot.id}
+                      style={styles.resultsSlotCard}
+                      activeOpacity={0.9}
+                      onPress={() => handleToggleRooms(slot.id)}
+                    >
                       {/* Time Section */}
                       <View style={styles.resultsSlotTimeSection}>
                         <View style={styles.resultsSlotTimeLeft}>
@@ -2275,7 +2318,7 @@ const ScheduleScreen: React.FC = () => {
                           )}
                         </>
                       )}
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
@@ -3906,8 +3949,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginRight: SPACING.XS,
   },
+  dateScrollWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+    height: 80, // Fixed height to ensure scroll works
+  },
+  dateScrollView: {
+    flex: 1,
+    marginRight: 60, // Space for fixed calendar button
+  },
   dateScrollContainer: {
     paddingRight: SPACING.MD,
+    alignItems: 'center',
   },
   dateItem: {
     alignItems: 'center',
@@ -3955,14 +4009,18 @@ const styles = StyleSheet.create({
     color: COLORS.SURFACE,
     fontWeight: '600',
   },
-  calendarButton: {
+  calendarButtonFixed: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.SM,
     paddingHorizontal: SPACING.MD,
-    marginLeft: SPACING.SM,
     borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    minWidth: 48,
+    marginLeft: SPACING.SM,
+    position: 'absolute',
+    right: 0,
+    zIndex: 10,
   },
   resultsSlotsContainer: {
     padding: SPACING.MD,

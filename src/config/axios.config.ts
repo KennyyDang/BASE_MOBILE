@@ -52,7 +52,7 @@ const getBaseURL = () => {
 // Create axios instance with base configuration
 const axiosInstance: AxiosInstance = axios.create({
   baseURL: getBaseURL(),
-  timeout: 30000, // 30 seconds
+  timeout: 60000, // 60 seconds (increased for file uploads)
   headers: {
     'Content-Type': 'application/json',
   },

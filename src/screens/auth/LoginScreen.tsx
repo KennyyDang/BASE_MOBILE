@@ -316,7 +316,7 @@ const LoginScreen: React.FC = () => {
               BASE
             </Text>
             <Text variant="bodyLarge" style={styles.subtitle}>
-              Brighway After-School Management System
+              Brightway After-School Management System
             </Text>
             <Text variant="headlineSmall" style={styles.welcomeText}>
               Chào mừng bạn quay trở lại!

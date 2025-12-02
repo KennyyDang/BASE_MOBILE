@@ -79,17 +79,54 @@ const StaffDashboardScreen: React.FC = () => {
         upcomingOnly: true,
       });
 
-      const allSlots = response.items || [];
+      const rawItems = response?.items ?? [];
       
+      // Map response từ API sang format StudentSlotResponse
+      // API trả về structure khác: có branch (không phải branchSlot), roomId/roomName trực tiếp, studentSlots array
+      const mappedItems: StudentSlotResponse[] = rawItems.map((item: any) => {
+        // Lấy student đầu tiên từ studentSlots array (nếu có)
+        const firstStudentSlot = item.studentSlots?.[0];
+        
+        return {
+          id: item.id, // branchSlotId
+          branchSlotId: item.id,
+          branchSlot: item.branch ? {
+            id: item.branch.id,
+            branchName: item.branch.branchName,
+          } : null,
+          packageSubscriptionId: '', // Không có trong response
+          date: item.date,
+          status: item.status,
+          parentNote: firstStudentSlot?.parentNote || null,
+          roomId: item.roomId || '',
+          room: item.roomName ? {
+            id: item.roomId || '',
+            roomName: item.roomName,
+            facilityId: item.facilityId || null,
+            facilityName: item.facilityName || null,
+          } : null,
+          studentId: firstStudentSlot?.student?.id || '',
+          studentName: firstStudentSlot?.student?.name || '',
+          parentId: firstStudentSlot?.parent?.id || '',
+          parentName: firstStudentSlot?.parent?.name || '',
+          timeframe: item.timeframe ? {
+            id: item.timeframe.id,
+            name: item.timeframe.name,
+            startTime: item.timeframe.startTime,
+            endTime: item.timeframe.endTime,
+          } : null,
+        } as StudentSlotResponse;
+      });
+
       // Filter today's slots
-      const todaySlotsList = allSlots.filter((slot) => {
+      const todaySlotsList = mappedItems.filter((slot) => {
         const slotDate = new Date(slot.date);
         slotDate.setHours(0, 0, 0, 0);
         return slotDate.getTime() === today.getTime();
       });
 
       // Filter upcoming slots (from tomorrow onwards)
-      const upcomingSlotsList = allSlots.filter((slot) => {
+      const upcomingSlotsList = mappedItems.filter((slot) => {
         const slotDate = new Date(slot.date);
         slotDate.setHours(0, 0, 0, 0);
         return slotDate.getTime() > today.getTime();
@@ -116,7 +153,7 @@ const StaffDashboardScreen: React.FC = () => {
     setRefreshing(false);
   }, [fetchStaffSlots]);
 
-  const handleQuickAction = (action: string) => {
+  const handleQuickAction = (action: string, initialDate?: Date) => {
     // Navigation trong cùng StaffTabNavigator
     const navigationAny = navigation as any;
     switch (action) {
@@ -125,14 +162,16 @@ const StaffDashboardScreen: React.FC = () => {
           navigationAny.navigate('ActivityTypes');
         }
         break;
-      case 'activities':
+      case 'profile':
         if (navigationAny.navigate) {
-          navigationAny.navigate('Activities');
+          navigationAny.navigate('StaffProfile');
         }
         break;
       case 'schedule':
         if (navigationAny.navigate) {
-          navigationAny.navigate('StaffSchedule');
+          navigationAny.navigate('StaffSchedule', {
+            initialDate: initialDate ? initialDate.toISOString() : undefined,
+          });
         }
         break;
       default:
@@ -152,7 +191,15 @@ const StaffDashboardScreen: React.FC = () => {
   };
 
   const getRoomName = (slot: StudentSlotResponse) => {
-    return slot.room?.roomName || 'Chưa có thông tin phòng';
+    // Lấy từ room.roomName hoặc từ rawData nếu có
+    const roomName = slot.room?.roomName || (slot as any)?._rawData?.roomName;
+    return roomName || 'Chưa có thông tin phòng';
+  };
+
+  const getFacilityName = (slot: StudentSlotResponse) => {
+    // Lấy facility name từ room hoặc rawData
+    const facilityName = slot.room?.facilityName || (slot as any)?._rawData?.facilityName;
+    return facilityName;
   };
 
   return (
@@ -169,7 +216,7 @@ const StaffDashboardScreen: React.FC = () => {
             <View style={styles.welcomeText}>
               <Text style={styles.welcomeTitle}>Xin chào!</Text>
               <Text style={styles.welcomeSubtitle}>
-                Chào mừng bạn đến với BASE - Hệ thống quản lý trung tâm đào tạo Brighway
+                Chào mừng bạn đến với BASE - Hệ thống quản lý trung tâm đào tạo Brightway
               </Text>
               {user?.email && (
                 <Text style={styles.userEmail}>{user.email}</Text>
@@ -198,11 +245,11 @@ const StaffDashboardScreen: React.FC = () => {
           
           <TouchableOpacity 
             style={[styles.statCard, styles.statCardClickable]}
-            onPress={() => handleQuickAction('activities')}
+            onPress={() => handleQuickAction('schedule')}
             activeOpacity={0.7}
           >
             <View style={[styles.statIconContainer, { backgroundColor: COLORS.SUCCESS_BG }]}>
-              <MaterialIcons name="event-note" size={24} color={COLORS.SUCCESS} />
+              <MaterialIcons name="schedule" size={24} color={COLORS.SUCCESS} />
             </View>
             {slotsLoading ? (
               <ActivityIndicator size="small" color={COLORS.TEXT_PRIMARY} style={{ marginTop: SPACING.SM }} />
@@ -240,10 +287,10 @@ const StaffDashboardScreen: React.FC = () => {
             
             <TouchableOpacity 
               style={styles.quickActionCard}
-              onPress={() => handleQuickAction('activities')}
+              onPress={() => handleQuickAction('profile')}
             >
-              <MaterialIcons name="event-note" size={32} color={COLORS.SECONDARY} />
-              <Text style={styles.quickActionText}>Hoạt động</Text>
+              <MaterialIcons name="person" size={32} color={COLORS.SECONDARY} />
+              <Text style={styles.quickActionText}>Xem hồ sơ</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -260,7 +307,11 @@ const StaffDashboardScreen: React.FC = () => {
         <View style={styles.todayClassesContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Lớp học hôm nay</Text>
-            <TouchableOpacity onPress={() => handleQuickAction('schedule')}>
+            <TouchableOpacity onPress={() => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              handleQuickAction('schedule', today);
+            }}>
               <Text style={styles.seeAllText}>Xem tất cả</Text>
             </TouchableOpacity>
           </View>
@@ -285,6 +336,11 @@ const StaffDashboardScreen: React.FC = () => {
                   key={slot.id}
                   style={styles.classCard}
                   activeOpacity={0.85}
+                  onPress={() => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    handleQuickAction('schedule', today);
+                  }}
                 >
                   <View style={styles.classInfo}>
                     <Text style={styles.className}>{getClassName(slot)}</Text>
@@ -292,7 +348,14 @@ const StaffDashboardScreen: React.FC = () => {
                       {getClassTimeRange(slot)}
                       {isToday ? ' • Hôm nay' : ` • ${formatDateTime(slot.date).date.split(',')[0]}`}
                     </Text>
-                    <Text style={styles.classRoom}>{getRoomName(slot)}</Text>
+                    <Text style={styles.classRoom}>
+                      Phòng: {getRoomName(slot)}
+                    </Text>
+                    {getFacilityName(slot) && (
+                      <Text style={styles.classFacility}>
+                        Cơ sở: {getFacilityName(slot)}
+                      </Text>
+                    )}
                     {slot.branchSlot?.branchName && (
                       <Text style={styles.classBranch}>{slot.branchSlot.branchName}</Text>
                     )}
@@ -315,7 +378,17 @@ const StaffDashboardScreen: React.FC = () => {
         <View style={styles.upcomingClassesContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Lớp học sắp tới</Text>
-            <TouchableOpacity onPress={() => handleQuickAction('schedule')}>
+            <TouchableOpacity onPress={() => {
+              // Navigate đến ngày mai nếu có upcoming slots, nếu không thì không truyền initialDate
+              if (upcomingSlots.length > 0) {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                tomorrow.setHours(0, 0, 0, 0);
+                handleQuickAction('schedule', tomorrow);
+              } else {
+                handleQuickAction('schedule');
+              }
+            }}>
               <Text style={styles.seeAllText}>Xem tất cả</Text>
             </TouchableOpacity>
           </View>
@@ -340,6 +413,11 @@ const StaffDashboardScreen: React.FC = () => {
                   key={slot.id}
                   style={styles.classCard}
                   activeOpacity={0.85}
+                  onPress={() => {
+                    const date = new Date(slot.date);
+                    date.setHours(0, 0, 0, 0);
+                    handleQuickAction('schedule', date);
+                  }}
                 >
                   <View style={styles.classInfo}>
                     <Text style={styles.className}>{getClassName(slot)}</Text>
@@ -347,7 +425,14 @@ const StaffDashboardScreen: React.FC = () => {
                       {getClassTimeRange(slot)}
                       {isTomorrow ? ' • Ngày mai' : ` • ${formatDateTime(slot.date).date.split(',')[0]}`}
                     </Text>
-                    <Text style={styles.classRoom}>{getRoomName(slot)}</Text>
+                    <Text style={styles.classRoom}>
+                      Phòng: {getRoomName(slot)}
+                    </Text>
+                    {getFacilityName(slot) && (
+                      <Text style={styles.classFacility}>
+                        Cơ sở: {getFacilityName(slot)}
+                      </Text>
+                    )}
                     {slot.branchSlot?.branchName && (
                       <Text style={styles.classBranch}>{slot.branchSlot.branchName}</Text>
                     )}
@@ -536,6 +621,12 @@ const styles = StyleSheet.create({
   classRoom: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.XS,
+  },
+  classFacility: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.XS,
   },
   classBranch: {
     fontSize: FONTS.SIZES.XS,

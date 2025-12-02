@@ -359,7 +359,7 @@ const DashboardScreen: React.FC = () => {
       case 'help':
         Alert.alert(
           'Hỗ trợ',
-          'Liên hệ hỗ trợ:\n\n📧 Email: support@brighway.edu.vn\n📞 Hotline: 1900-xxxx\n\nHoặc đến trực tiếp trung tâm để được hỗ trợ.',
+          'Liên hệ hỗ trợ:\n\n📧 Email: support@brightway.edu.vn\n📞 Hotline: 1900-xxxx\n\nHoặc đến trực tiếp trung tâm để được hỗ trợ.',
           [{ text: 'Đóng', style: 'default' }]
         );
         break;
@@ -395,7 +395,7 @@ const DashboardScreen: React.FC = () => {
             <View style={styles.welcomeText}>
               <Text style={styles.welcomeTitle}>Xin chào!</Text>
               <Text style={styles.welcomeSubtitle}>
-                Chào mừng bạn đến với BASE - Hệ thống quản lý trung tâm đào tạo Brighway
+                Chào mừng bạn đến với BASE - Hệ thống quản lý trung tâm đào tạo Brightway
               </Text>
             </View>
             <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>

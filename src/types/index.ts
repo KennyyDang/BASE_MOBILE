@@ -265,6 +265,9 @@ export type RootStackParamList = {
     slotDate?: string;
     slotTimeframe?: string;
   };
+  ActivityDetail: {
+    activityId: string;
+  };
   TransactionHistory: undefined;
   TransactionDetail: {
     transactionId: string;
@@ -296,6 +299,14 @@ export type RootStackParamList = {
     branchName?: string;
     roomName?: string;
   };
+  StudentManagement: {
+    branchSlotId: string;
+    date: string;
+    roomId?: string;
+    slotTimeframe?: string;
+    branchName?: string;
+    roomName?: string;
+  };
   RegisterChild: undefined;
   PurchaseService: {
     studentSlotId: string;
@@ -320,8 +331,8 @@ export type MainTabParamList = {
 export type StaffTabParamList = {
   StaffDashboard: undefined;
   ActivityTypes: undefined;
-  Activities: undefined;
-  StaffSchedule: undefined;
+  StaffSchedule: { initialDate?: string } | undefined;
+  StaffProfile: undefined;
 };
 
 export type WalletStackParamList = {

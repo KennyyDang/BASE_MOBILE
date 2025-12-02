@@ -213,8 +213,9 @@ const StudentActivityScreen: React.FC = () => {
   };
 
   const handleActivityPress = (activity: ActivityResponse) => {
-    // Khi tap vào activity card, đánh dấu là đã đọc
+    // Khi tap vào activity card, đánh dấu là đã đọc và navigate đến detail
     handleMarkAsViewed(activity);
+    navigation.navigate('ActivityDetail', { activityId: activity.id });
   };
 
   return (
