@@ -22,7 +22,7 @@ import { useCurrentUserWallet, useStudentWallets } from '../../hooks/useWalletAp
 import { useMyChildren } from '../../hooks/useChildrenApi';
 import { walletService } from '../../services/walletService';
 import { TransferSmartRequest, DepositResponse } from '../../types/api';
-import { MainTabParamList, RootStackParamList } from '../../types';
+import { RootStackParamList } from '../../types';
 import { COLORS } from '../../constants';
 
 const SPACING = {
@@ -51,10 +51,7 @@ const WALLET_TYPES = {
 };
 
 const WalletScreen: React.FC = () => {
-  type WalletNavigationProp = CompositeNavigationProp<
-    BottomTabNavigationProp<MainTabParamList, 'Wallet'>,
-    NativeStackNavigationProp<RootStackParamList>
-  >;
+  type WalletNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Wallet'>;
 
   const navigation = useNavigation<WalletNavigationProp>();
   const { data: walletData, loading, error, refetch } = useCurrentUserWallet();
@@ -114,7 +111,10 @@ const WalletScreen: React.FC = () => {
   };
 
   const handleWalletPress = (walletType: string) => {
-    // TODO: Navigate to specific wallet screen
+    const normalizedType = walletType?.toLowerCase();
+    if (normalizedType === 'main' || normalizedType === WALLET_TYPES.MAIN.toLowerCase()) {
+      handleParentWalletPress();
+    }
   };
 
   const handleTopUp = () => {
@@ -186,6 +186,20 @@ const WalletScreen: React.FC = () => {
 
   const handleTransactionHistory = () => {
     navigation.navigate('TransactionHistory');
+  };
+
+  const handleParentWalletPress = () => {
+    navigation.navigate('TransactionHistory', {
+      walletType: 'Parent',
+    });
+  };
+
+  const handleStudentWalletPress = (studentWallet: any) => {
+    navigation.navigate('TransactionHistory', {
+      walletId: studentWallet.id,
+      walletType: 'Student',
+      studentName: getStudentName(studentWallet),
+    });
   };
 
   const fetchRecentTransactions = useCallback(async () => {
@@ -293,7 +307,8 @@ const WalletScreen: React.FC = () => {
         <View style={styles.walletSection}>
             <TouchableOpacity 
             style={styles.walletCard}
-            onPress={() => handleWalletPress(walletData?.type || WALLET_TYPES.MAIN)}
+            onPress={handleParentWalletPress}
+            activeOpacity={0.7}
           >
             <View style={styles.walletHeader}>
               <View style={[
@@ -378,7 +393,8 @@ const WalletScreen: React.FC = () => {
                 <TouchableOpacity
                   key={studentWallet.id}
                   style={styles.studentWalletCard}
-                  onPress={() => handleWalletPress(studentWallet.type)}
+                  onPress={() => handleStudentWalletPress(studentWallet)}
+                  activeOpacity={0.7}
                 >
                   <View style={styles.walletHeader}>
                     <View style={[styles.walletIcon, { backgroundColor: COLORS.SECONDARY }]}>

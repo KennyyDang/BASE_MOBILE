@@ -160,15 +160,19 @@ const ForgotPasswordScreen: React.FC = () => {
           {/* Icon và Title */}
           <View style={styles.iconContainer}>
             <View style={styles.iconCircle}>
-              <MaterialIcons name="lock-reset" size={48} color={COLORS.PRIMARY} />
+              <MaterialIcons 
+                name={step === 'send-code' ? 'email' : 'vpn-key'} 
+                size={48} 
+                color={COLORS.PRIMARY} 
+              />
             </View>
             <Text variant="headlineMedium" style={styles.title}>
               {step === 'send-code' ? 'Quên mật khẩu?' : 'Đặt lại mật khẩu'}
             </Text>
             <Text variant="bodyMedium" style={styles.subtitle}>
               {step === 'send-code'
-                ? 'Nhập email của bạn để nhận mã đặt lại mật khẩu (5 ký tự)'
-                : 'Nhập mã đặt lại và mật khẩu mới của bạn'}
+                ? 'Nhập email của bạn để nhận mã đặt lại mật khẩu 5 ký tự'
+                : `Mã đã được gửi đến ${email}\nVui lòng nhập mã và mật khẩu mới`}
             </Text>
           </View>
 
@@ -204,7 +208,7 @@ const ForgotPasswordScreen: React.FC = () => {
                   <View style={styles.infoBox}>
                     <MaterialIcons name="info-outline" size={20} color={COLORS.PRIMARY} />
                     <Text style={styles.infoText}>
-                      Mã đặt lại mật khẩu sẽ được gửi đến email của bạn. Vui lòng kiểm tra cả hộp thư spam.
+                      Mã đặt lại mật khẩu 5 ký tự sẽ được gửi đến email của bạn. Vui lòng kiểm tra cả hộp thư spam.
                     </Text>
                   </View>
                 </>
@@ -213,6 +217,13 @@ const ForgotPasswordScreen: React.FC = () => {
                   <View style={styles.emailDisplayBox}>
                     <MaterialIcons name="email" size={20} color={COLORS.PRIMARY} />
                     <Text style={styles.emailDisplayText}>{email}</Text>
+                  </View>
+
+                  <View style={styles.infoBox}>
+                    <MaterialIcons name="info-outline" size={20} color={COLORS.PRIMARY} />
+                    <Text style={styles.infoText}>
+                      Vui lòng nhập mã 5 ký tự đã được gửi đến email của bạn và mật khẩu mới.
+                    </Text>
                   </View>
 
                   <TextInput

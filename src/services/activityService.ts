@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import axiosInstance from '../config/axios.config';
 import { MyChildrenActivitiesResponse, ActivityResponse } from '../types/api';
 
@@ -80,6 +81,46 @@ class ActivityService {
   }
 
   /**
+   * Get student activities
+   * Endpoint: GET /api/Activity/student-activities
+   * @param params Query parameters: studentId, pageIndex, pageSize, studentSlotId (optional)
+   * @returns Paginated response with activity items
+   */
+  async getStudentActivities(params: {
+    studentId: string;
+    pageIndex?: number;
+    pageSize?: number;
+    studentSlotId?: string;
+  }): Promise<PagedActivitiesResponse> {
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('studentId', params.studentId);
+      if (params.pageIndex !== undefined) {
+        queryParams.append('pageIndex', params.pageIndex.toString());
+      } else {
+        queryParams.append('pageIndex', '1');
+      }
+      if (params.pageSize !== undefined) {
+        queryParams.append('pageSize', params.pageSize.toString());
+      } else {
+        queryParams.append('pageSize', '20');
+      }
+      // Chỉ thêm studentSlotId nếu được cung cấp và không phải empty string
+      if (params.studentSlotId && params.studentSlotId.trim() !== '') {
+        queryParams.append('studentSlotId', params.studentSlotId);
+      }
+
+      const url = `/api/Activity/student-activities?${queryParams.toString()}`;
+      
+      const response = await axiosInstance.get<PagedActivitiesResponse>(url);
+      
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch student activities';
+    }
+  }
+
+  /**
    * Get paginated activities with filters
    * Endpoint: GET /api/Activity/paged
    * @param params Query parameters: pageIndex, pageSize, StudentSlotId, ActivityTypeId, CreatedById, FromDate, ToDate, IsViewed, Keyword
@@ -89,6 +130,7 @@ class ActivityService {
     pageIndex?: number;
     pageSize?: number;
     StudentSlotId?: string;
+    StudentId?: string;
     ActivityTypeId?: string;
     CreatedById?: string;
     FromDate?: string;
@@ -107,6 +149,9 @@ class ActivityService {
       }
       if (params?.StudentSlotId) {
         queryParams.append('StudentSlotId', params.StudentSlotId);
+      }
+      if (params?.StudentId) {
+        queryParams.append('StudentId', params.StudentId);
       }
       if (params?.ActivityTypeId) {
         queryParams.append('ActivityTypeId', params.ActivityTypeId);
@@ -238,6 +283,52 @@ class ActivityService {
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to check-in student';
+    }
+  }
+
+  /**
+   * Check-in student activity with image (staff)
+   * Endpoint: POST /api/Activity/checkin/staff/{studentId}/with-image
+   * @param studentId Student ID (UUID)
+   * @param imageUri Local file URI from image picker/camera
+   * @returns Created activity response with check-in information
+   */
+  async checkInStudentWithImage(studentId: string, imageUri: string): Promise<ActivityResponse> {
+    try {
+      // Create FormData for multipart/form-data
+      const formData = new FormData();
+      
+      // Fix URI for Android - remove 'file://' prefix if exists
+      let fixedUri = imageUri;
+      if (imageUri.startsWith('file://')) {
+        fixedUri = imageUri.replace('file://', '');
+      }
+      
+      // Get file extension and mime type
+      const fileExtension = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
+      const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
+      
+      // Append image file to FormData
+      // @ts-ignore - FormData type issue with React Native
+      formData.append('image', {
+        uri: Platform.OS === 'android' ? fixedUri : imageUri,
+        type: mimeType,
+        name: `checkin_${studentId}_${Date.now()}.${fileExtension}`,
+      } as any);
+
+      const response = await axiosInstance.post<ActivityResponse>(
+        `/api/Activity/checkin/staff/${studentId}/with-image`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 60000, // 60 seconds timeout for file upload
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to check-in student with image';
     }
   }
 }

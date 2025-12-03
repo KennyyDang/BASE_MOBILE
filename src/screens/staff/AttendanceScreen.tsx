@@ -10,7 +10,9 @@ import {
   Alert,
   FlatList,
   TextInput,
+  Linking,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { COLORS, SPACING, FONTS } from '../../constants';
@@ -33,6 +35,7 @@ interface SlotStudent {
   studentId: string;
   studentName: string;
   parentName?: string;
+  parentPhone?: string;
   status: string;
   parentNote?: string;
   isCheckedIn: boolean;
@@ -78,6 +81,7 @@ const AttendanceScreen: React.FC = () => {
   const [bulkCheckingIn, setBulkCheckingIn] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [capturingImage, setCapturingImage] = useState<string | null>(null); // ID của học sinh đang chụp ảnh
 
   // Kiểm tra quyền truy cập - chỉ dành cho staff
   useEffect(() => {
@@ -122,7 +126,6 @@ const AttendanceScreen: React.FC = () => {
 
       // Kiểm tra response hợp lệ
       if (!response || !response.items || !Array.isArray(response.items)) {
-        console.warn('Invalid API response:', response);
         setStudents([]);
         setLoading(false);
         return;
@@ -198,7 +201,8 @@ const AttendanceScreen: React.FC = () => {
           id: studentSlot.studentSlotId || studentSlot.id || '',
           studentId: studentSlot.student?.id || '',
           studentName: studentSlot.student?.name || 'Chưa có tên',
-          parentName: studentSlot.parent?.name || '',
+          parentName: studentSlot.parent?.name || studentSlot.parentName || '',
+          parentPhone: studentSlot.parent?.phoneNumber || studentSlot.parent?.phone || studentSlot.parentPhone || undefined,
           status: studentSlot.status || 'Booked',
           parentNote: studentSlot.parentNote || undefined,
           isCheckedIn: false, // TODO: Lấy từ API thực tế
@@ -261,9 +265,38 @@ const AttendanceScreen: React.FC = () => {
 
   const handleCheckInSingle = async (studentId: string) => {
     try {
+      // Yêu cầu quyền truy cập camera
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Quyền truy cập',
+          'Cần quyền truy cập camera để chụp ảnh điểm danh.'
+        );
+        return;
+      }
+
+      // Mở camera để chụp ảnh
+      setCapturingImage(studentId);
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        setCapturingImage(null);
+        return; // Người dùng hủy chụp ảnh
+      }
+
+      const imageUri = result.assets[0].uri;
+      setCapturingImage(null);
       setCheckingIn(studentId);
-      await activityService.checkInStudent(studentId);
+
+      // Gọi API checkin với ảnh
+      await activityService.checkInStudentWithImage(studentId, imageUri);
       Alert.alert('Thành công', 'Đã điểm danh học sinh thành công!');
+      
       // Refresh danh sách
       await fetchStudents();
     } catch (error: any) {
@@ -274,6 +307,7 @@ const AttendanceScreen: React.FC = () => {
       Alert.alert('Lỗi', message);
     } finally {
       setCheckingIn(null);
+      setCapturingImage(null);
     }
   };
 
@@ -283,9 +317,19 @@ const AttendanceScreen: React.FC = () => {
       return;
     }
 
+    // Yêu cầu quyền truy cập camera
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Quyền truy cập',
+        'Cần quyền truy cập camera để chụp ảnh điểm danh.'
+      );
+      return;
+    }
+
     Alert.alert(
       'Xác nhận',
-      `Bạn có chắc chắn muốn điểm danh cho ${selectedStudents.size} học sinh đã chọn?`,
+      `Bạn có chắc chắn muốn điểm danh cho ${selectedStudents.size} học sinh đã chọn?\n\nLưu ý: Bạn sẽ cần chụp ảnh cho từng học sinh.`,
       [
         {
           text: 'Hủy',
@@ -300,10 +344,24 @@ const AttendanceScreen: React.FC = () => {
               let successCount = 0;
               let failCount = 0;
 
-              // Điểm danh từng học sinh
+              // Điểm danh từng học sinh với ảnh
               for (const studentId of studentIds) {
                 try {
-                  await activityService.checkInStudent(studentId);
+                  // Mở camera để chụp ảnh cho từng học sinh
+                  const result = await ImagePicker.launchCameraAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    allowsEditing: true,
+                    aspect: [4, 3],
+                    quality: 0.8,
+                  });
+
+                  if (result.canceled || !result.assets || result.assets.length === 0) {
+                    failCount++;
+                    continue; // Bỏ qua học sinh này nếu hủy chụp ảnh
+                  }
+
+                  const imageUri = result.assets[0].uri;
+                  await activityService.checkInStudentWithImage(studentId, imageUri);
                   successCount++;
                 } catch (error) {
                   failCount++;
@@ -475,6 +533,7 @@ const AttendanceScreen: React.FC = () => {
           renderItem={({ item: student }) => {
             const isSelected = selectedStudents.has(student.studentId);
             const isCheckingInThis = checkingIn === student.studentId;
+            const isCapturingImage = capturingImage === student.studentId;
 
             return (
               <TouchableOpacity
@@ -492,21 +551,30 @@ const AttendanceScreen: React.FC = () => {
                   >
                     <MaterialIcons
                       name={isSelected ? 'check-box' : 'check-box-outline-blank'}
-                      size={24}
+                      size={22}
                       color={isSelected ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
                     />
                   </TouchableOpacity>
 
                   <View style={styles.studentIcon}>
-                    <MaterialIcons name="person" size={24} color={COLORS.PRIMARY} />
+                    <MaterialIcons name="person" size={20} color={COLORS.PRIMARY} />
                   </View>
 
                   <View style={styles.studentContent}>
                     <Text style={styles.studentName}>{student.studentName}</Text>
                     {student.parentName && (
-                      <Text style={styles.studentParent}>
-                        Phụ huynh: {student.parentName}
-                      </Text>
+                      <View style={styles.parentInfoRow}>
+                        <MaterialIcons name="person-outline" size={14} color={COLORS.TEXT_SECONDARY} />
+                        <Text style={styles.studentParent}>
+                          {student.parentName}
+                        </Text>
+                      </View>
+                    )}
+                    {student.parentPhone && (
+                      <View style={styles.parentPhoneRow}>
+                        <MaterialIcons name="phone" size={14} color={COLORS.PRIMARY} />
+                        <Text style={styles.studentParentPhone}>{student.parentPhone}</Text>
+                      </View>
                     )}
                   </View>
 
@@ -520,7 +588,7 @@ const AttendanceScreen: React.FC = () => {
                   >
                     <MaterialIcons
                       name="check-circle"
-                      size={16}
+                      size={14}
                       color={getStatusColor(student.status)}
                     />
                     <Text
@@ -542,31 +610,53 @@ const AttendanceScreen: React.FC = () => {
                 )}
 
                 <View style={styles.studentActions}>
-                  {student.isCheckedIn ? (
-                    <View style={styles.checkedInBadge}>
-                      <MaterialIcons name="check-circle" size={16} color={COLORS.SUCCESS} />
-                      <Text style={styles.checkedInText}>Đã điểm danh</Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={[
-                        styles.checkInButton,
-                        isCheckingInThis && styles.checkInButtonDisabled,
-                      ]}
-                      onPress={() => handleCheckInSingle(student.studentId)}
-                      disabled={isCheckingInThis || bulkCheckingIn}
-                      activeOpacity={0.7}
-                    >
-                      {isCheckingInThis ? (
-                        <ActivityIndicator size="small" color={COLORS.SURFACE} />
-                      ) : (
-                        <>
-                          <MaterialIcons name="check-circle" size={16} color={COLORS.SURFACE} />
-                          <Text style={styles.checkInButtonText}>Điểm danh</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  )}
+                  <View style={styles.actionsLeft}>
+                    {student.parentPhone && (
+                      <TouchableOpacity
+                        style={styles.callButton}
+                        onPress={() => {
+                          const phoneNumber = student.parentPhone?.replace(/[^0-9+]/g, '');
+                          if (phoneNumber) {
+                            Linking.openURL(`tel:${phoneNumber}`).catch((err) => {
+                              Alert.alert('Lỗi', 'Không thể mở ứng dụng gọi điện. Vui lòng thử lại.');
+                            });
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons name="phone" size={18} color={COLORS.SURFACE} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <View style={styles.actionsRight}>
+                    {student.isCheckedIn ? (
+                      <View style={styles.checkedInBadge}>
+                        <MaterialIcons name="check-circle" size={16} color={COLORS.SUCCESS} />
+                        <Text style={styles.checkedInText}>Đã điểm danh</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={[
+                          styles.checkInButton,
+                          (isCheckingInThis || isCapturingImage) && styles.checkInButtonDisabled,
+                        ]}
+                        onPress={() => handleCheckInSingle(student.studentId)}
+                        disabled={isCheckingInThis || isCapturingImage || bulkCheckingIn}
+                        activeOpacity={0.7}
+                      >
+                        {isCheckingInThis || isCapturingImage ? (
+                          <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                        ) : (
+                          <>
+                            <MaterialIcons name="check-circle" size={18} color={COLORS.SURFACE} />
+                            <Text style={styles.checkInButtonText}>
+                              {isCapturingImage ? 'Đang chụp ảnh...' : 'Điểm danh'}
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </TouchableOpacity>
             );
@@ -719,44 +809,71 @@ const styles = StyleSheet.create({
   },
   studentCard: {
     backgroundColor: COLORS.SURFACE,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: SPACING.MD,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
+    marginBottom: SPACING.SM,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   studentCardSelected: {
     borderColor: COLORS.PRIMARY,
     borderWidth: 2,
-    backgroundColor: COLORS.INFO_BG,
+    backgroundColor: COLORS.PRIMARY_50,
   },
   studentHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: SPACING.SM,
   },
   checkbox: {
-    marginRight: SPACING.SM,
+    padding: SPACING.XS,
+    marginTop: 2,
   },
   studentIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.INFO_BG,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.PRIMARY + '15',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: SPACING.MD,
+    marginTop: 2,
   },
   studentContent: {
     flex: 1,
+    marginTop: 2,
   },
   studentName: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: '700',
     color: COLORS.TEXT_PRIMARY,
     marginBottom: SPACING.XS,
+  },
+  parentInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.XS,
+    gap: SPACING.XS,
   },
   studentParent: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
+  },
+  parentPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.XS,
+    gap: SPACING.XS,
+    paddingVertical: SPACING.XS / 2,
+  },
+  studentParentPhone: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
   },
   studentStatusBadge: {
     flexDirection: 'row',
@@ -765,6 +882,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.XS,
     borderRadius: 12,
     gap: SPACING.XS,
+    marginTop: 2,
   },
   studentStatusText: {
     fontSize: FONTS.SIZES.XS,
@@ -787,20 +905,49 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   studentActions: {
-    marginTop: SPACING.SM,
-    paddingTop: SPACING.SM,
+    marginTop: SPACING.MD,
+    paddingTop: SPACING.MD,
     borderTopWidth: 1,
-    borderTopColor: COLORS.BORDER,
+    borderTopColor: COLORS.BORDER + '40',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  actionsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
+  },
+  actionsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  callButton: {
+    backgroundColor: COLORS.SUCCESS,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.SUCCESS,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   checkInButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.PRIMARY,
-    paddingHorizontal: SPACING.MD,
+    paddingHorizontal: SPACING.LG,
     paddingVertical: SPACING.SM,
     borderRadius: 12,
-    alignSelf: 'flex-start',
     gap: SPACING.XS,
+    shadowColor: COLORS.PRIMARY,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   checkInButtonDisabled: {
     opacity: 0.6,

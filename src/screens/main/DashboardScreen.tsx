@@ -56,8 +56,6 @@ const DashboardScreen: React.FC = () => {
   const [upcomingSlots, setUpcomingSlots] = useState<StudentSlotResponse[]>([]);
   const [allUpcomingSlots, setAllUpcomingSlots] = useState<StudentSlotResponse[]>([]); // Store all slots for counting
   const [slotsLoading, setSlotsLoading] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState<StudentSlotResponse | null>(null);
-  const [slotDetailModalVisible, setSlotDetailModalVisible] = useState(false);
   const [recentTransactions, setRecentTransactions] = useState<TransactionResponse[]>([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,6 +96,9 @@ const DashboardScreen: React.FC = () => {
     try {
       const now = new Date();
       const allUpcomingSlots: StudentSlotResponse[] = [];
+      // Track slots đã thêm để tránh duplicate ngay trong vòng lặp
+      const addedSlotIds = new Set<string>();
+      const addedSlotKeys = new Set<string>();
 
       // Fetch slots for all students
       for (const student of students) {
@@ -152,13 +153,33 @@ const DashboardScreen: React.FC = () => {
                   : undefined;
 
                 // Map room to match StudentSlotResponse structure
-                const mappedRoom = room
+                const mappedRoom = room && room.id
                   ? {
                       id: room.id,
                       roomName: room.roomName,
                     }
                   : undefined;
 
+                // Tạo unique key để check duplicate
+                const dateStr = slot.date ? new Date(slot.date).toISOString().split('T')[0] : '';
+                const timeframeId = slot.timeframe?.id || '';
+                const branchSlotId = slot.branchSlotId || '';
+                const studentId = slot.studentId || student.id || '';
+                const roomId = slot.roomId || '';
+                const uniqueKey = `${branchSlotId}_${dateStr}_${timeframeId}_${studentId}_${roomId}`;
+                
+                // Check duplicate: nếu đã có slot.id hoặc uniqueKey thì bỏ qua
+                if (slot.id && addedSlotIds.has(slot.id)) {
+                  continue; // Skip duplicate slot
+                }
+                if (uniqueKey && addedSlotKeys.has(uniqueKey)) {
+                  continue; // Skip duplicate slot
+                }
+                
+                // Đánh dấu đã thêm
+                if (slot.id) addedSlotIds.add(slot.id);
+                if (uniqueKey) addedSlotKeys.add(uniqueKey);
+                
                 allUpcomingSlots.push({
                   ...slot,
                   branchSlot: mappedBranchSlot,
@@ -166,6 +187,26 @@ const DashboardScreen: React.FC = () => {
                 });
               } catch (err) {
                 // If enrichment fails, still add the slot without extra info
+                // Tạo unique key để check duplicate
+                const dateStr = slot.date ? new Date(slot.date).toISOString().split('T')[0] : '';
+                const timeframeId = slot.timeframe?.id || '';
+                const branchSlotId = slot.branchSlotId || '';
+                const studentId = slot.studentId || student.id || '';
+                const roomId = slot.roomId || '';
+                const uniqueKey = `${branchSlotId}_${dateStr}_${timeframeId}_${studentId}_${roomId}`;
+                
+                // Check duplicate
+                if (slot.id && addedSlotIds.has(slot.id)) {
+                  continue; // Skip duplicate slot
+                }
+                if (uniqueKey && addedSlotKeys.has(uniqueKey)) {
+                  continue; // Skip duplicate slot
+                }
+                
+                // Đánh dấu đã thêm
+                if (slot.id) addedSlotIds.add(slot.id);
+                if (uniqueKey) addedSlotKeys.add(uniqueKey);
+                
                 allUpcomingSlots.push({
                   ...slot,
                   branchSlot: undefined,
@@ -179,8 +220,41 @@ const DashboardScreen: React.FC = () => {
         }
       }
 
-      // Sort by date
-      const sorted = allUpcomingSlots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      // Deduplicate: Ưu tiên dựa trên slot.id, sau đó dùng combination key
+      const uniqueSlotsById = new Map<string, StudentSlotResponse>();
+      const uniqueSlotsByKey = new Map<string, StudentSlotResponse>();
+      
+      allUpcomingSlots.forEach((slot) => {
+        // Bước 1: Deduplicate dựa trên slot.id (nếu có)
+        if (slot.id) {
+          if (!uniqueSlotsById.has(slot.id)) {
+            uniqueSlotsById.set(slot.id, slot);
+          }
+          return; // Đã xử lý bằng id, không cần xử lý bằng key
+        }
+        
+        // Bước 2: Nếu không có id, dùng combination key
+        const dateStr = slot.date ? new Date(slot.date).toISOString().split('T')[0] : '';
+        const timeframeId = slot.timeframe?.id || '';
+        const branchSlotId = slot.branchSlotId || '';
+        const studentId = slot.studentId || '';
+        const roomId = slot.roomId || '';
+        
+        // Key phức hợp để đảm bảo không duplicate
+        const uniqueKey = `${branchSlotId}_${dateStr}_${timeframeId}_${studentId}_${roomId}`;
+        
+        if (uniqueKey && !uniqueSlotsByKey.has(uniqueKey)) {
+          uniqueSlotsByKey.set(uniqueKey, slot);
+        }
+      });
+      
+      // Kết hợp cả hai maps
+      const uniqueSlotsMap = new Map([...uniqueSlotsById, ...uniqueSlotsByKey]);
+
+      // Convert map to array và sort by date
+      const uniqueSlots = Array.from(uniqueSlotsMap.values());
+      const sorted = uniqueSlots.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
       // Store all slots for counting
       setAllUpcomingSlots(sorted);
       // Display only top 5 for the list
@@ -309,9 +383,12 @@ const DashboardScreen: React.FC = () => {
     }
   };
 
-  const handleViewSlotDetail = (slot: StudentSlotResponse) => {
-    setSelectedSlot(slot);
-    setSlotDetailModalVisible(true);
+  const handleSlotPress = (slot: StudentSlotResponse) => {
+    // Navigate to ClassDetail (Chi tiết lớp học) với slotId và studentId
+    navigation.navigate('ClassDetail', {
+      slotId: slot.id,
+      studentId: slot.studentId,
+    });
   };
 
   const getClassTimeRange = (slot: StudentSlotResponse) => {
@@ -333,28 +410,29 @@ const DashboardScreen: React.FC = () => {
   const handleQuickAction = (action: string) => {
     switch (action) {
       case 'schedule':
-        navigation.navigate('Schedule');
+        (navigation as any).navigate('Main', { screen: 'Schedule' });
         break;
       case 'wallet':
-        navigation.navigate('Main', { screen: 'Wallet' });
+        navigation.navigate('Wallet');
         break;
       case 'transactionHistory':
         navigation.navigate('TransactionHistory');
         break;
       case 'children':
-        navigation.navigate('Main', { screen: 'Children' });
+        // Navigate to Dashboard which is in Main tab, children info is shown there
+        (navigation as any).navigate('Main', { screen: 'Dashboard' });
         break;
       case 'notifications':
         navigation.navigate('Notifications');
         break;
       case 'profile':
-        navigation.navigate('Main', { screen: 'Profile' });
+        (navigation as any).navigate('Main', { screen: 'Profile' });
         break;
       case 'subscriptions':
         navigation.navigate('MySubscriptions');
         break;
       case 'bookedClasses':
-        navigation.navigate('Main', { screen: 'BookedClasses' });
+        (navigation as any).navigate('Main', { screen: 'BookedClasses' });
         break;
       case 'help':
         Alert.alert(
@@ -570,11 +648,14 @@ const DashboardScreen: React.FC = () => {
                 <TouchableOpacity
                   key={slot.id}
                   style={styles.classCard}
-                  onPress={() => handleViewSlotDetail(slot)}
+                  onPress={() => handleSlotPress(slot)}
                   activeOpacity={0.85}
                 >
                   <View style={styles.classInfo}>
                     <Text style={styles.className}>{getClassName(slot)}</Text>
+                    {slot.studentName && (
+                      <Text style={styles.studentName}>{slot.studentName}</Text>
+                    )}
                     <Text style={styles.classTime}>
                       {getClassTimeRange(slot)}
                       {isToday ? ' • Hôm nay' : isTomorrow ? ' • Ngày mai' : ` • ${formatDateTime(slot.date).date.split(',')[0]}`}
@@ -659,102 +740,6 @@ const DashboardScreen: React.FC = () => {
           ) : null}
         </View>
       </ScrollView>
-
-      {/* Slot Detail Modal */}
-      <Modal
-        visible={slotDetailModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setSlotDetailModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chi tiết lịch học</Text>
-              <TouchableOpacity onPress={() => setSlotDetailModalVisible(false)}>
-                <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
-              </TouchableOpacity>
-            </View>
-            
-            {selectedSlot && (
-              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                <View style={styles.slotDetailSection}>
-                  <View style={styles.slotDetailRow}>
-                    <MaterialIcons name="event" size={20} color={COLORS.PRIMARY} />
-                    <View style={styles.slotDetailContent}>
-                      <Text style={styles.slotDetailLabel}>Ngày học</Text>
-                      <Text style={styles.slotDetailValue}>
-                        {formatDateTime(selectedSlot.date).date}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.slotDetailRow}>
-                    <MaterialIcons name="access-time" size={20} color={COLORS.SECONDARY} />
-                    <View style={styles.slotDetailContent}>
-                      <Text style={styles.slotDetailLabel}>Giờ học</Text>
-                      <Text style={styles.slotDetailValue}>
-                        {getClassTimeRange(selectedSlot)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.slotDetailRow}>
-                    <MaterialIcons name="meeting-room" size={20} color={COLORS.ACCENT} />
-                    <View style={styles.slotDetailContent}>
-                      <Text style={styles.slotDetailLabel}>Phòng học</Text>
-                      <Text style={styles.slotDetailValue}>
-                        {getRoomName(selectedSlot)}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {selectedSlot.branchSlot?.branchName && (
-                    <View style={styles.slotDetailRow}>
-                      <MaterialIcons name="location-on" size={20} color={COLORS.SECONDARY} />
-                      <View style={styles.slotDetailContent}>
-                        <Text style={styles.slotDetailLabel}>Chi nhánh</Text>
-                        <Text style={styles.slotDetailValue}>
-                          {selectedSlot.branchSlot.branchName}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-
-                  <View style={styles.slotDetailRow}>
-                    <MaterialIcons name="check-circle" size={20} color={COLORS.SUCCESS} />
-                    <View style={styles.slotDetailContent}>
-                      <Text style={styles.slotDetailLabel}>Trạng thái</Text>
-                      <Text style={styles.slotDetailValue}>
-                        {selectedSlot.status === 'Booked' ? 'Đã đặt' : selectedSlot.status}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {selectedSlot.parentNote && (
-                    <View style={styles.slotDetailRow}>
-                      <MaterialIcons name="note" size={20} color={COLORS.ACCENT} />
-                      <View style={styles.slotDetailContent}>
-                        <Text style={styles.slotDetailLabel}>Ghi chú của phụ huynh</Text>
-                        <Text style={styles.slotDetailValue}>{selectedSlot.parentNote}</Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              </ScrollView>
-            )}
-            
-            <View style={styles.modalFooter}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.modalButtonFull]}
-                onPress={() => setSlotDetailModalVisible(false)}
-              >
-                <Text style={styles.modalButtonText}>Đóng</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -912,6 +897,12 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     marginBottom: SPACING.XS,
   },
+  studentName: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+    marginBottom: SPACING.XS,
+  },
   classTime: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
@@ -1015,80 +1006,6 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.XS,
     color: COLORS.TEXT_SECONDARY,
     marginTop: SPACING.XS,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: COLORS.SURFACE,
-    borderRadius: 16,
-    padding: SPACING.LG,
-    width: '90%',
-    maxWidth: 400,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.MD,
-  },
-  modalTitle: {
-    fontSize: FONTS.SIZES.LG,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-  },
-  modalBody: {
-    marginBottom: SPACING.MD,
-    maxHeight: 400,
-  },
-  slotDetailSection: {
-    marginBottom: SPACING.MD,
-  },
-  slotDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: SPACING.MD,
-    paddingBottom: SPACING.MD,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.BORDER,
-  },
-  slotDetailContent: {
-    flex: 1,
-    marginLeft: SPACING.MD,
-  },
-  slotDetailLabel: {
-    fontSize: FONTS.SIZES.SM,
-    color: COLORS.TEXT_SECONDARY,
-    marginBottom: SPACING.XS,
-  },
-  slotDetailValue: {
-    fontSize: FONTS.SIZES.MD,
-    color: COLORS.TEXT_PRIMARY,
-    fontWeight: '600',
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: SPACING.MD,
-  },
-  modalButton: {
-    backgroundColor: COLORS.PRIMARY,
-    paddingVertical: SPACING.SM,
-    paddingHorizontal: SPACING.LG,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  modalButtonFull: {
-    flex: 1,
-  },
-  modalButtonText: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
-    color: COLORS.SURFACE,
   },
 });
 

@@ -392,61 +392,26 @@ const StaffScheduleScreen: React.FC = () => {
     }
   }, [selectedDate, getAvailableDates]);
 
-  const handleSlotPress = async (slot: StudentSlotResponse & { _rawData?: any }) => {
-    setSelectedSlot(slot);
-    setSlotDetailModalVisible(true);
-    setLoadingStudents(true);
-    setSlotStudents([]);
+  const handleSlotPress = (slot: StudentSlotResponse & { _rawData?: any }) => {
+    if (!slot) {
+      return;
+    }
 
     try {
-      // Lấy studentSlots từ rawData nếu có, nếu không thì fetch lại
-      if (slot._rawData?.studentSlots) {
-        // Map từ studentSlots array trong response
-        const students: SlotStudent[] = slot._rawData.studentSlots.map((studentSlot: any) => ({
-          id: studentSlot.studentSlotId,
-          studentId: studentSlot.student?.id || '',
-          studentName: studentSlot.student?.name || '',
-          parentName: studentSlot.parent?.name || '',
-          status: studentSlot.status || 'Booked',
-          parentNote: studentSlot.parentNote || undefined,
-        }));
-        setSlotStudents(students);
-      } else {
-        // Fallback: fetch lại từ API
-        const response = await studentSlotService.getStaffSlots({
-          branchSlotId: slot.branchSlotId,
-          date: slot.date,
-          pageSize: 100,
-        });
-
-        // Tìm slot có cùng roomId
-        const matchingSlot = response.items.find((item: any) => {
-          const itemRoomId = item.roomId || (item as any).roomId;
-          return itemRoomId === slot.roomId;
-        });
-
-        if (matchingSlot?._rawData?.studentSlots) {
-          const students: SlotStudent[] = matchingSlot._rawData.studentSlots.map((studentSlot: any) => ({
-            id: studentSlot.studentSlotId,
-            studentId: studentSlot.student?.id || '',
-            studentName: studentSlot.student?.name || '',
-            parentName: studentSlot.parent?.name || '',
-            status: studentSlot.status || 'Booked',
-            parentNote: studentSlot.parentNote || undefined,
-          }));
-          setSlotStudents(students);
-        } else {
-          setSlotStudents([]);
-        }
-      }
+      navigation.navigate('StudentManagement', {
+        branchSlotId: slot.branchSlotId,
+        date: slot.date,
+        roomId: slot.roomId,
+        slotTimeframe: slot.timeframe?.name,
+        branchName: slot.branchSlot?.branchName,
+        roomName: slot.room?.roomName,
+      });
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
         error?.message ||
-        'Không thể tải danh sách học sinh.';
+        'Không thể mở trang quản lý học sinh. Vui lòng thử lại.';
       Alert.alert('Lỗi', message);
-    } finally {
-      setLoadingStudents(false);
     }
   };
 

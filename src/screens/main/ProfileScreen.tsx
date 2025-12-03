@@ -17,6 +17,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
@@ -67,6 +68,8 @@ const ProfileScreen: React.FC = () => {
   const [editPhoneNumber, setEditPhoneNumber] = useState('');
   const [updating, setUpdating] = useState(false);
   const [loadingFamilyProfiles, setLoadingFamilyProfiles] = useState(false);
+  const [showChildrenSection, setShowChildrenSection] = useState(false);
+  const [showActivitiesSection, setShowActivitiesSection] = useState(false);
   
   // Add Family Profile Modal States
   const [addFamilyModalVisible, setAddFamilyModalVisible] = useState(false);
@@ -127,14 +130,6 @@ const ProfileScreen: React.FC = () => {
   const [showAddDatePicker, setShowAddDatePicker] = useState(false);
   const [showAddIssuedDatePicker, setShowAddIssuedDatePicker] = useState(false);
   const [showAddExpirationDatePicker, setShowAddExpirationDatePicker] = useState(false);
-  const [addSelectedDayInput, setAddSelectedDayInput] = useState<string>('');
-  const [addSelectedMonthInput, setAddSelectedMonthInput] = useState<string>('');
-  const [addSelectedYearInput, setAddSelectedYearInput] = useState<string>('');
-  
-  // Date picker states for edit form
-  const [selectedDayInput, setSelectedDayInput] = useState<string>('');
-  const [selectedMonthInput, setSelectedMonthInput] = useState<string>('');
-  const [selectedYearInput, setSelectedYearInput] = useState<string>('');
   
   // Student packages
   const [studentPackages, setStudentPackages] = useState<
@@ -388,9 +383,6 @@ const ProfileScreen: React.FC = () => {
     setShowAddDatePicker(false);
     setShowAddIssuedDatePicker(false);
     setShowAddExpirationDatePicker(false);
-    setAddSelectedDayInput('');
-    setAddSelectedMonthInput('');
-    setAddSelectedYearInput('');
   };
 
   const handleRegisterChild = async () => {
@@ -494,10 +486,6 @@ const ProfileScreen: React.FC = () => {
 
   const handleUpdateChild = async () => {
     if (!selectedChild) return;
-    if (!editChildName.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên của con.');
-      return;
-    }
     setUpdatingChild(true);
     try {
       const updateData: { name?: string; dateOfBirth?: string; note?: string } = {};
@@ -780,71 +768,23 @@ const ProfileScreen: React.FC = () => {
     return labels[type] || type;
   };
 
-  // Date picker helpers
-  const initializeDatePicker = () => {
-    const date = editChildDateOfBirth || new Date();
-    setSelectedDayInput(date.getDate().toString());
-    setSelectedMonthInput((date.getMonth() + 1).toString());
-    setSelectedYearInput(date.getFullYear().toString());
+  // Date picker handlers using @react-native-community/datetimepicker
+  const handleChildDateOfBirthChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowChildDatePicker(false);
+    }
+    if (event.type === 'set' && selectedDate) {
+      setEditChildDateOfBirth(selectedDate);
+    }
   };
 
-  const handleConfirmDate = () => {
-    const day = parseInt(selectedDayInput) || 1;
-    const month = parseInt(selectedMonthInput) || 1;
-    const year = parseInt(selectedYearInput) || new Date().getFullYear();
-    const maxDay = getDaysInMonth(year, month);
-    const validDay = Math.min(Math.max(1, day), maxDay);
-    const validMonth = Math.min(Math.max(1, month), 12);
-    const validYear = Math.max(1950, Math.min(year, new Date().getFullYear()));
-    const newDate = new Date(validYear, validMonth - 1, validDay);
-    setEditChildDateOfBirth(newDate);
-    setShowChildDatePicker(false);
-  };
-
-  const initializeAddDatePicker = (date: Date | null) => {
-    const targetDate = date || new Date();
-    setAddSelectedDayInput(targetDate.getDate().toString());
-    setAddSelectedMonthInput((targetDate.getMonth() + 1).toString());
-    setAddSelectedYearInput(targetDate.getFullYear().toString());
-  };
-
-  const handleConfirmAddDate = () => {
-    const day = parseInt(addSelectedDayInput) || 1;
-    const month = parseInt(addSelectedMonthInput) || 1;
-    const year = parseInt(addSelectedYearInput) || new Date().getFullYear();
-    const maxDay = getDaysInMonth(year, month);
-    const validDay = Math.min(Math.max(1, day), maxDay);
-    const validMonth = Math.min(Math.max(1, month), 12);
-    const validYear = Math.max(1950, Math.min(year, new Date().getFullYear()));
-    const newDate = new Date(validYear, validMonth - 1, validDay);
-    setAddDateOfBirth(newDate);
-    setShowAddDatePicker(false);
-  };
-
-  const handleConfirmIssuedDate = () => {
-    const day = parseInt(addSelectedDayInput) || 1;
-    const month = parseInt(addSelectedMonthInput) || 1;
-    const year = parseInt(addSelectedYearInput) || new Date().getFullYear();
-    const maxDay = getDaysInMonth(year, month);
-    const validDay = Math.min(Math.max(1, day), maxDay);
-    const validMonth = Math.min(Math.max(1, month), 12);
-    const validYear = Math.max(1950, Math.min(year, new Date().getFullYear()));
-    const newDate = new Date(validYear, validMonth - 1, validDay);
-    setAddIssuedDate(newDate);
-    setShowAddIssuedDatePicker(false);
-  };
-
-  const handleConfirmExpirationDate = () => {
-    const day = parseInt(addSelectedDayInput) || 1;
-    const month = parseInt(addSelectedMonthInput) || 1;
-    const year = parseInt(addSelectedYearInput) || new Date().getFullYear();
-    const maxDay = getDaysInMonth(year, month);
-    const validDay = Math.min(Math.max(1, day), maxDay);
-    const validMonth = Math.min(Math.max(1, month), 12);
-    const validYear = Math.max(1950, Math.min(year, new Date().getFullYear()));
-    const newDate = new Date(validYear, validMonth - 1, validDay);
-    setAddExpirationDate(newDate);
-    setShowAddExpirationDatePicker(false);
+  const handleAddDateOfBirthChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowAddDatePicker(false);
+    }
+    if (event.type === 'set' && selectedDate) {
+      setAddDateOfBirth(selectedDate);
+    }
   };
 
   const handleEditProfile = () => {
@@ -967,6 +907,10 @@ const ProfileScreen: React.FC = () => {
 
   const handleNotifications = () => {
     navigation.navigate('Notifications');
+  };
+
+  const handleWallet = () => {
+    navigation.navigate('Wallet' as never);
   };
 
   const handleMySubscriptions = () => {
@@ -1550,7 +1494,20 @@ const ProfileScreen: React.FC = () => {
         {/* Children Management Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Quản lý con ({students.length})</Text>
+            <TouchableOpacity
+              style={styles.sectionHeaderLeft}
+              onPress={() => setShowChildrenSection(prev => !prev)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>
+                Quản lý con ({students.length})
+              </Text>
+              <MaterialIcons
+                name={showChildrenSection ? 'expand-less' : 'expand-more'}
+                size={24}
+                color={COLORS.TEXT_SECONDARY}
+              />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.addChildButton}
               onPress={handleAddChild}
@@ -1561,7 +1518,11 @@ const ProfileScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {studentsLoading && students.length === 0 ? (
+          {!showChildrenSection ? (
+            <Text style={styles.collapsedHintText}>
+              Danh sách con đang được ẩn. Chạm vào tiêu đề để mở rộng.
+            </Text>
+          ) : studentsLoading && students.length === 0 ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={COLORS.PRIMARY} />
               <Text style={styles.familyLoadingText}>Đang tải danh sách con...</Text>
@@ -1769,14 +1730,29 @@ const ProfileScreen: React.FC = () => {
 
         {/* Activities Section */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Hoạt động gần đây</Text>
-            {activities.length > 0 && (
-              <Text style={styles.activitiesCount}>{activities.length} hoạt động</Text>
-            )}
-          </View>
+          <TouchableOpacity
+            style={styles.sectionHeader}
+            onPress={() => setShowActivitiesSection(prev => !prev)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>Hoạt động gần đây</Text>
+            <View style={styles.sectionHeaderRight}>
+              {activities.length > 0 && (
+                <Text style={styles.activitiesCount}>{activities.length} hoạt động</Text>
+              )}
+              <MaterialIcons
+                name={showActivitiesSection ? 'expand-less' : 'expand-more'}
+                size={24}
+                color={COLORS.TEXT_SECONDARY}
+              />
+            </View>
+          </TouchableOpacity>
 
-          {loadingActivities ? (
+          {!showActivitiesSection ? (
+            <Text style={styles.collapsedHintText}>
+              Danh sách hoạt động đang được ẩn. Chạm vào tiêu đề để mở rộng.
+            </Text>
+          ) : loadingActivities ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={COLORS.PRIMARY} />
               <Text style={styles.familyLoadingText}>Đang tải hoạt động...</Text>
@@ -1859,6 +1835,12 @@ const ProfileScreen: React.FC = () => {
           <TouchableOpacity style={styles.menuItem} onPress={handleNotifications}>
             <MaterialIcons name="notifications" size={24} color={COLORS.PRIMARY} />
             <Text style={styles.menuText}>Thông báo</Text>
+            <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={handleWallet}>
+            <MaterialIcons name="account-balance-wallet" size={24} color={COLORS.PRIMARY} />
+            <Text style={styles.menuText}>Ví tiền</Text>
             <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
           </TouchableOpacity>
 
@@ -2140,13 +2122,14 @@ const ProfileScreen: React.FC = () => {
                     showsVerticalScrollIndicator={false}
                   >
                     <View style={styles.modalFormGroup}>
-                      <Text style={styles.modalLabel}>Tên *</Text>
+                      <Text style={styles.modalLabel}>Tên</Text>
                       <TextInput
                         style={styles.modalInput}
                         value={editChildName}
                         onChangeText={setEditChildName}
                         placeholder="Nhập tên của con"
                         placeholderTextColor={COLORS.TEXT_SECONDARY}
+                        editable={!updatingChild}
                       />
                     </View>
 
@@ -2156,7 +2139,6 @@ const ProfileScreen: React.FC = () => {
                         style={styles.datePickerButton}
                         onPress={() => {
                           Keyboard.dismiss();
-                          initializeDatePicker();
                           setShowChildDatePicker(true);
                         }}
                       >
@@ -2210,16 +2192,18 @@ const ProfileScreen: React.FC = () => {
                       setEditChildModalVisible(false);
                     }}
                     disabled={updatingChild}
+                    activeOpacity={0.7}
                   >
                     <Text style={[styles.modalButtonText, styles.modalButtonCancelText]}>Hủy</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={[styles.modalButton, updatingChild && styles.modalButtonDisabled]}
+                    style={[styles.modalButton, styles.saveButton, updatingChild && styles.modalButtonDisabled]}
                     onPress={() => {
                       Keyboard.dismiss();
                       handleUpdateChild();
                     }}
                     disabled={updatingChild}
+                    activeOpacity={0.7}
                   >
                     {updatingChild ? (
                       <ActivityIndicator size="small" color={COLORS.SURFACE} />
@@ -2283,7 +2267,6 @@ const ProfileScreen: React.FC = () => {
                       style={styles.datePickerButton}
                       onPress={() => {
                         Keyboard.dismiss();
-                        initializeAddDatePicker(addDateOfBirth);
                         setShowAddDatePicker(true);
                       }}
                     >
@@ -2486,210 +2469,118 @@ const ProfileScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Date Pickers */}
+      {/* Date Pickers using @react-native-community/datetimepicker */}
       {/* Edit Child Date Picker */}
-      <Modal
-        visible={showChildDatePicker}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowChildDatePicker(false)}
-        hardwareAccelerated={true}
-        presentationStyle="overFullScreen"
-      >
-        <View style={styles.datePickerModalOverlay}>
-          <TouchableOpacity 
-            style={StyleSheet.absoluteFill} 
-            activeOpacity={1}
-            onPress={() => setShowChildDatePicker(false)}
-          />
-          <View style={styles.datePickerModalContent} pointerEvents="box-none">
-            <View style={styles.datePickerModalHeader}>
-              <Text style={styles.datePickerModalTitle}>Chọn ngày sinh</Text>
-              <TouchableOpacity onPress={() => setShowChildDatePicker(false)}>
-                <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.simpleDatePickerContainer}>
-              <View style={styles.dateInputRow}>
-                <View style={styles.dateInputGroup}>
-                  <Text style={styles.dateInputLabel}>Ngày</Text>
-                  <TextInput
-                    style={styles.dateInput}
-                    value={selectedDayInput}
-                    onChangeText={(text) => {
-                      const numericText = text.replace(/[^0-9]/g, '');
-                      if (numericText === '' || (parseInt(numericText) >= 1 && parseInt(numericText) <= 31)) {
-                        setSelectedDayInput(numericText);
-                      }
-                    }}
-                    placeholder="DD"
-                    placeholderTextColor={COLORS.TEXT_SECONDARY}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                  />
-                </View>
-                <View style={styles.dateInputGroup}>
-                  <Text style={styles.dateInputLabel}>Tháng</Text>
-                  <TextInput
-                    style={styles.dateInput}
-                    value={selectedMonthInput}
-                    onChangeText={(text) => {
-                      const numericText = text.replace(/[^0-9]/g, '');
-                      if (numericText === '' || (parseInt(numericText) >= 1 && parseInt(numericText) <= 12)) {
-                        setSelectedMonthInput(numericText);
-                      }
-                    }}
-                    placeholder="MM"
-                    placeholderTextColor={COLORS.TEXT_SECONDARY}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                  />
-                </View>
-                <View style={styles.dateInputGroup}>
-                  <Text style={styles.dateInputLabel}>Năm</Text>
-                  <TextInput
-                    style={styles.dateInput}
-                    value={selectedYearInput}
-                    onChangeText={(text) => {
-                      const numericText = text.replace(/[^0-9]/g, '');
-                      const currentYear = new Date().getFullYear();
-                      const numValue = parseInt(numericText);
-                      if (numericText === '' || 
-                          numericText.length < 4 || 
-                          (numericText.length === 4 && numValue >= 1950 && numValue <= currentYear)) {
-                        setSelectedYearInput(numericText);
-                      }
-                    }}
-                    placeholder="YYYY"
-                    placeholderTextColor={COLORS.TEXT_SECONDARY}
-                    keyboardType="number-pad"
-                    maxLength={4}
-                  />
-                </View>
+      {showChildDatePicker && Platform.OS === 'ios' && (
+        <Modal
+          visible={showChildDatePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowChildDatePicker(false)}
+        >
+          <View style={styles.datePickerModalOverlay}>
+            <View style={styles.datePickerModalContent}>
+              <View style={styles.datePickerModalHeader}>
+                <Text style={styles.datePickerModalTitle}>Chọn ngày sinh</Text>
+                <TouchableOpacity onPress={() => setShowChildDatePicker(false)} activeOpacity={0.7}>
+                  <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
+                </TouchableOpacity>
               </View>
-              <Text style={styles.dateInputHint}>
-                Nhập ngày (1-31), tháng (1-12), năm (1950-{new Date().getFullYear()})
-              </Text>
-            </View>
-            <View style={styles.datePickerModalFooter}>
-              <TouchableOpacity
-                style={[styles.datePickerModalButton, styles.datePickerModalButtonCancel]}
-                onPress={() => setShowChildDatePicker(false)}
-              >
-                <Text style={styles.datePickerModalButtonCancelText}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.datePickerModalButton, styles.datePickerModalButtonConfirm]}
-                onPress={handleConfirmDate}
-              >
-                <Text style={styles.datePickerModalButtonConfirmText}>Xác nhận</Text>
-              </TouchableOpacity>
+              <DateTimePicker
+                value={editChildDateOfBirth || new Date()}
+                mode="date"
+                display="spinner"
+                onChange={handleChildDateOfBirthChange}
+                maximumDate={new Date()}
+                minimumDate={new Date(1950, 0, 1)}
+                locale="vi-VN"
+              />
+              <View style={styles.datePickerModalFooter}>
+                <TouchableOpacity
+                  style={[styles.datePickerModalButton, styles.datePickerModalButtonCancel]}
+                  onPress={() => setShowChildDatePicker(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerModalButtonCancelText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.datePickerModalButton, styles.datePickerModalButtonConfirm]}
+                  onPress={() => setShowChildDatePicker(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerModalButtonConfirmText}>Xác nhận</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
+      {showChildDatePicker && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={editChildDateOfBirth || new Date()}
+          mode="date"
+          display="default"
+          onChange={handleChildDateOfBirthChange}
+          maximumDate={new Date()}
+          minimumDate={new Date(1950, 0, 1)}
+        />
+      )}
 
       {/* Add Child Date Picker */}
-      <Modal
-        visible={showAddDatePicker}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowAddDatePicker(false)}
-        hardwareAccelerated={true}
-        presentationStyle="overFullScreen"
-      >
-        <View style={styles.datePickerModalOverlay}>
-          <TouchableOpacity 
-            style={StyleSheet.absoluteFill} 
-            activeOpacity={1}
-            onPress={() => setShowAddDatePicker(false)}
-          />
-          <View style={styles.datePickerModalContent} pointerEvents="box-none">
-            <View style={styles.datePickerModalHeader}>
-              <Text style={styles.datePickerModalTitle}>Chọn ngày sinh</Text>
-              <TouchableOpacity onPress={() => setShowAddDatePicker(false)}>
-                <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.simpleDatePickerContainer}>
-              <View style={styles.dateInputRow}>
-                <View style={styles.dateInputGroup}>
-                  <Text style={styles.dateInputLabel}>Ngày</Text>
-                  <TextInput
-                    style={styles.dateInput}
-                    value={addSelectedDayInput}
-                    onChangeText={(text) => {
-                      const numericText = text.replace(/[^0-9]/g, '');
-                      if (numericText === '' || (parseInt(numericText) >= 1 && parseInt(numericText) <= 31)) {
-                        setAddSelectedDayInput(numericText);
-                      }
-                    }}
-                    placeholder="DD"
-                    placeholderTextColor={COLORS.TEXT_SECONDARY}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                  />
-                </View>
-                <View style={styles.dateInputGroup}>
-                  <Text style={styles.dateInputLabel}>Tháng</Text>
-                  <TextInput
-                    style={styles.dateInput}
-                    value={addSelectedMonthInput}
-                    onChangeText={(text) => {
-                      const numericText = text.replace(/[^0-9]/g, '');
-                      if (numericText === '' || (parseInt(numericText) >= 1 && parseInt(numericText) <= 12)) {
-                        setAddSelectedMonthInput(numericText);
-                      }
-                    }}
-                    placeholder="MM"
-                    placeholderTextColor={COLORS.TEXT_SECONDARY}
-                    keyboardType="number-pad"
-                    maxLength={2}
-                  />
-                </View>
-                <View style={styles.dateInputGroup}>
-                  <Text style={styles.dateInputLabel}>Năm</Text>
-                  <TextInput
-                    style={styles.dateInput}
-                    value={addSelectedYearInput}
-                    onChangeText={(text) => {
-                      const numericText = text.replace(/[^0-9]/g, '');
-                      const currentYear = new Date().getFullYear();
-                      const numValue = parseInt(numericText);
-                      if (numericText === '' || 
-                          numericText.length < 4 || 
-                          (numericText.length === 4 && numValue >= 1950 && numValue <= currentYear)) {
-                        setAddSelectedYearInput(numericText);
-                      }
-                    }}
-                    placeholder="YYYY"
-                    placeholderTextColor={COLORS.TEXT_SECONDARY}
-                    keyboardType="number-pad"
-                    maxLength={4}
-                  />
-                </View>
+      {showAddDatePicker && Platform.OS === 'ios' && (
+        <Modal
+          visible={showAddDatePicker}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowAddDatePicker(false)}
+        >
+          <View style={styles.datePickerModalOverlay}>
+            <View style={styles.datePickerModalContent}>
+              <View style={styles.datePickerModalHeader}>
+                <Text style={styles.datePickerModalTitle}>Chọn ngày sinh</Text>
+                <TouchableOpacity onPress={() => setShowAddDatePicker(false)} activeOpacity={0.7}>
+                  <MaterialIcons name="close" size={24} color={COLORS.TEXT_SECONDARY} />
+                </TouchableOpacity>
               </View>
-              <Text style={styles.dateInputHint}>
-                Nhập ngày (1-31), tháng (1-12), năm (1950-{new Date().getFullYear()})
-              </Text>
-            </View>
-            <View style={styles.datePickerModalFooter}>
-              <TouchableOpacity
-                style={[styles.datePickerModalButton, styles.datePickerModalButtonCancel]}
-                onPress={() => setShowAddDatePicker(false)}
-              >
-                <Text style={styles.datePickerModalButtonCancelText}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.datePickerModalButton, styles.datePickerModalButtonConfirm]}
-                onPress={handleConfirmAddDate}
-              >
-                <Text style={styles.datePickerModalButtonConfirmText}>Xác nhận</Text>
-              </TouchableOpacity>
+              <DateTimePicker
+                value={addDateOfBirth || new Date()}
+                mode="date"
+                display="spinner"
+                onChange={handleAddDateOfBirthChange}
+                maximumDate={new Date()}
+                minimumDate={new Date(1950, 0, 1)}
+                locale="vi-VN"
+              />
+              <View style={styles.datePickerModalFooter}>
+                <TouchableOpacity
+                  style={[styles.datePickerModalButton, styles.datePickerModalButtonCancel]}
+                  onPress={() => setShowAddDatePicker(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerModalButtonCancelText}>Hủy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.datePickerModalButton, styles.datePickerModalButtonConfirm]}
+                  onPress={() => setShowAddDatePicker(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.datePickerModalButtonConfirmText}>Xác nhận</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
+      {showAddDatePicker && Platform.OS === 'android' && (
+        <DateTimePicker
+          value={addDateOfBirth || new Date()}
+          mode="date"
+          display="default"
+          onChange={handleAddDateOfBirthChange}
+          maximumDate={new Date()}
+          minimumDate={new Date(1950, 0, 1)}
+        />
+      )}
 
       {/* Edit Family Profile Modal */}
       <Modal
@@ -2944,15 +2835,28 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     marginBottom: SPACING.MD,
   },
+  sectionTitleInline: {
+    marginBottom: 0,
+  },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.MD,
   },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
   sectionHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  collapsedHintText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontStyle: 'italic',
   },
   addFamilyButton: {
     flexDirection: 'row',
@@ -3340,11 +3244,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  avatarImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-  },
   avatarText: {
     fontSize: FONTS.SIZES.XL,
     fontWeight: 'bold',
@@ -3566,6 +3465,41 @@ const styles = StyleSheet.create({
   modalTextArea: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  modalFormGroup: {
+    marginBottom: SPACING.MD,
+  },
+  modalLabel: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.SM,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    paddingHorizontal: SPACING.MD,
+    paddingVertical: SPACING.SM,
+    fontSize: FONTS.SIZES.MD,
+    color: COLORS.TEXT_PRIMARY,
+    backgroundColor: COLORS.BACKGROUND,
+  },
+  modalButtonCancel: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  modalButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
+  },
+  modalButtonCancelText: {
+    color: COLORS.TEXT_PRIMARY,
+  },
+  modalButtonDisabled: {
+    opacity: 0.6,
   },
   datePickerButton: {
     flexDirection: 'row',

@@ -77,8 +77,8 @@ const ActivityDetailScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [markingViewed, setMarkingViewed] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [markingViewed, setMarkingViewed] = useState(false);
 
   // Kiểm tra xem user có phải staff không (có quyền sửa/xóa)
   const isStaff = user?.role && (user.role.toUpperCase().includes('STAFF') || user.role.toUpperCase() === 'ADMIN');
@@ -117,12 +117,12 @@ const ActivityDetailScreen: React.FC = () => {
   }, [navigation, fetchActivity]);
 
   useEffect(() => {
-    // Đánh dấu đã đọc khi activity được load
-    if (activity && !activity.isViewed && !markingViewed) {
+    // Đánh dấu đã đọc khi activity được load (chỉ cho phụ huynh, không phải staff)
+    if (activity && !activity.isViewed && !markingViewed && !isStaff) {
       handleMarkAsViewed(activity);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activity?.id]);
+  }, [activity?.id, isStaff]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -130,7 +130,8 @@ const ActivityDetailScreen: React.FC = () => {
   }, [fetchActivity]);
 
   const handleMarkAsViewed = async (activityData: ActivityResponse) => {
-    if (activityData.isViewed || markingViewed) {
+    // Chỉ mark cho phụ huynh, không mark cho staff
+    if (isStaff || activityData.isViewed || markingViewed) {
       return;
     }
 
@@ -140,7 +141,7 @@ const ActivityDetailScreen: React.FC = () => {
       const updatedActivity = await activityService.markActivityAsViewed(activityData.id);
       setActivity(updatedActivity);
     } catch (err: any) {
-      // Silent fail
+      // Silent fail - không hiển thị lỗi cho user
       console.warn('Failed to mark activity as viewed:', err);
     } finally {
       setMarkingViewed(false);

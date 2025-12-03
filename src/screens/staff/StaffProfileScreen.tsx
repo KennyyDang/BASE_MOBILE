@@ -31,12 +31,14 @@ const StaffProfileScreen: React.FC = () => {
   
   // Change Password Modal States
   const [changePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
+  const [passwordStep, setPasswordStep] = useState<'send-code' | 'reset-password'>('send-code');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
 
   // Edit Profile Modal States
@@ -73,62 +75,106 @@ const StaffProfileScreen: React.FC = () => {
   };
 
   const handleChangePassword = () => {
-    setChangePasswordModalVisible(true);
-    setCurrentPassword('');
+    // Tự động điền email từ user context
+    const userEmail = currentUser?.email || user?.email || '';
+    setEmail(userEmail);
+    setPasswordStep('send-code');
+    setCode('');
     setNewPassword('');
     setConfirmPassword('');
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setChangePasswordModalVisible(true);
   };
 
   const handleCloseChangePasswordModal = () => {
     setChangePasswordModalVisible(false);
-    setCurrentPassword('');
+    setPasswordStep('send-code');
+    setEmail('');
+    setCode('');
     setNewPassword('');
     setConfirmPassword('');
-    setShowCurrentPassword(false);
     setShowNewPassword(false);
     setShowConfirmPassword(false);
   };
 
-  const handleSubmitChangePassword = async () => {
-    // Validation
-    if (!currentPassword.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập mật khẩu hiện tại.');
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleSendResetCode = async () => {
+    if (!email.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập email của bạn');
+      return;
+    }
+
+    if (!validateEmail(email.trim())) {
+      Alert.alert('Lỗi', 'Vui lòng nhập địa chỉ email hợp lệ');
+      return;
+    }
+
+    setSendingCode(true);
+    try {
+      await authService.sendResetCode(email.trim());
+      setPasswordStep('reset-password');
+      Alert.alert(
+        'Thành công',
+        'Mã đặt lại mật khẩu (5 ký tự) đã được gửi đến email của bạn. Vui lòng nhập mã và mật khẩu mới.',
+        [{ text: 'OK' }]
+      );
+    } catch (err: any) {
+      Alert.alert('Lỗi', err.message || 'Không thể gửi mã đặt lại mật khẩu. Vui lòng thử lại.');
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!code.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập mã đặt lại mật khẩu');
+      return;
+    }
+
+    if (code.trim().length !== 5) {
+      Alert.alert('Lỗi', 'Mã đặt lại mật khẩu phải có 5 ký tự');
       return;
     }
 
     if (!newPassword.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập mật khẩu mới.');
+      Alert.alert('Lỗi', 'Vui lòng nhập mật khẩu mới');
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert('Lỗi', 'Mật khẩu mới phải có ít nhất 6 ký tự.');
+      Alert.alert('Lỗi', 'Mật khẩu phải có ít nhất 6 ký tự');
       return;
     }
 
-    if (newPassword !== confirmPassword) {
-      Alert.alert('Lỗi', 'Mật khẩu mới và xác nhận mật khẩu không khớp.');
-      return;
-    }
-
-    if (currentPassword === newPassword) {
-      Alert.alert('Lỗi', 'Mật khẩu mới phải khác mật khẩu hiện tại.');
+    if (newPassword.trim() !== confirmPassword.trim()) {
+      Alert.alert('Lỗi', 'Mật khẩu xác nhận không khớp');
       return;
     }
 
     setChangingPassword(true);
     try {
-      const result = await authService.changePassword(currentPassword, newPassword);
-      Alert.alert('Thành công', result.message || 'Đổi mật khẩu thành công.', [
-        {
-          text: 'OK',
-          onPress: () => {
-            handleCloseChangePasswordModal();
+      await authService.resetPasswordWithCode(email.trim(), code.trim(), newPassword.trim());
+      Alert.alert(
+        'Thành công',
+        'Đặt lại mật khẩu thành công! Vui lòng đăng nhập lại với mật khẩu mới.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              handleCloseChangePasswordModal();
+              // Logout để user đăng nhập lại
+              logout();
+            },
           },
-        },
-      ]);
+        ]
+      );
     } catch (err: any) {
-      Alert.alert('Lỗi', err.message || 'Không thể đổi mật khẩu. Vui lòng thử lại.');
+      Alert.alert('Lỗi', err.message || 'Không thể đặt lại mật khẩu. Vui lòng thử lại.');
     } finally {
       setChangingPassword(false);
     }
@@ -377,83 +423,129 @@ const StaffProfileScreen: React.FC = () => {
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {/* Current Password */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Mật khẩu hiện tại</Text>
-                <View style={styles.passwordInputWrapper}>
-                  <TextInput
-                    style={styles.passwordInput}
-                    placeholder="Nhập mật khẩu hiện tại"
-                    placeholderTextColor={COLORS.TEXT_SECONDARY}
-                    value={currentPassword}
-                    onChangeText={setCurrentPassword}
-                    secureTextEntry={!showCurrentPassword}
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowCurrentPassword(!showCurrentPassword)}
-                    style={styles.eyeButton}
-                  >
-                    <MaterialIcons
-                      name={showCurrentPassword ? 'visibility' : 'visibility-off'}
-                      size={20}
-                      color={COLORS.TEXT_SECONDARY}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
+              {passwordStep === 'send-code' ? (
+                <>
+                  <View style={styles.infoBox}>
+                    <MaterialIcons name="info-outline" size={20} color={COLORS.PRIMARY} />
+                    <Text style={styles.infoText}>
+                      Nhập email của bạn để nhận mã đặt lại mật khẩu 5 ký tự. Mã sẽ được gửi đến email của bạn.
+                    </Text>
+                  </View>
 
-              {/* New Password */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Mật khẩu mới</Text>
-                <View style={styles.passwordInputWrapper}>
-                  <TextInput
-                    style={styles.passwordInput}
-                    placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
-                    placeholderTextColor={COLORS.TEXT_SECONDARY}
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                    secureTextEntry={!showNewPassword}
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowNewPassword(!showNewPassword)}
-                    style={styles.eyeButton}
-                  >
-                    <MaterialIcons
-                      name={showNewPassword ? 'visibility' : 'visibility-off'}
-                      size={20}
-                      color={COLORS.TEXT_SECONDARY}
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>Email</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="Nhập email của bạn"
+                      placeholderTextColor={COLORS.TEXT_SECONDARY}
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!sendingCode}
                     />
-                  </TouchableOpacity>
-                </View>
-              </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.emailDisplayBox}>
+                    <MaterialIcons name="email" size={20} color={COLORS.PRIMARY} />
+                    <Text style={styles.emailDisplayText}>{email}</Text>
+                  </View>
 
-              {/* Confirm Password */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Xác nhận mật khẩu mới</Text>
-                <View style={styles.passwordInputWrapper}>
-                  <TextInput
-                    style={styles.passwordInput}
-                    placeholder="Nhập lại mật khẩu mới"
-                    placeholderTextColor={COLORS.TEXT_SECONDARY}
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    secureTextEntry={!showConfirmPassword}
-                    autoCapitalize="none"
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                    style={styles.eyeButton}
-                  >
-                    <MaterialIcons
-                      name={showConfirmPassword ? 'visibility' : 'visibility-off'}
-                      size={20}
-                      color={COLORS.TEXT_SECONDARY}
+                  <View style={styles.infoBox}>
+                    <MaterialIcons name="info-outline" size={20} color={COLORS.PRIMARY} />
+                    <Text style={styles.infoText}>
+                      Vui lòng nhập mã 5 ký tự đã được gửi đến email của bạn và mật khẩu mới.
+                    </Text>
+                  </View>
+
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>Mã đặt lại (5 ký tự)</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="Nhập mã 5 ký tự"
+                      placeholderTextColor={COLORS.TEXT_SECONDARY}
+                      value={code}
+                      onChangeText={(text) => {
+                        // Chỉ cho phép nhập tối đa 5 ký tự và tự động chuyển sang chữ hoa
+                        const trimmed = text.trim().toUpperCase().slice(0, 5);
+                        setCode(trimmed);
+                      }}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      maxLength={5}
+                      editable={!changingPassword}
                     />
+                  </View>
+
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>Mật khẩu mới</Text>
+                    <View style={styles.passwordInputWrapper}>
+                      <TextInput
+                        style={styles.passwordInput}
+                        placeholder="Tối thiểu 6 ký tự"
+                        placeholderTextColor={COLORS.TEXT_SECONDARY}
+                        value={newPassword}
+                        onChangeText={setNewPassword}
+                        secureTextEntry={!showNewPassword}
+                        autoCapitalize="none"
+                        editable={!changingPassword}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowNewPassword(!showNewPassword)}
+                        style={styles.eyeButton}
+                      >
+                        <MaterialIcons
+                          name={showNewPassword ? 'visibility' : 'visibility-off'}
+                          size={20}
+                          color={COLORS.TEXT_SECONDARY}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>Xác nhận mật khẩu mới</Text>
+                    <View style={styles.passwordInputWrapper}>
+                      <TextInput
+                        style={styles.passwordInput}
+                        placeholder="Nhập lại mật khẩu mới"
+                        placeholderTextColor={COLORS.TEXT_SECONDARY}
+                        value={confirmPassword}
+                        onChangeText={setConfirmPassword}
+                        secureTextEntry={!showConfirmPassword}
+                        autoCapitalize="none"
+                        editable={!changingPassword}
+                      />
+                      <TouchableOpacity
+                        onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                        style={styles.eyeButton}
+                      >
+                        <MaterialIcons
+                          name={showConfirmPassword ? 'visibility' : 'visibility-off'}
+                          size={20}
+                          color={COLORS.TEXT_SECONDARY}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.backToStepButton}
+                    onPress={() => {
+                      setPasswordStep('send-code');
+                      setCode('');
+                      setNewPassword('');
+                      setConfirmPassword('');
+                    }}
+                    disabled={changingPassword}
+                  >
+                    <Text style={styles.backToStepButtonText}>Quay lại gửi mã</Text>
                   </TouchableOpacity>
-                </View>
-              </View>
+                </>
+              )}
             </ScrollView>
 
             {/* Modal Footer */}
@@ -461,19 +553,25 @@ const StaffProfileScreen: React.FC = () => {
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonCancel]}
                 onPress={handleCloseChangePasswordModal}
-                disabled={changingPassword}
+                disabled={sendingCode || changingPassword}
               >
                 <Text style={styles.modalButtonCancelText}>Hủy</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonSubmit]}
-                onPress={handleSubmitChangePassword}
-                disabled={changingPassword}
+                onPress={passwordStep === 'send-code' ? handleSendResetCode : handleResetPassword}
+                disabled={
+                  sendingCode ||
+                  changingPassword ||
+                  (passwordStep === 'send-code' ? !email.trim() : !code.trim() || !newPassword.trim() || !confirmPassword.trim() || code.trim().length !== 5)
+                }
               >
-                {changingPassword ? (
+                {sendingCode || changingPassword ? (
                   <ActivityIndicator size="small" color={COLORS.SURFACE} />
                 ) : (
-                  <Text style={styles.modalButtonSubmitText}>Đổi mật khẩu</Text>
+                  <Text style={styles.modalButtonSubmitText}>
+                    {passwordStep === 'send-code' ? 'Gửi mã' : 'Đặt lại mật khẩu'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -910,6 +1008,46 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     paddingVertical: SPACING.MD,
     paddingHorizontal: SPACING.MD,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.PRIMARY_50 || '#E3F2FD',
+    padding: SPACING.MD,
+    borderRadius: 12,
+    marginBottom: SPACING.MD,
+    gap: SPACING.SM,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    lineHeight: 20,
+  },
+  emailDisplayBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.PRIMARY_50 || '#E3F2FD',
+    padding: SPACING.MD,
+    borderRadius: 12,
+    marginBottom: SPACING.MD,
+    gap: SPACING.SM,
+  },
+  emailDisplayText: {
+    flex: 1,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    fontWeight: '600',
+  },
+  backToStepButton: {
+    marginTop: SPACING.SM,
+    paddingVertical: SPACING.SM,
+    alignItems: 'center',
+  },
+  backToStepButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
   },
 });
 

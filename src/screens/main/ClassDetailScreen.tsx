@@ -78,6 +78,42 @@ const formatTimeRange = (timeframe: StudentSlotResponse['timeframe']) => {
   return `${formatTime(timeframe.startTime)} - ${formatTime(timeframe.endTime)}`;
 };
 
+const getStatusLabel = (status: string) => {
+  const normalized = (status || '').toLowerCase();
+  switch (normalized) {
+    case 'booked':
+      return 'Đã Đặt';
+    case 'completed':
+      return 'Đã điểm danh';
+    case 'cancelled':
+      return 'Đã huỷ lớp';
+    case 'noshow':
+      return 'Vắng mặt';
+    case 'rescheduled':
+      return 'Đổi lịch';
+    default:
+      return status || 'Chưa xác định';
+  }
+};
+
+const getStatusColor = (status: string) => {
+  const normalized = (status || '').toLowerCase();
+  switch (normalized) {
+    case 'booked':
+      return COLORS.PRIMARY;
+    case 'completed':
+      return COLORS.SUCCESS;
+    case 'cancelled':
+      return COLORS.ERROR;
+    case 'noshow':
+      return COLORS.WARNING || '#FF9800';
+    case 'rescheduled':
+      return COLORS.INFO || '#2196F3';
+    default:
+      return COLORS.TEXT_SECONDARY;
+  }
+};
+
 const ClassDetailScreen: React.FC = () => {
   const navigation = useNavigation<ClassDetailNavigationProp>();
   const route = useRoute<ClassDetailRouteProp>();
@@ -200,6 +236,28 @@ const ClassDetailScreen: React.FC = () => {
     if (!slot) {
       Alert.alert('Lỗi', 'Không tìm thấy thông tin lớp học để mua dịch vụ bổ sung');
       return;
+    }
+
+    // Không cho mua dịch vụ nếu slot đã qua ngày học
+    if (slot.date) {
+      try {
+        const slotDate = new Date(slot.date);
+        const today = new Date();
+
+        // So sánh theo ngày (bỏ phần giờ phút giây)
+        slotDate.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0);
+
+        if (slotDate < today) {
+          Alert.alert(
+            'Không thể mua dịch vụ',
+            'Slot này đã qua rồi, vui lòng mua ở slot khác.'
+          );
+          return;
+        }
+      } catch {
+        // Nếu parse ngày lỗi thì bỏ qua việc chặn theo ngày, để tránh làm hỏng flow hiện tại
+      }
     }
 
     try {
@@ -331,37 +389,43 @@ const ClassDetailScreen: React.FC = () => {
               <Text style={styles.infoLabel}>Chi nhánh</Text>
               <Text style={styles.infoValue}>{slot?.branchSlot?.branchName || 'Chưa có'}</Text>
             </View>
-          </Card.Content>
-        </Card>
 
-        {/* Attendance Card */}
-        <Card style={styles.card} mode="elevated" elevation={2}>
-          <Card.Content>
-            <Text style={styles.sectionTitle}>Điểm danh</Text>
-            {attendanceLoading ? (
-              <View style={styles.stateContainer}>
-                <ActivityIndicator size="small" color={COLORS.PRIMARY} />
-                <Text style={styles.stateText}>Đang tải...</Text>
-              </View>
-            ) : attendance ? (
-              <View style={styles.attendanceContainer}>
-                <View style={styles.attendanceRow}>
-                  <MaterialIcons name="check-circle" size={20} color={COLORS.SUCCESS} />
-                  <Text style={styles.attendanceText}>
-                    Đã điểm danh vào: {formatTime(attendance.checkInTime)}
-                  </Text>
-                </View>
-                {attendance.checkOutTime && (
-                  <View style={styles.attendanceRow}>
-                    <MaterialIcons name="exit-to-app" size={20} color={COLORS.PRIMARY} />
-                    <Text style={styles.attendanceText}>
-                      Đã điểm danh ra: {formatTime(attendance.checkOutTime)}
-                    </Text>
+            {/* Status - Chỉ hiển thị nếu không phải Cancelled */}
+            {slot?.status && slot.status.toLowerCase() !== 'cancelled' && (
+              <>
+                <Divider style={styles.divider} />
+                <View style={styles.infoRow}>
+                  <View style={styles.infoIconContainer}>
+                    <MaterialIcons name="info" size={20} color={COLORS.PRIMARY} />
                   </View>
-                )}
-              </View>
-            ) : (
-              <Text style={styles.emptyText}>Chưa có thông tin điểm danh</Text>
+                  <Text style={styles.infoLabel}>Trạng thái</Text>
+                  <View style={styles.statusContainer}>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        {
+                          backgroundColor: getStatusColor(slot.status) + '20',
+                        },
+                      ]}
+                    >
+                      <MaterialIcons
+                        name="circle"
+                        size={12}
+                        color={getStatusColor(slot.status)}
+                        style={styles.statusIcon}
+                      />
+                      <Text
+                        style={[
+                          styles.statusText,
+                          { color: getStatusColor(slot.status) },
+                        ]}
+                      >
+                        {getStatusLabel(slot.status)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </>
             )}
           </Card.Content>
         </Card>
@@ -625,6 +689,25 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_SECONDARY,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  statusContainer: {
+    flex: 2,
+    alignItems: 'flex-end',
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.SM,
+    paddingVertical: SPACING.XS,
+    borderRadius: 12,
+    gap: SPACING.XS,
+  },
+  statusIcon: {
+    marginRight: 0,
+  },
+  statusText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
   },
 });
 

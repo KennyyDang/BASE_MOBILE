@@ -182,6 +182,12 @@ export interface BookStudentSlotResponse {
   data?: any;
 }
 
+export interface StudentSlotStaffResponse {
+  staffId: string;
+  staffName: string;
+  staffRole: string;
+}
+
 export interface StudentSlotResponse {
   id: string;
   branchSlotId: string;
@@ -214,6 +220,7 @@ export interface StudentSlotResponse {
     startTime: string;
     endTime: string;
   } | null;
+  staffs?: StudentSlotStaffResponse[] | null;
 }
 
 // Student API Response

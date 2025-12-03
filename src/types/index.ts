@@ -246,6 +246,7 @@ export type RootStackParamList = {
   ManagerHome: undefined;
   ManagerRegisterParent: undefined;
   TopUp: undefined;
+  Wallet: undefined;
   Settings: undefined;
   Notifications: undefined;
   StudentPackages: {
@@ -265,6 +266,11 @@ export type RootStackParamList = {
     slotDate?: string;
     slotTimeframe?: string;
   };
+  StaffStudentActivities: {
+    studentId: string;
+    studentName: string;
+    studentSlotId: string;
+  };
   ActivityDetail: {
     activityId: string;
   };
@@ -280,7 +286,7 @@ export type RootStackParamList = {
     order?: any; // Optional: pass order object to avoid API call
   };
   Schools: undefined;
-  Schedule: undefined;
+  Schedule: { initialDate?: string } | undefined;
   CreateActivity: {
     studentSlotId: string;
     studentId: string;
@@ -312,6 +318,10 @@ export type RootStackParamList = {
     studentSlotId: string;
     studentId: string;
   };
+  SelectSlot: {
+    studentId?: string;
+    initialDate?: string;
+  };
 };
 
 export type StaffStackParamList = {
@@ -322,8 +332,8 @@ export type StaffStackParamList = {
 
 export type MainTabParamList = {
   Dashboard: undefined;
-  Wallet: undefined;
-  BookedClasses: undefined;
+  Schedule: undefined;
+  BookedClasses: { initialDate?: string; studentId?: string } | undefined;
   Profile: undefined;
   Services: undefined;
 };

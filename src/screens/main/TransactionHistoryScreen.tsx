@@ -12,7 +12,7 @@ import {
   FlatList,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types';
 import transactionService from '../../services/transactionService';
@@ -45,9 +45,13 @@ const TRANSACTION_TYPE_ICONS: Record<TransactionType, string> = {
   ServicePurchase: 'room-service',
 };
 
+type TransactionHistoryRouteProp = RouteProp<RootStackParamList, 'TransactionHistory'>;
+
 const TransactionHistoryScreen: React.FC = () => {
   type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'TransactionHistory'>;
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<TransactionHistoryRouteProp>();
+  const { walletId, walletType, studentName } = route.params || {};
 
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,13 +78,34 @@ const TransactionHistoryScreen: React.FC = () => {
         type: selectedType || undefined,
       });
 
-      if (reset || page === 1) {
-        setTransactions(response.items || []);
-      } else {
-        setTransactions((prev) => [...prev, ...(response.items || [])]);
+      let filteredItems = response.items || [];
+      
+      // Filter by wallet if specified
+      if (walletId) {
+        filteredItems = filteredItems.filter(t => t.walletId === walletId);
+      } else if (walletType) {
+        filteredItems = filteredItems.filter(t => t.walletType === walletType);
       }
 
-      setHasMore(response.hasNextPage || false);
+      if (reset || page === 1) {
+        setTransactions(filteredItems);
+      } else {
+        setTransactions((prev) => [...prev, ...filteredItems]);
+      }
+
+      // Nếu đang filter theo wallet và số items sau filter ít hơn pageSize,
+      // có thể còn items ở các page tiếp theo, nên tiếp tục load
+      // Nếu không filter, dùng hasNextPage từ API
+      if (walletId || walletType) {
+        // Nếu số items sau filter < pageSize và vẫn còn page tiếp theo, tiếp tục load
+        if (filteredItems.length < 20 && response.hasNextPage) {
+          setHasMore(true);
+        } else {
+          setHasMore(response.hasNextPage || false);
+        }
+      } else {
+        setHasMore(response.hasNextPage || false);
+      }
       setPageIndex(page);
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Không thể tải giao dịch. Vui lòng thử lại.';
@@ -93,11 +118,11 @@ const TransactionHistoryScreen: React.FC = () => {
       setLoadingMore(false);
       setRefreshing(false);
     }
-  }, [selectedType]);
+  }, [selectedType, walletId, walletType]);
 
   useEffect(() => {
     fetchTransactions(1, true);
-  }, [selectedType]);
+  }, [selectedType, walletId, walletType]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -108,6 +133,7 @@ const TransactionHistoryScreen: React.FC = () => {
 
   const handleLoadMore = useCallback(() => {
     if (!loadingMore && hasMore && !loading) {
+      // Khi filter theo wallet, tiếp tục load cho đến khi không còn page nào
       fetchTransactions(pageIndex + 1, false);
     }
   }, [loadingMore, hasMore, loading, pageIndex, fetchTransactions]);
@@ -295,9 +321,23 @@ const TransactionHistoryScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Lịch sử giao dịch</Text>
+        <Text style={styles.headerTitle}>
+          {walletType === 'Parent' 
+            ? 'Lịch sử ví phụ huynh'
+            : walletType === 'Student' && studentName
+            ? `Lịch sử ví ${studentName}`
+            : walletType === 'Student'
+            ? 'Lịch sử ví học sinh'
+            : 'Lịch sử giao dịch'}
+        </Text>
         <Text style={styles.headerSubtitle}>
-          Xem tất cả các giao dịch của bạn
+          {walletType === 'Parent' 
+            ? 'Toàn bộ giao dịch nạp tiền và sử dụng tiền từ ví phụ huynh'
+            : walletType === 'Student' && studentName
+            ? `Tất cả giao dịch tiêu dùng của ${studentName}`
+            : walletType === 'Student'
+            ? 'Tất cả giao dịch tiêu dùng của học sinh'
+            : 'Xem tất cả các giao dịch của bạn'}
         </Text>
       </View>
 

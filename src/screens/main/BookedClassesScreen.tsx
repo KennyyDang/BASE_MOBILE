@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,19 +12,23 @@ import {
   TouchableOpacity,
   View,
   Dimensions,
+  FlatList,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { useMyChildren } from '../../hooks/useChildrenApi';
 import studentSlotService from '../../services/studentSlotService';
+import packageService from '../../services/packageService';
 import {
   StudentResponse,
   StudentSlotResponse,
+  StudentPackageSubscription,
 } from '../../types/api';
 import { COLORS } from '../../constants';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { CompositeNavigationProp } from '@react-navigation/native';
 import { MainTabParamList, RootStackParamList } from '../../types';
 
 const SPACING = {
@@ -90,9 +94,11 @@ const formatDateDisplay = (date: Date): string => {
 
 type BookedClassesNavigationProp = BottomTabNavigationProp<MainTabParamList, 'BookedClasses'>;
 type RootNavigationProp = StackNavigationProp<RootStackParamList>;
+type BookedClassesRouteProp = RouteProp<MainTabParamList, 'BookedClasses'>;
 
 const BookedClassesScreen: React.FC = () => {
   const tabNavigation = useNavigation<BookedClassesNavigationProp>();
+  const route = useRoute<BookedClassesRouteProp>();
   
   // Get root navigator from parent - use useMemo to get it once
   const rootNavigation = useMemo(() => {
@@ -121,12 +127,68 @@ const BookedClassesScreen: React.FC = () => {
   const [weekOffset, setWeekOffset] = useState<number>(0);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<WeekdayKey>>(new Set()); // Mặc định đóng tất cả
+  const studentFlatListRef = useRef<FlatList<StudentResponse>>(null);
+  const [currentStudentIndex, setCurrentStudentIndex] = useState(0);
+  const [studentSubscriptions, setStudentSubscriptions] = useState<Record<string, StudentPackageSubscription[]>>({});
+  const [subscriptionsLoading, setSubscriptionsLoading] = useState<Record<string, boolean>>({});
 
+  // Xử lý studentId từ route params
   useEffect(() => {
-    if (students.length && !selectedStudentId) {
-      setSelectedStudentId(students[0].id);
+    const studentIdFromParams = route.params?.studentId;
+    if (studentIdFromParams && students.length > 0) {
+      // Kiểm tra xem studentId có tồn tại trong danh sách học sinh không
+      const studentExists = students.some(s => s.id === studentIdFromParams);
+      if (studentExists) {
+        setSelectedStudentId(studentIdFromParams);
+      }
     }
-  }, [students, selectedStudentId]);
+  }, [route.params?.studentId, students]);
+
+  // Tính toán weekOffset từ initialDate nếu có
+  useEffect(() => {
+    const initialDate = route.params?.initialDate;
+    if (initialDate) {
+      try {
+        const targetDate = new Date(initialDate);
+        const now = new Date();
+        const currentDay = now.getDay();
+        
+        // Tính thứ 2 của tuần hiện tại
+        const currentMonday = new Date(now);
+        const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1;
+        currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
+        currentMonday.setHours(0, 0, 0, 0);
+        
+        // Tính thứ 2 của tuần chứa targetDate
+        const targetDay = targetDate.getDay();
+        const targetMonday = new Date(targetDate);
+        const targetDaysFromMonday = targetDay === 0 ? 6 : targetDay - 1;
+        targetMonday.setDate(targetMonday.getDate() - targetDaysFromMonday);
+        targetMonday.setHours(0, 0, 0, 0);
+        
+        // Tính số tuần chênh lệch
+        const diffMs = targetMonday.getTime() - currentMonday.getTime();
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const weekOffset = Math.floor(diffDays / 7);
+        
+        setWeekOffset(weekOffset);
+        
+        // Expand ngày có slot
+        const weekday = targetDay as WeekdayKey;
+        setExpandedDays(new Set([weekday]));
+      } catch (err) {
+        // Nếu parse date lỗi, giữ nguyên weekOffset mặc định
+      }
+    }
+  }, [route.params?.initialDate]);
+
+  // Chọn học sinh đầu tiên nếu chưa có studentId từ params và chưa chọn
+  useEffect(() => {
+    if (students.length && !selectedStudentId && !route.params?.studentId) {
+      setSelectedStudentId(students[0].id);
+      setCurrentStudentIndex(0);
+    }
+  }, [students, selectedStudentId, route.params?.studentId]);
 
   const selectedStudent: StudentResponse | null = useMemo(() => {
     return students.find((student) => student.id === selectedStudentId) ?? null;
@@ -141,9 +203,13 @@ const BookedClassesScreen: React.FC = () => {
           studentId,
           pageIndex: 1,
           pageSize: PAGE_SIZE,
-          status: 'Booked',
+          // Không filter theo status ở API để lấy tất cả các slot (trừ Cancelled sẽ filter ở client)
         });
-        setBookedSlots(response.items || []);
+        // Filter bỏ các slot có status "Cancelled"
+        const filteredSlots = (response.items || []).filter(
+          (slot) => slot.status && slot.status.toLowerCase() !== 'cancelled'
+        );
+        setBookedSlots(filteredSlots);
       } catch (err: any) {
         const message =
           err?.response?.data?.message ||
@@ -159,13 +225,87 @@ const BookedClassesScreen: React.FC = () => {
     []
   );
 
+  // Đồng bộ selectedStudentId theo index khi swipe
+  useEffect(() => {
+    if (students.length > 0 && currentStudentIndex >= 0 && currentStudentIndex < students.length) {
+      const student = students[currentStudentIndex];
+      if (student.id !== selectedStudentId) {
+        setSelectedStudentId(student.id);
+      }
+    }
+  }, [currentStudentIndex, students]);
+
+  // Fetch subscriptions khi selectedStudentId thay đổi
+  useEffect(() => {
+    if (selectedStudentId) {
+      // Chỉ fetch nếu chưa có data và chưa đang load
+      const hasData = studentSubscriptions[selectedStudentId] !== undefined;
+      const isLoading = subscriptionsLoading[selectedStudentId];
+      if (!hasData && !isLoading) {
+        fetchStudentSubscriptions(selectedStudentId);
+      }
+    }
+  }, [selectedStudentId, studentSubscriptions, subscriptionsLoading, fetchStudentSubscriptions]);
+
+  // Sync currentStudentIndex khi selectedStudentId thay đổi từ bên ngoài (ví dụ route params)
+  useEffect(() => {
+    if (selectedStudentId && students.length > 0) {
+      const index = students.findIndex(s => s.id === selectedStudentId);
+      if (index >= 0 && index !== currentStudentIndex) {
+        setCurrentStudentIndex(index);
+        const itemWidth = Dimensions.get('window').width - SPACING.MD * 2;
+        studentFlatListRef.current?.scrollToOffset({
+          offset: itemWidth * index,
+          animated: true,
+        });
+      }
+    }
+  }, [selectedStudentId, students]);
+
+  // Scroll to current student when students list changes
+  useEffect(() => {
+    if (students.length > 0 && currentStudentIndex >= 0 && currentStudentIndex < students.length) {
+      const itemWidth = Dimensions.get('window').width - SPACING.MD * 2;
+      studentFlatListRef.current?.scrollToOffset({
+        offset: itemWidth * currentStudentIndex,
+        animated: false,
+      });
+    }
+  }, [students.length]);
+
+  // Fetch subscriptions for student
+  const fetchStudentSubscriptions = useCallback(async (studentId: string) => {
+    setSubscriptionsLoading(prev => {
+      if (prev[studentId]) return prev; // Đang load rồi thì skip
+      return { ...prev, [studentId]: true };
+    });
+    
+    try {
+      const data = await packageService.getStudentSubscriptions(studentId);
+      const activeData = data.filter((sub) => {
+        if (!sub.status) return false;
+        const status = sub.status.trim().toUpperCase();
+        return status === 'ACTIVE';
+      });
+      setStudentSubscriptions(prev => ({ ...prev, [studentId]: activeData }));
+    } catch (err: any) {
+      console.warn('Failed to fetch subscriptions:', err);
+      setStudentSubscriptions(prev => ({ ...prev, [studentId]: [] }));
+    } finally {
+      setSubscriptionsLoading(prev => ({ ...prev, [studentId]: false }));
+    }
+  }, []);
+
   useEffect(() => {
     if (selectedStudentId) {
       fetchBookedSlots(selectedStudentId);
+      if (!studentSubscriptions[selectedStudentId]) {
+        fetchStudentSubscriptions(selectedStudentId);
+      }
     } else {
       setBookedSlots([]);
     }
-  }, [selectedStudentId, fetchBookedSlots]);
+  }, [selectedStudentId, fetchBookedSlots, fetchStudentSubscriptions]);
 
   useEffect(() => {
     if (selectedStudentId) {
@@ -255,6 +395,23 @@ const BookedClassesScreen: React.FC = () => {
       }
     });
 
+    // Sort slots in each day by startTime (earlier times first)
+    Object.keys(groups).forEach((dayKey) => {
+      const day = Number(dayKey) as WeekdayKey;
+      groups[day].sort((a, b) => {
+        const timeA = a.timeframe?.startTime || '';
+        const timeB = b.timeframe?.startTime || '';
+        
+        // If no timeframe, put at the end
+        if (!timeA && !timeB) return 0;
+        if (!timeA) return 1;
+        if (!timeB) return -1;
+        
+        // Compare time strings (HH:MM:SS format)
+        return timeA.localeCompare(timeB);
+      });
+    });
+
     return groups;
   }, [bookedSlots, weekRange]);
 
@@ -287,81 +444,147 @@ const BookedClassesScreen: React.FC = () => {
     });
   }, [rootNavigation]);
 
-  const renderStudentSelector = () => {
-    if (!students.length) {
-      return null;
-    }
+  // Swipe đổi học sinh
+  const handleStudentSwipe = useCallback(
+    (event: any) => {
+      const itemWidth = Dimensions.get('window').width - SPACING.MD * 2;
+      const index = Math.round(event.nativeEvent.contentOffset.x / itemWidth);
+      if (index >= 0 && index < students.length && index !== currentStudentIndex) {
+        setCurrentStudentIndex(index);
+      }
+    },
+    [students.length, currentStudentIndex]
+  );
 
-    return (
-      <View style={[styles.sectionCard, styles.sectionSpacing]}>
-        <Text style={styles.sectionTitle}>Chọn con cần xem lịch</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.studentChipList}
-        >
-          {students.map((student) => {
-            const active = student.id === selectedStudentId;
-            return (
-              <TouchableOpacity
-                key={student.id}
-                style={[styles.studentChip, active && styles.studentChipActive]}
-                onPress={() => setSelectedStudentId(student.id)}
-              >
-                <MaterialIcons
-                  name={active ? 'child-care' : 'face-retouching-natural'}
-                  size={18}
-                  color={active ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
-                />
-                <Text
-                  style={[
-                    styles.studentChipText,
-                    active && { color: COLORS.PRIMARY, fontWeight: '700' },
-                  ]}
-                >
-                  {student.name}
+  const renderStudentCard = useCallback(
+    ({ item: student }: { item: StudentResponse }) => {
+      const screenWidth = Dimensions.get('window').width;
+      const subscriptions = studentSubscriptions[student.id] || [];
+      const isLoading = subscriptionsLoading[student.id];
+      
+      // Tính tổng số slot đã dùng và tổng số slot
+      let totalUsed = 0;
+      let totalSlots = 0;
+      let packageNames: string[] = [];
+      
+      if (subscriptions.length > 0) {
+        subscriptions.forEach((sub) => {
+          const used = sub.usedSlot || 0;
+          const total = sub.totalSlotsSnapshot ?? sub.totalSlots ?? sub.remainingSlots;
+          let totalDisplay: number = 0;
+          
+          if (typeof total === 'number') {
+            totalDisplay = total;
+          } else {
+            // Thử parse từ packageName nếu có
+            const nameMatch = sub.packageName?.match(/(\d+)/);
+            if (nameMatch) {
+              totalDisplay = parseInt(nameMatch[1], 10);
+            }
+          }
+          
+          totalUsed += used;
+          totalSlots += totalDisplay;
+          if (sub.packageName) {
+            packageNames.push(sub.packageName);
+          }
+        });
+      }
+      
+      return (
+        <View style={{ width: screenWidth - SPACING.MD * 2 }}>
+          <View style={[styles.studentInfoCard, styles.sectionSpacing]}>
+            {/* Header với avatar và tên */}
+            <View style={styles.studentInfoHeader}>
+              <View style={styles.studentAvatar}>
+                <MaterialIcons name="emoji-emotions" size={26} color={COLORS.PRIMARY} />
+              </View>
+              <View style={{ flex: 1, marginLeft: SPACING.SM }}>
+                <Text style={styles.studentName}>{student.name}</Text>
+                <Text style={styles.studentMeta}>
+                  {student.studentLevelName || 'Chưa có cấp độ phù hợp'}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-    );
-  };
+              </View>
+            </View>
 
-  const renderSelectedStudentInfo = () => {
-    if (!selectedStudent) {
-      return null;
-    }
+            {/* Divider */}
+            <View style={styles.studentDivider} />
 
-    return (
-      <View style={[styles.studentInfoCard, styles.sectionSpacing]}>
-        <View style={[styles.studentInfoHeader, styles.withBottomSpacing]}>
-          <View style={styles.studentAvatar}>
-            <MaterialIcons name="emoji-emotions" size={26} color={COLORS.PRIMARY} />
+            {/* Thông tin chi nhánh và trường */}
+            <View style={styles.studentInfoSection}>
+              <View style={styles.studentMetaRow}>
+                <View style={styles.studentIconContainer}>
+                  <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
+                </View>
+                <Text style={styles.studentMetaText}>
+                  {student.branchName || 'Chưa gắn chi nhánh'}
+                </Text>
+              </View>
+              <View style={[styles.studentMetaRow, { marginTop: SPACING.XS }]}>
+                <View style={styles.studentIconContainer}>
+                  <MaterialIcons name="school" size={18} color={COLORS.PRIMARY} />
+                </View>
+                <Text style={styles.studentMetaText} numberOfLines={2}>
+                  {student.schoolName || 'Chưa cập nhật trường học'}
+                </Text>
+              </View>
+            </View>
+            
+            {/* Thông tin gói và slot - Section riêng */}
+            <View style={styles.studentPackageSection}>
+              <View style={styles.studentMetaRow}>
+                <View style={styles.studentIconContainer}>
+                  <MaterialIcons name="card-membership" size={18} color={COLORS.PRIMARY} />
+                </View>
+                {isLoading ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <ActivityIndicator size="small" color={COLORS.PRIMARY} style={{ marginLeft: SPACING.SM }} />
+                    <Text style={[styles.studentMetaText, { marginLeft: SPACING.SM }]}>Đang tải...</Text>
+                  </View>
+                ) : subscriptions.length > 0 ? (
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.studentPackageName} numberOfLines={2}>
+                      {packageNames.length > 0 ? packageNames.join(', ') : 'Có gói đang hoạt động'}
+                    </Text>
+                    {totalSlots > 0 && (
+                      <View style={styles.studentSlotInfo}>
+                        <Text style={styles.studentSlotText}>
+                          Đã dùng: <Text style={styles.studentSlotNumber}>{totalUsed}</Text> / <Text style={styles.studentSlotNumber}>{totalSlots}</Text> slot
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={[styles.studentMetaText, { color: COLORS.TEXT_SECONDARY }]}>
+                    Chưa có gói đăng ký
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            {/* Nút Đặt lịch học */}
+            <TouchableOpacity
+              style={styles.bookClassButton}
+              onPress={() => {
+                try {
+                  rootNavigation.navigate('SelectSlot', {
+                    studentId: student.id,
+                  });
+                } catch (error: any) {
+                  Alert.alert('Lỗi', 'Không thể mở trang đặt lịch học. Vui lòng thử lại.');
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="event-available" size={20} color={COLORS.SURFACE} />
+              <Text style={styles.bookClassButtonText}>Đặt lịch học</Text>
+            </TouchableOpacity>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.studentName}>{selectedStudent.name}</Text>
-            <Text style={styles.studentMeta}>
-              {selectedStudent.studentLevelName || 'Chưa có cấp độ phù hợp'}
-            </Text>
-          </View>
         </View>
-        <View style={[styles.studentMetaRow, styles.withTopSpacing]}>
-          <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
-          <Text style={styles.studentMetaText}>
-            {selectedStudent.branchName || 'Chưa gắn chi nhánh'}
-          </Text>
-        </View>
-        <View style={[styles.studentMetaRow, styles.withTopSpacing]}>
-          <MaterialIcons name="school" size={18} color={COLORS.PRIMARY} />
-          <Text style={styles.studentMetaText}>
-            {selectedStudent.schoolName || 'Chưa cập nhật trường học'}
-          </Text>
-        </View>
-      </View>
-    );
-  };
+      );
+    },
+    [studentSubscriptions, subscriptionsLoading, rootNavigation]
+  );
 
   const renderSlotList = () => {
     if (loading && bookedSlots.length === 0) {
@@ -392,6 +615,24 @@ const BookedClassesScreen: React.FC = () => {
           <Text style={styles.stateText}>
             Chưa có lớp học nào đã đặt trong tuần này. Vui lòng đặt lịch tại mục Đặt Lịch Học.
           </Text>
+          {selectedStudentId && (
+            <TouchableOpacity
+              style={styles.selectSlotButton}
+              onPress={() => {
+                try {
+                  rootNavigation.navigate('SelectSlot', {
+                    studentId: selectedStudentId,
+                  });
+                } catch (error: any) {
+                  Alert.alert('Lỗi', 'Không thể mở trang chọn slot. Vui lòng thử lại.');
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="event-available" size={20} color={COLORS.SURFACE} />
+              <Text style={styles.selectSlotButtonText}>Chọn slot</Text>
+            </TouchableOpacity>
+          )}
         </View>
       );
     }
@@ -408,6 +649,24 @@ const BookedClassesScreen: React.FC = () => {
           <Text style={styles.stateText}>
             Chưa có lớp học nào đã đặt trong tuần này. Vui lòng đặt lịch tại mục Đặt Lịch Học.
           </Text>
+          {selectedStudentId && (
+            <TouchableOpacity
+              style={styles.selectSlotButton}
+              onPress={() => {
+                try {
+                  rootNavigation.navigate('SelectSlot', {
+                    studentId: selectedStudentId,
+                  });
+                } catch (error: any) {
+                  Alert.alert('Lỗi', 'Không thể mở trang chọn slot. Vui lòng thử lại.');
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="event-available" size={20} color={COLORS.SURFACE} />
+              <Text style={styles.selectSlotButtonText}>Chọn slot</Text>
+            </TouchableOpacity>
+          )}
         </View>
       );
     }
@@ -489,10 +748,60 @@ const BookedClassesScreen: React.FC = () => {
                                 {slot.timeframe?.name || 'Khung giờ chưa đặt tên'}
                               </Text>
                             </View>
-                            <View style={styles.statusTag}>
-                              <MaterialIcons name="check-circle" size={18} color={COLORS.PRIMARY} />
-                              <Text style={styles.statusTagText}>Đã đặt</Text>
-                            </View>
+                            {slot.status && slot.status.toLowerCase() !== 'cancelled' && (
+                              <View
+                                style={[
+                                  styles.statusTag,
+                                  {
+                                    backgroundColor:
+                                      slot.status.toLowerCase() === 'completed'
+                                        ? COLORS.SUCCESS_BG
+                                        : slot.status.toLowerCase() === 'noshow'
+                                        ? COLORS.WARNING_BG || '#FFF3E0'
+                                        : slot.status.toLowerCase() === 'rescheduled'
+                                        ? COLORS.INFO_BG || '#E3F2FD'
+                                        : COLORS.SUCCESS_BG,
+                                  },
+                                ]}
+                              >
+                                <MaterialIcons
+                                  name="check-circle"
+                                  size={18}
+                                  color={
+                                    slot.status.toLowerCase() === 'completed'
+                                      ? COLORS.SUCCESS
+                                      : slot.status.toLowerCase() === 'noshow'
+                                      ? COLORS.WARNING || '#FF9800'
+                                      : slot.status.toLowerCase() === 'rescheduled'
+                                      ? COLORS.INFO || '#2196F3'
+                                      : COLORS.PRIMARY
+                                  }
+                                />
+                                <Text
+                                  style={[
+                                    styles.statusTagText,
+                                    {
+                                      color:
+                                        slot.status.toLowerCase() === 'completed'
+                                          ? COLORS.SUCCESS
+                                          : slot.status.toLowerCase() === 'noshow'
+                                          ? COLORS.WARNING || '#FF9800'
+                                          : slot.status.toLowerCase() === 'rescheduled'
+                                          ? COLORS.INFO || '#2196F3'
+                                          : COLORS.PRIMARY,
+                                    },
+                                  ]}
+                                >
+                                  {slot.status.toLowerCase() === 'completed'
+                                    ? 'Đã điểm danh'
+                                    : slot.status.toLowerCase() === 'noshow'
+                                    ? 'Vắng mặt'
+                                    : slot.status.toLowerCase() === 'rescheduled'
+                                    ? 'Đổi lịch'
+                                    : 'Đã đặt'}
+                                </Text>
+                              </View>
+                            )}
                           </View>
 
                           <View style={styles.slotMetaRow}>
@@ -548,12 +857,41 @@ const BookedClassesScreen: React.FC = () => {
           ) : undefined
         }
       >
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Lớp học đã đặt</Text>
-          <Text style={styles.headerSubtitle}>
-            Xem lịch học và hoạt động của con tại trung tâm
-          </Text>
-        </View>
+        {/* Swipeable student cards giống Đặt Lịch Học */}
+        {students.length > 0 && (
+          <View style={styles.studentSwipeContainer}>
+            <FlatList
+              ref={studentFlatListRef}
+              data={students}
+              renderItem={renderStudentCard}
+              keyExtractor={(item) => item.id}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleStudentSwipe}
+              snapToInterval={Dimensions.get('window').width - SPACING.MD * 2}
+              decelerationRate="fast"
+              getItemLayout={(data, index) => ({
+                length: Dimensions.get('window').width - SPACING.MD * 2,
+                offset: (Dimensions.get('window').width - SPACING.MD * 2) * index,
+                index,
+              })}
+            />
+            {students.length > 1 && (
+              <View style={styles.paginationContainer}>
+                {students.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.paginationDot,
+                      index === currentStudentIndex && styles.paginationDotActive,
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        )}
 
         {studentsLoading && !students.length ? (
           <View style={[styles.stateCard, styles.surfaceCard, styles.sectionSpacing]}>
@@ -579,12 +917,7 @@ const BookedClassesScreen: React.FC = () => {
               Chưa có thông tin con trong tài khoản. Vui lòng thêm con tại mục Hồ Sơ để xem các lớp học đã đặt.
             </Text>
           </View>
-        ) : (
-          <>
-            {renderStudentSelector()}
-            {renderSelectedStudentInfo()}
-          </>
-        )}
+        ) : null}
 
         {/* Điều hướng tuần */}
         <View style={[styles.sectionCard, styles.sectionSpacing]}>
@@ -726,7 +1059,7 @@ const styles = StyleSheet.create({
   },
   studentInfoCard: {
     backgroundColor: COLORS.SURFACE,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: SPACING.MD,
     shadowColor: COLORS.SHADOW,
     shadowOffset: { width: 0, height: 2 },
@@ -737,11 +1070,12 @@ const styles = StyleSheet.create({
   studentInfoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: SPACING.SM,
   },
   studentAvatar: {
     width: 48,
     height: 48,
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: COLORS.SUCCESS_BG,
     justifyContent: 'center',
     alignItems: 'center',
@@ -750,26 +1084,105 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.LG,
     fontWeight: '700',
     color: COLORS.TEXT_PRIMARY,
+    marginBottom: 2,
   },
   studentMeta: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
+    lineHeight: 18,
+  },
+  studentDivider: {
+    height: 1,
+    backgroundColor: COLORS.BORDER,
+    marginBottom: SPACING.SM,
+  },
+  studentInfoSection: {
+    marginBottom: SPACING.SM,
+  },
+  studentPackageSection: {
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    borderRadius: 10,
+    padding: SPACING.SM,
+    marginTop: 0,
   },
   studentMetaRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  studentIconContainer: {
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
     alignItems: 'center',
+    marginRight: SPACING.SM,
+    marginTop: 1,
   },
   studentMetaText: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
     flex: 1,
-    marginLeft: SPACING.SM,
+    lineHeight: 20,
+  },
+  studentPackageName: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  studentSlotInfo: {
+    marginTop: SPACING.XS,
+  },
+  bookClassButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.LG,
+    borderRadius: 12,
+    marginTop: SPACING.MD,
+    gap: SPACING.SM,
+  },
+  bookClassButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
+  },
+  studentSlotText: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    lineHeight: 18,
+  },
+  studentSlotNumber: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.PRIMARY,
+    fontWeight: '700',
+  },
+  studentSwipeContainer: {
+    marginBottom: SPACING.MD,
   },
   withBottomSpacing: {
     marginBottom: SPACING.SM,
   },
   withTopSpacing: {
     marginTop: SPACING.SM,
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: SPACING.SM,
+    gap: SPACING.XS,
+  },
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.TEXT_SECONDARY + '40',
+  },
+  paginationDotActive: {
+    backgroundColor: COLORS.PRIMARY,
+    width: 24,
   },
   stateCard: {
     borderRadius: 16,
@@ -845,16 +1258,16 @@ const styles = StyleSheet.create({
     color: COLORS.SURFACE,
   },
   slotListContainer: {
-    marginTop: SPACING.LG,
+    marginTop: SPACING.MD,
   },
   daySection: {
-    marginTop: SPACING.LG,
+    marginTop: SPACING.MD,
   },
   dayHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.SM,
+    marginBottom: SPACING.XS,
     paddingVertical: SPACING.XS,
   },
   dayHeaderRight: {
@@ -893,11 +1306,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.BORDER,
     borderStyle: 'dashed',
-    borderRadius: 16,
-    paddingVertical: SPACING.LG,
+    borderRadius: 12,
+    paddingVertical: SPACING.MD,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'transparent',
+    marginBottom: SPACING.XS,
   },
   emptySlotText: {
     marginTop: SPACING.SM,
@@ -906,9 +1320,9 @@ const styles = StyleSheet.create({
   },
   slotCard: {
     backgroundColor: COLORS.SURFACE,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: SPACING.MD,
-    marginBottom: SPACING.SM,
+    marginBottom: SPACING.XS,
     borderWidth: 1,
     borderColor: COLORS.BORDER,
     shadowColor: COLORS.SHADOW,
@@ -998,6 +1412,22 @@ const styles = StyleSheet.create({
   fullImage: {
     width: SCREEN_WIDTH,
     height: '80%',
+  },
+  selectSlotButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    paddingHorizontal: SPACING.LG,
+    paddingVertical: SPACING.MD,
+    borderRadius: 12,
+    marginTop: SPACING.MD,
+    gap: SPACING.SM,
+  },
+  selectSlotButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
   },
 });
 
