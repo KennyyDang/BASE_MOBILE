@@ -22,7 +22,7 @@ import {
   StudentSlotResponse,
 } from '../../types/api';
 import { COLORS } from '../../constants';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { MainTabParamList, RootStackParamList } from '../../types';
@@ -90,9 +90,11 @@ const formatDateDisplay = (date: Date): string => {
 
 type BookedClassesNavigationProp = BottomTabNavigationProp<MainTabParamList, 'BookedClasses'>;
 type RootNavigationProp = StackNavigationProp<RootStackParamList>;
+type BookedClassesRouteProp = RouteProp<MainTabParamList, 'BookedClasses'>;
 
 const BookedClassesScreen: React.FC = () => {
   const tabNavigation = useNavigation<BookedClassesNavigationProp>();
+  const route = useRoute<BookedClassesRouteProp>();
   
   // Get root navigator from parent - use useMemo to get it once
   const rootNavigation = useMemo(() => {
@@ -122,11 +124,62 @@ const BookedClassesScreen: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<WeekdayKey>>(new Set()); // Mặc định đóng tất cả
 
+  // Xử lý studentId từ route params
   useEffect(() => {
-    if (students.length && !selectedStudentId) {
+    const studentIdFromParams = route.params?.studentId;
+    if (studentIdFromParams && students.length > 0) {
+      // Kiểm tra xem studentId có tồn tại trong danh sách học sinh không
+      const studentExists = students.some(s => s.id === studentIdFromParams);
+      if (studentExists) {
+        setSelectedStudentId(studentIdFromParams);
+      }
+    }
+  }, [route.params?.studentId, students]);
+
+  // Tính toán weekOffset từ initialDate nếu có
+  useEffect(() => {
+    const initialDate = route.params?.initialDate;
+    if (initialDate) {
+      try {
+        const targetDate = new Date(initialDate);
+        const now = new Date();
+        const currentDay = now.getDay();
+        
+        // Tính thứ 2 của tuần hiện tại
+        const currentMonday = new Date(now);
+        const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1;
+        currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
+        currentMonday.setHours(0, 0, 0, 0);
+        
+        // Tính thứ 2 của tuần chứa targetDate
+        const targetDay = targetDate.getDay();
+        const targetMonday = new Date(targetDate);
+        const targetDaysFromMonday = targetDay === 0 ? 6 : targetDay - 1;
+        targetMonday.setDate(targetMonday.getDate() - targetDaysFromMonday);
+        targetMonday.setHours(0, 0, 0, 0);
+        
+        // Tính số tuần chênh lệch
+        const diffMs = targetMonday.getTime() - currentMonday.getTime();
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        const weekOffset = Math.floor(diffDays / 7);
+        
+        setWeekOffset(weekOffset);
+        
+        // Expand ngày có slot
+        const weekday = targetDay as WeekdayKey;
+        setExpandedDays(new Set([weekday]));
+      } catch (err) {
+        // Nếu parse date lỗi, giữ nguyên weekOffset mặc định
+      }
+    }
+  }, [route.params?.initialDate]);
+
+  // Chọn học sinh đầu tiên nếu chưa có studentId từ params và chưa chọn
+  useEffect(() => {
+    if (students.length && !selectedStudentId && !route.params?.studentId) {
       setSelectedStudentId(students[0].id);
     }
-  }, [students, selectedStudentId]);
+  }, [students, selectedStudentId, route.params?.studentId]);
 
   const selectedStudent: StudentResponse | null = useMemo(() => {
     return students.find((student) => student.id === selectedStudentId) ?? null;

@@ -280,7 +280,7 @@ export type RootStackParamList = {
     order?: any; // Optional: pass order object to avoid API call
   };
   Schools: undefined;
-  Schedule: undefined;
+  Schedule: { initialDate?: string } | undefined;
   CreateActivity: {
     studentSlotId: string;
     studentId: string;
@@ -323,7 +323,7 @@ export type StaffStackParamList = {
 export type MainTabParamList = {
   Dashboard: undefined;
   Wallet: undefined;
-  BookedClasses: undefined;
+  BookedClasses: { initialDate?: string; studentId?: string } | undefined;
   Profile: undefined;
   Services: undefined;
 };
