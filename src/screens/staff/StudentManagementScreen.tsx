@@ -138,7 +138,6 @@ const StudentManagementScreen: React.FC = () => {
 
       // Kiểm tra response hợp lệ
       if (!response || !response.items || !Array.isArray(response.items)) {
-        console.warn('Invalid API response:', response);
         setStudents([]);
         setLoading(false);
         return;
@@ -348,6 +347,18 @@ const StudentManagementScreen: React.FC = () => {
     });
   };
 
+  const handleViewStudentActivities = (student: SlotStudent) => {
+    try {
+      navigation.navigate('StaffStudentActivities', {
+        studentId: student.studentId,
+        studentName: student.studentName,
+        studentSlotId: student.id, // student.id là studentSlotId
+      });
+    } catch (error: any) {
+      Alert.alert('Lỗi', 'Không thể mở trang hoạt động của học sinh. Vui lòng thử lại.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -470,14 +481,18 @@ const StudentManagementScreen: React.FC = () => {
                       <MaterialIcons name="person" size={24} color={COLORS.PRIMARY} />
                     </View>
                   )}
-                  <View style={styles.studentContent}>
+                  <TouchableOpacity
+                    style={styles.studentContent}
+                    onPress={() => handleViewStudentActivities(student)}
+                    activeOpacity={0.7}
+                  >
                     <Text style={styles.studentName}>{student.studentName}</Text>
                     {student.parentName && (
                       <Text style={styles.studentParent}>
                         Phụ huynh: {student.parentName}
                       </Text>
                     )}
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.studentActions}>
                     <TouchableOpacity
                       style={styles.viewActivitiesButton}

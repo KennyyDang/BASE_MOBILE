@@ -410,10 +410,10 @@ const DashboardScreen: React.FC = () => {
   const handleQuickAction = (action: string) => {
     switch (action) {
       case 'schedule':
-        navigation.navigate('Schedule');
+        (navigation as any).navigate('Main', { screen: 'Schedule' });
         break;
       case 'wallet':
-        (navigation as any).navigate('Main', { screen: 'Wallet' });
+        navigation.navigate('Wallet');
         break;
       case 'transactionHistory':
         navigation.navigate('TransactionHistory');

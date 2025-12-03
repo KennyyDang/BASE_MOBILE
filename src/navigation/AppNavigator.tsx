@@ -57,6 +57,7 @@ import NotificationScreen from '../screens/main/NotificationScreen';
 import StudentPackagesScreen from '../screens/main/StudentPackagesScreen';
 import StudentClassesScreen from '../screens/main/StudentClassesScreen';
 import StudentActivityScreen from '../screens/main/StudentActivityScreen';
+import StaffStudentActivityScreen from '../screens/staff/StaffStudentActivityScreen';
 import ActivityDetailScreen from '../screens/main/ActivityDetailScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import TransactionDetailScreen from '../screens/main/TransactionDetailScreen';
@@ -67,6 +68,7 @@ import OrderDetailScreen from '../screens/main/OrderDetailScreen';
 import PurchaseServiceScreen from '../screens/main/PurchaseServiceScreen';
 import RegisterChildScreen from '../screens/main/RegisterChildScreen';
 import ClassDetailScreen from '../screens/main/ClassDetailScreen';
+import SelectSlotScreen from '../screens/main/SelectSlotScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 import BadgeIcon from '../components/BadgeIcon';
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount';
@@ -238,11 +240,8 @@ const MainTabNavigator = () => {
             case 'Dashboard':
               iconName = 'dashboard';
               break;
-            case 'Wallet':
-              iconName = 'account-balance-wallet';
-              break;
-            case 'Children':
-              iconName = 'child-care';
+            case 'Schedule':
+              iconName = 'schedule';
               break;
             case 'BookedClasses':
               iconName = 'event-available';
@@ -291,20 +290,20 @@ const MainTabNavigator = () => {
           headerTitle: 'BASE - Trang Chủ',
         }}
       />
-      <Tab.Screen 
-        name="Wallet" 
-        component={WalletScreen}
+      <Tab.Screen
+        name="Schedule"
+        component={ScheduleScreen}
         options={{
-          title: 'Ví Tiền',
-          headerTitle: 'Ví Tiền',
+          title: 'Đặt Lịch Học',
+          headerTitle: 'Đặt Lịch Học',
         }}
       />
       <Tab.Screen 
         name="BookedClasses" 
         component={BookedClassesScreen}
         options={{
-          title: 'Lớp Đã Đặt',
-          headerTitle: 'Lớp học đã đặt',
+          title: 'Phòng đã đặt',
+          headerTitle: 'Phòng đã đặt',
         }}
       />
       <Tab.Screen 
@@ -327,7 +326,7 @@ const linking: LinkingOptions<any> = {
       Main: {
         screens: {
           Dashboard: 'dashboard',
-          Wallet: 'wallet',
+          Schedule: 'schedule-tab',
           Profile: 'profile',
         },
       },
@@ -550,6 +549,14 @@ const AppNavigator = () => {
                 headerTitle: 'Nạp tiền',
               }}
             />
+            <Stack.Screen
+              name="Wallet"
+              component={WalletScreen}
+              options={{
+                title: 'Ví tiền',
+                headerTitle: 'Ví tiền',
+              }}
+            />
             <Stack.Screen 
               name="Settings" 
               component={SettingsScreen}
@@ -591,6 +598,14 @@ const AppNavigator = () => {
               }}
             />
             <Stack.Screen
+              name="StaffStudentActivities"
+              component={StaffStudentActivityScreen}
+              options={{
+                title: 'Hoạt động',
+                headerTitle: 'Hoạt động của học sinh',
+              }}
+            />
+            <Stack.Screen
               name="ActivityDetail"
               component={ActivityDetailScreen}
               options={{
@@ -601,6 +616,26 @@ const AppNavigator = () => {
             <Stack.Screen
               name="TransactionHistory"
               component={TransactionHistoryScreen}
+              options={({ route }: any) => {
+                const params = route.params || {};
+                const { walletType, studentName } = params;
+                return {
+                  title: walletType === 'Parent' 
+                    ? 'Lịch sử ví phụ huynh'
+                    : walletType === 'Student' && studentName
+                    ? `Lịch sử ví ${studentName}`
+                    : walletType === 'Student'
+                    ? 'Lịch sử ví học sinh'
+                    : 'Lịch sử giao dịch',
+                  headerTitle: walletType === 'Parent' 
+                    ? 'Lịch sử ví phụ huynh'
+                    : walletType === 'Student' && studentName
+                    ? `Lịch sử ví ${studentName}`
+                    : walletType === 'Student'
+                    ? 'Lịch sử ví học sinh'
+                    : 'Lịch sử giao dịch',
+                };
+              }}
             />
             <Stack.Screen
               name="TransactionDetail"
@@ -682,6 +717,15 @@ const AppNavigator = () => {
               options={{
                 title: 'Mua dịch vụ bổ sung',
                 headerTitle: 'Mua dịch vụ bổ sung',
+              }}
+            />
+            <Stack.Screen
+              name="SelectSlot"
+              component={SelectSlotScreen}
+              options={{
+                title: 'Chọn slot',
+                headerTitle: 'Chọn slot',
+                headerShown: false,
               }}
             />
             <Stack.Screen

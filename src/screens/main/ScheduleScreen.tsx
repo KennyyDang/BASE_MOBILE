@@ -22,6 +22,9 @@ import { Card, Surface, Chip } from 'react-native-paper';
 import { useMyChildren } from '../../hooks/useChildrenApi';
 import branchSlotService from '../../services/branchSlotService';
 import studentSlotService from '../../services/studentSlotService';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../types';
 import {
   BranchSlotResponse,
   BranchSlotRoomResponse,
@@ -202,7 +205,10 @@ const computeSlotDateISO = (slot: BranchSlotResponse, weekOffset: number): strin
   return slotDate.toISOString();
 };
 
+type ScheduleScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
 const ScheduleScreen: React.FC = () => {
+  const navigation = useNavigation<ScheduleScreenNavigationProp>();
   const {
     students,
     loading: studentsLoading,
@@ -234,6 +240,8 @@ const ScheduleScreen: React.FC = () => {
   const [recentSearches, setRecentSearches] = useState<Array<{ studentId: string; studentName: string; date: string }>>([]); // Lịch sử tìm kiếm
   const scrollViewRef = useRef<ScrollView>(null); // Ref để scroll đến slots section
   const dateScrollViewRef = useRef<ScrollView>(null); // Ref để scroll date selector
+  const studentFlatListRef = useRef<FlatList>(null); // Ref cho FlatList swipe students
+  const [currentStudentIndex, setCurrentStudentIndex] = useState(0); // Index của con hiện tại trong FlatList
   const [slotsSectionY, setSlotsSectionY] = useState(0); // Vị trí Y của slots section
   const [showResults, setShowResults] = useState(false); // Hiển thị trang kết quả sau khi tìm kiếm
   const [availableDates, setAvailableDates] = useState<Date[]>([]); // Danh sách các ngày có slot
@@ -242,8 +250,45 @@ const ScheduleScreen: React.FC = () => {
   useEffect(() => {
     if (students.length && !selectedStudentId) {
       setSelectedStudentId(students[0].id);
+      setCurrentStudentIndex(0);
     }
   }, [students, selectedStudentId]);
+
+  // Scroll to current student when students list changes
+  useEffect(() => {
+    if (students.length > 0 && currentStudentIndex >= 0 && currentStudentIndex < students.length) {
+      const itemWidth = Dimensions.get('window').width - SPACING.MD * 2;
+      studentFlatListRef.current?.scrollToOffset({
+        offset: itemWidth * currentStudentIndex,
+        animated: false,
+      });
+    }
+  }, [students.length]);
+
+  // Sync selectedStudentId với currentStudentIndex khi swipe
+  useEffect(() => {
+    if (students.length > 0 && currentStudentIndex >= 0 && currentStudentIndex < students.length) {
+      const student = students[currentStudentIndex];
+      if (student.id !== selectedStudentId) {
+        setSelectedStudentId(student.id);
+      }
+    }
+  }, [currentStudentIndex, students]);
+
+  // Sync currentStudentIndex khi selectedStudentId thay đổi từ bên ngoài (ví dụ recent searches)
+  useEffect(() => {
+    if (selectedStudentId && students.length > 0) {
+      const index = students.findIndex(s => s.id === selectedStudentId);
+      if (index >= 0 && index !== currentStudentIndex) {
+        setCurrentStudentIndex(index);
+        const itemWidth = Dimensions.get('window').width - SPACING.MD * 2;
+        studentFlatListRef.current?.scrollToOffset({
+          offset: itemWidth * index,
+          animated: true,
+        });
+      }
+    }
+  }, [selectedStudentId, students]);
 
   // Reset timeframe when student changes
   useEffect(() => {
@@ -1035,47 +1080,115 @@ const ScheduleScreen: React.FC = () => {
     return groups;
   }, [slots]);
 
-  const renderStudentSelector = () => {
-    if (!students.length) {
-      return null;
+  // Handle swipe to change student
+  const handleStudentSwipe = useCallback((event: any) => {
+    const { contentOffset, layoutMeasurement } = event.nativeEvent;
+    const itemWidth = Dimensions.get('window').width - SPACING.MD * 2;
+    const index = Math.round(contentOffset.x / itemWidth);
+    if (index >= 0 && index < students.length && index !== currentStudentIndex) {
+      setCurrentStudentIndex(index);
     }
+  }, [students.length, currentStudentIndex]);
 
-  return (
-      <View style={[styles.sectionCard, styles.sectionSpacing]}>
-        <Text style={styles.sectionTitle}>Chọn con cần xem lịch</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.studentChipList}
-        >
-          {students.map((student) => {
-            const active = student.id === selectedStudentId;
-            return (
-          <TouchableOpacity 
-                key={student.id}
-                style={[styles.studentChip, active && styles.studentChipActive]}
-                onPress={() => setSelectedStudentId(student.id)}
-              >
-                <MaterialIcons
-                  name={active ? 'child-care' : 'face-retouching-natural'}
-                  size={18}
-                  color={active ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
-                />
-                <Text
-                  style={[
-                    styles.studentChipText,
-                    active && { color: COLORS.PRIMARY, fontWeight: '700' },
-                  ]}
-                >
-                  {student.name}
+  const renderStudentCard = useCallback(({ item: student, index }: { item: StudentResponse; index: number }) => {
+    const screenWidth = Dimensions.get('window').width;
+    const isSelected = student.id === selectedStudentId;
+    const studentSubscriptions = isSelected ? subscriptions : [];
+    const isLoading = isSelected ? subscriptionsLoading : false;
+    
+    // Tính tổng số slot đã dùng và tổng số slot
+    let totalUsed = 0;
+    let totalSlots = 0;
+    let packageNames: string[] = [];
+    
+    if (studentSubscriptions.length > 0) {
+      studentSubscriptions.forEach((sub) => {
+        const used = sub.usedSlot || 0;
+        const total = computeTotalSlots(sub);
+        const totalDisplay = total !== null ? total : 0;
+        
+        totalUsed += used;
+        totalSlots += totalDisplay;
+        if (sub.packageName) {
+          packageNames.push(sub.packageName);
+        }
+      });
+    }
+    
+    return (
+      <View style={{ width: screenWidth - SPACING.MD * 2 }}>
+        <View style={[styles.studentInfoCard, styles.sectionSpacing]}>
+          {/* Header với avatar và tên */}
+          <View style={styles.studentInfoHeader}>
+            <View style={styles.studentAvatar}>
+              <MaterialIcons name="emoji-emotions" size={26} color={COLORS.PRIMARY} />
+            </View>
+            <View style={{ flex: 1, marginLeft: SPACING.SM }}>
+              <Text style={styles.studentName}>{student.name}</Text>
+              <Text style={styles.studentMeta}>
+                {student.studentLevelName || 'Chưa có cấp độ phù hợp'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Divider */}
+          <View style={styles.studentDivider} />
+
+          {/* Thông tin chi nhánh và trường */}
+          <View style={styles.studentInfoSection}>
+            <View style={styles.studentMetaRow}>
+              <View style={styles.studentIconContainer}>
+                <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
+              </View>
+              <Text style={styles.studentMetaText}>
+                {student.branchName || 'Chưa gắn chi nhánh'}
+              </Text>
+            </View>
+            <View style={[styles.studentMetaRow, { marginTop: SPACING.XS }]}>
+              <View style={styles.studentIconContainer}>
+                <MaterialIcons name="school" size={18} color={COLORS.PRIMARY} />
+              </View>
+              <Text style={styles.studentMetaText} numberOfLines={2}>
+                {student.schoolName || 'Chưa cập nhật trường học'}
+              </Text>
+            </View>
+          </View>
+          
+          {/* Thông tin gói và slot - Section riêng */}
+          <View style={styles.studentPackageSection}>
+            <View style={styles.studentMetaRow}>
+              <View style={styles.studentIconContainer}>
+                <MaterialIcons name="card-membership" size={18} color={COLORS.PRIMARY} />
+              </View>
+              {isLoading ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <ActivityIndicator size="small" color={COLORS.PRIMARY} style={{ marginLeft: SPACING.SM }} />
+                  <Text style={[styles.studentMetaText, { marginLeft: SPACING.SM }]}>Đang tải...</Text>
+                </View>
+              ) : studentSubscriptions.length > 0 ? (
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.studentPackageName} numberOfLines={2}>
+                    {packageNames.length > 0 ? packageNames.join(', ') : 'Có gói đang hoạt động'}
+                  </Text>
+                  {totalSlots > 0 && (
+                    <View style={styles.studentSlotInfo}>
+                      <Text style={styles.studentSlotText}>
+                        Đã dùng: <Text style={styles.studentSlotNumber}>{totalUsed}</Text> / <Text style={styles.studentSlotNumber}>{totalSlots}</Text> slot
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <Text style={[styles.studentMetaText, { color: COLORS.TEXT_SECONDARY }]}>
+                  Chưa có gói đăng ký
                 </Text>
-          </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+              )}
+            </View>
+          </View>
         </View>
+      </View>
     );
-  };
+  }, [selectedStudentId, subscriptions, subscriptionsLoading, computeTotalSlots]);
 
   const renderSelectedStudentInfo = () => {
     if (!selectedStudent) {
@@ -1865,23 +1978,11 @@ const ScheduleScreen: React.FC = () => {
       Alert.alert('Thông báo', 'Vui lòng chọn con trước khi tìm kiếm.');
       return;
     }
-    // Add to recent searches
-    const searchItem = {
+    // Navigate to SelectSlotScreen
+    navigation.navigate('SelectSlot', {
       studentId: selectedStudentId,
-      studentName: selectedStudent?.name || 'Chưa có tên',
-      date: formatDateForDisplay(selectedDate),
-    };
-    setRecentSearches((prev) => {
-      const filtered = prev.filter((item) => 
-        !(item.studentId === searchItem.studentId && item.date === searchItem.date)
-      );
-      return [searchItem, ...filtered].slice(0, 5); // Keep only 5 recent searches
+      initialDate: selectedDate.toISOString(),
     });
-    // Refresh slots
-    fetchSlots({ page: 1 });
-    
-    // Show results page
-    setShowResults(true);
   };
 
   // Handle back from results
@@ -2430,11 +2531,6 @@ const ScheduleScreen: React.FC = () => {
           ) : undefined
         }
       >
-        {/* Header */}
-        <View style={styles.newHeader}>
-          <Text style={styles.newHeaderTitle}>Đặt Lịch Học</Text>
-        </View>
-
         {/* Loading State */}
         {studentsLoading && !students.length ? (
           <View style={styles.newLoadingContainer}>
@@ -2465,43 +2561,46 @@ const ScheduleScreen: React.FC = () => {
           </View>
         ) : (
           <>
+            {/* Swipeable Student Cards */}
+            {students.length > 0 && (
+              <View style={styles.studentSwipeContainer}>
+                <FlatList
+                  ref={studentFlatListRef}
+                  data={students}
+                  renderItem={renderStudentCard}
+                  keyExtractor={(item) => item.id}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  onMomentumScrollEnd={handleStudentSwipe}
+                  snapToInterval={Dimensions.get('window').width - SPACING.MD * 2}
+                  decelerationRate="fast"
+                  getItemLayout={(data, index) => ({
+                    length: Dimensions.get('window').width - SPACING.MD * 2,
+                    offset: (Dimensions.get('window').width - SPACING.MD * 2) * index,
+                    index,
+                  })}
+                />
+                {/* Pagination Dots */}
+                {students.length > 1 && (
+                  <View style={styles.paginationContainer}>
+                    {students.map((_, index) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.paginationDot,
+                          index === currentStudentIndex && styles.paginationDotActive,
+                        ]}
+                      />
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* Booking Form Card */}
             <Card style={styles.newFormCard} mode="elevated" elevation={4}>
               <Card.Content>
-                {/* Tabs for Children */}
-                <View style={styles.newTabsContainer}>
-                  <View style={styles.newTabsWrap}>
-                    {students.map((student) => {
-                      const isActive = selectedStudentId === student.id;
-                      return (
-                        <Chip
-                          key={student.id}
-                          selected={isActive}
-                          onPress={() => setSelectedStudentId(student.id)}
-                          style={[
-                            styles.newTabChip,
-                            isActive && styles.newTabChipActive,
-                          ]}
-                          textStyle={[
-                            styles.newTabChipText,
-                            isActive && styles.newTabChipTextActive,
-                          ]}
-                          selectedColor={COLORS.SURFACE}
-                          mode={isActive ? 'flat' : 'outlined'}
-                          icon={() => (
-                            <MaterialIcons
-                              name={isActive ? 'child-care' : 'face-retouching-natural'}
-                              size={18}
-                              color={isActive ? COLORS.SURFACE : COLORS.PRIMARY}
-                            />
-                          )}
-                        >
-                          {student.name}
-                        </Chip>
-                      );
-                    })}
-                  </View>
-                </View>
 
                 {/* Information Fields */}
                 <View style={styles.newInfoSection}>
@@ -2529,17 +2628,6 @@ const ScheduleScreen: React.FC = () => {
                     </View>
                   </Surface>
                   
-                  <Surface style={styles.newInfoCard} elevation={1}>
-                    <View style={styles.newInfoRow}>
-                      <View style={styles.newInfoIconContainer}>
-                        <MaterialIcons name="card-membership" size={20} color={COLORS.PRIMARY} />
-                      </View>
-                      <View style={styles.newInfoContent}>
-                        <Text style={styles.newInfoLabel}>Gói áp dụng</Text>
-                        <Text style={styles.newInfoValue} numberOfLines={2}>{getPackageName}</Text>
-                      </View>
-                    </View>
-                  </Surface>
                 </View>
 
                 {/* Date Selection */}
@@ -2847,9 +2935,12 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     marginLeft: SPACING.XS,
   },
+  studentSwipeContainer: {
+    marginBottom: SPACING.MD,
+  },
   studentInfoCard: {
     backgroundColor: COLORS.SURFACE,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: SPACING.MD,
     shadowColor: COLORS.SHADOW,
     shadowOffset: { width: 0, height: 2 },
@@ -2857,14 +2948,32 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: SPACING.SM,
+    gap: SPACING.XS,
+  },
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.TEXT_SECONDARY + '40',
+  },
+  paginationDotActive: {
+    backgroundColor: COLORS.PRIMARY,
+    width: 24,
+  },
   studentInfoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: SPACING.SM,
   },
   studentAvatar: {
     width: 48,
     height: 48,
-    borderRadius: 16,
+    borderRadius: 12,
     backgroundColor: COLORS.SUCCESS_BG,
     justifyContent: 'center',
     alignItems: 'center',
@@ -2873,19 +2982,63 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.LG,
     fontWeight: '700',
     color: COLORS.TEXT_PRIMARY,
+    marginBottom: 2,
   },
   studentMeta: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
+    lineHeight: 18,
+  },
+  studentDivider: {
+    height: 1,
+    backgroundColor: COLORS.BORDER,
+    marginBottom: SPACING.SM,
+  },
+  studentInfoSection: {
+    marginBottom: SPACING.SM,
+  },
+  studentPackageSection: {
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    borderRadius: 10,
+    padding: SPACING.SM,
+    marginTop: 0,
   },
   studentMetaRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  studentIconContainer: {
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
     alignItems: 'center',
+    marginRight: SPACING.SM,
+    marginTop: 1,
   },
   studentMetaText: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
     flex: 1,
+    lineHeight: 20,
+  },
+  studentPackageName: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  studentSlotInfo: {
+    marginTop: SPACING.XS,
+  },
+  studentSlotText: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    lineHeight: 18,
+  },
+  studentSlotNumber: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.PRIMARY,
+    fontWeight: '700',
   },
   withBottomSpacing: {
     marginBottom: SPACING.SM,

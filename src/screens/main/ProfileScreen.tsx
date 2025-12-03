@@ -68,6 +68,8 @@ const ProfileScreen: React.FC = () => {
   const [editPhoneNumber, setEditPhoneNumber] = useState('');
   const [updating, setUpdating] = useState(false);
   const [loadingFamilyProfiles, setLoadingFamilyProfiles] = useState(false);
+  const [showChildrenSection, setShowChildrenSection] = useState(false);
+  const [showActivitiesSection, setShowActivitiesSection] = useState(false);
   
   // Add Family Profile Modal States
   const [addFamilyModalVisible, setAddFamilyModalVisible] = useState(false);
@@ -907,6 +909,10 @@ const ProfileScreen: React.FC = () => {
     navigation.navigate('Notifications');
   };
 
+  const handleWallet = () => {
+    navigation.navigate('Wallet' as never);
+  };
+
   const handleMySubscriptions = () => {
     navigation.navigate('MySubscriptions');
   };
@@ -1488,7 +1494,20 @@ const ProfileScreen: React.FC = () => {
         {/* Children Management Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Quản lý con ({students.length})</Text>
+            <TouchableOpacity
+              style={styles.sectionHeaderLeft}
+              onPress={() => setShowChildrenSection(prev => !prev)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>
+                Quản lý con ({students.length})
+              </Text>
+              <MaterialIcons
+                name={showChildrenSection ? 'expand-less' : 'expand-more'}
+                size={24}
+                color={COLORS.TEXT_SECONDARY}
+              />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.addChildButton}
               onPress={handleAddChild}
@@ -1499,7 +1518,11 @@ const ProfileScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {studentsLoading && students.length === 0 ? (
+          {!showChildrenSection ? (
+            <Text style={styles.collapsedHintText}>
+              Danh sách con đang được ẩn. Chạm vào tiêu đề để mở rộng.
+            </Text>
+          ) : studentsLoading && students.length === 0 ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={COLORS.PRIMARY} />
               <Text style={styles.familyLoadingText}>Đang tải danh sách con...</Text>
@@ -1707,14 +1730,29 @@ const ProfileScreen: React.FC = () => {
 
         {/* Activities Section */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Hoạt động gần đây</Text>
-            {activities.length > 0 && (
-              <Text style={styles.activitiesCount}>{activities.length} hoạt động</Text>
-            )}
-          </View>
+          <TouchableOpacity
+            style={styles.sectionHeader}
+            onPress={() => setShowActivitiesSection(prev => !prev)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.sectionTitle, styles.sectionTitleInline]}>Hoạt động gần đây</Text>
+            <View style={styles.sectionHeaderRight}>
+              {activities.length > 0 && (
+                <Text style={styles.activitiesCount}>{activities.length} hoạt động</Text>
+              )}
+              <MaterialIcons
+                name={showActivitiesSection ? 'expand-less' : 'expand-more'}
+                size={24}
+                color={COLORS.TEXT_SECONDARY}
+              />
+            </View>
+          </TouchableOpacity>
 
-          {loadingActivities ? (
+          {!showActivitiesSection ? (
+            <Text style={styles.collapsedHintText}>
+              Danh sách hoạt động đang được ẩn. Chạm vào tiêu đề để mở rộng.
+            </Text>
+          ) : loadingActivities ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={COLORS.PRIMARY} />
               <Text style={styles.familyLoadingText}>Đang tải hoạt động...</Text>
@@ -1797,6 +1835,12 @@ const ProfileScreen: React.FC = () => {
           <TouchableOpacity style={styles.menuItem} onPress={handleNotifications}>
             <MaterialIcons name="notifications" size={24} color={COLORS.PRIMARY} />
             <Text style={styles.menuText}>Thông báo</Text>
+            <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={handleWallet}>
+            <MaterialIcons name="account-balance-wallet" size={24} color={COLORS.PRIMARY} />
+            <Text style={styles.menuText}>Ví tiền</Text>
             <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
           </TouchableOpacity>
 
@@ -2791,15 +2835,28 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT_PRIMARY,
     marginBottom: SPACING.MD,
   },
+  sectionTitleInline: {
+    marginBottom: 0,
+  },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.MD,
   },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
   sectionHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  collapsedHintText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontStyle: 'italic',
   },
   addFamilyButton: {
     flexDirection: 'row',

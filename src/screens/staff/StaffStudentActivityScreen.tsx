@@ -17,13 +17,13 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import activityService from '../../services/activityService';
+import activityService, { StaffActivityResponse } from '../../services/activityService';
 import { RootStackParamList } from '../../types';
 import { ActivityResponse } from '../../types/api';
 import { COLORS } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 
-type StudentActivityRouteProp = RouteProp<RootStackParamList, 'StudentActivities'>;
+type StaffStudentActivityRouteProp = RouteProp<RootStackParamList, 'StaffStudentActivities'>;
 
 const SPACING = {
   XS: 4,
@@ -65,28 +65,13 @@ const formatDateTime = (dateString: string) => {
   }
 };
 
-const formatFullDateTime = (dateString: string) => {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch (e) {
-    return dateString;
-  }
-};
-
-const StudentActivityScreen: React.FC = () => {
+const StaffStudentActivityScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const {
-    params: { studentId, studentName, studentSlotId, slotDate, slotTimeframe },
-  } = useRoute<StudentActivityRouteProp>();
+    params: { studentId, studentName, studentSlotId },
+  } = useRoute<StaffStudentActivityRouteProp>();
 
-  const [activities, setActivities] = useState<ActivityResponse[]>([]);
+  const [activities, setActivities] = useState<StaffActivityResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,12 +83,9 @@ const StudentActivityScreen: React.FC = () => {
   } | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [markingViewed, setMarkingViewed] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
-  
-  // Kiểm tra xem user có phải staff không
+
   const { user } = useAuth();
-  const isStaff = user?.role && (user.role.toUpperCase().includes('STAFF') || user.role.toUpperCase() === 'ADMIN');
 
   const fetchActivities = useCallback(
     async ({ page = 1, append = false, silent = false }: { page?: number; append?: boolean; silent?: boolean } = {}) => {
@@ -117,33 +99,54 @@ const StudentActivityScreen: React.FC = () => {
       }
 
       try {
-        const response = await activityService.getMyChildrenActivities({
-          studentId,
-          studentSlotId,
+        if (!studentId) {
+          setError('Không tìm thấy ID học sinh');
+          return;
+        }
+
+        console.log('Fetching activities for studentId:', studentId, 'studentSlotId:', studentSlotId);
+
+        // Sử dụng API getStudentActivities để lấy activities của học sinh
+        const response = await activityService.getStudentActivities({
+          studentId: studentId,
           pageIndex: page,
           pageSize: PAGE_SIZE,
+          // Không truyền studentSlotId để lấy tất cả activities của học sinh, không chỉ của một slot
         });
 
-        const items = response?.items ?? [];
+        // API đã filter theo studentId rồi, không cần filter lại
+        const filteredItems: StaffActivityResponse[] = response.items || [];
 
-        setActivities((prev) => (append ? [...prev, ...items] : items));
+        if (append) {
+          setActivities((prev) => {
+            // Tránh duplicate
+            const existingIds = new Set(prev.map(a => a.id));
+            const newItems = filteredItems.filter(a => !existingIds.has(a.id));
+            return [...prev, ...newItems];
+          });
+        } else {
+          setActivities(filteredItems);
+        }
+
+        // Tiếp tục fetch nếu API còn trang
+        const hasMore = response.hasNextPage || false;
+
+        // Cập nhật pagination từ response của API
         setPagination({
-          pageIndex: response.pageIndex,
-          totalPages: response.totalPages,
-          totalCount: response.totalCount,
-          hasNextPage: response.hasNextPage,
+          pageIndex: response.pageIndex || page,
+          totalPages: response.totalPages || 1,
+          totalCount: response.totalCount || filteredItems.length, // Dùng totalCount từ API
+          hasNextPage: hasMore,
         });
       } catch (err: any) {
         const message =
-          err?.message ||
           err?.response?.data?.message ||
+          err?.message ||
           'Không thể tải danh sách hoạt động. Vui lòng thử lại.';
-        setError(message);
-
         if (!append) {
-          setActivities([]);
-          setPagination(null);
+          setError(message);
         }
+        console.error('Error fetching activities:', err);
       } finally {
         if (append) {
           setLoadingMore(false);
@@ -153,7 +156,7 @@ const StudentActivityScreen: React.FC = () => {
         }
       }
     },
-    [studentId, studentSlotId]
+    [studentId]
   );
 
   useEffect(() => {
@@ -181,57 +184,15 @@ const StudentActivityScreen: React.FC = () => {
     setSelectedImage(null);
   };
 
-  const handleMarkAsViewed = async (activity: ActivityResponse) => {
-    // Chỉ mark cho phụ huynh, không mark cho staff
-    if (isStaff || activity.isViewed || markingViewed.has(activity.id)) {
-      return;
-    }
-
-    // Đánh dấu đang xử lý
-    setMarkingViewed((prev) => new Set(prev).add(activity.id));
-
-    try {
-      const updatedActivity = await activityService.markActivityAsViewed(activity.id);
-      
-      // Cập nhật activity trong danh sách
-      setActivities((prev) =>
-        prev.map((item) =>
-          item.id === activity.id
-            ? {
-                ...item,
-                isViewed: updatedActivity.isViewed,
-                viewedTime: updatedActivity.viewedTime,
-              }
-            : item
-        )
-      );
-    } catch (err: any) {
-      // Nếu lỗi, không hiển thị lỗi cho user (silent fail)
-      console.warn('Failed to mark activity as viewed:', err);
-    } finally {
-      // Xóa khỏi set đang xử lý
-      setMarkingViewed((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(activity.id);
-        return newSet;
-      });
-    }
-  };
-
-  const handleActivityPress = (activity: ActivityResponse) => {
-    // Khi tap vào activity card, đánh dấu là đã đọc (chỉ cho phụ huynh) và navigate đến detail
-    if (!isStaff) {
-      handleMarkAsViewed(activity);
-    }
+  const handleActivityPress = (activity: StaffActivityResponse) => {
     navigation.navigate('ActivityDetail', { activityId: activity.id });
   };
 
-  const handleEdit = (activity: ActivityResponse) => {
+  const handleEdit = (activity: StaffActivityResponse) => {
     navigation.navigate('EditActivity', { activityId: activity.id });
   };
 
-  const handleDelete = (activity: ActivityResponse) => {
-
+  const handleDelete = (activity: StaffActivityResponse) => {
     Alert.alert(
       'Xác nhận xóa',
       `Bạn có chắc chắn muốn xóa hoạt động này?\n\n"${activity.activityType?.name || 'Hoạt động'}"\n\nHành động này không thể hoàn tác.`,
@@ -298,11 +259,6 @@ const StudentActivityScreen: React.FC = () => {
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>Hoạt động của {studentName}</Text>
-            {slotDate && (
-              <Text style={styles.headerSubtitle}>
-                {slotDate} {slotTimeframe ? `• ${slotTimeframe}` : ''}
-              </Text>
-            )}
             <Text style={styles.headerSubtitle}>
               Tổng số hoạt động: {pagination?.totalCount ?? activities.length}
             </Text>
@@ -326,17 +282,12 @@ const StudentActivityScreen: React.FC = () => {
           <View style={styles.stateCard}>
             <MaterialIcons name="event-busy" size={40} color={COLORS.TEXT_SECONDARY} />
             <Text style={styles.stateText}>Chưa có hoạt động nào</Text>
-            <Text style={[styles.stateText, { fontSize: FONTS.SIZES.SM, marginTop: SPACING.XS }]}>
-              Nhân viên sẽ cập nhật hoạt động của con bạn tại đây
-            </Text>
           </View>
         ) : (
           <>
             {activities.map((activity) => {
               const timeInfo = formatDateTime(activity.createdTime);
               const isNew = !activity.isViewed;
-              const isMarking = markingViewed.has(activity.id);
-
               const isDeleting = deleting.has(activity.id);
 
               return (
@@ -380,30 +331,28 @@ const StudentActivityScreen: React.FC = () => {
                         </View>
                       )}
                       {/* Action Buttons - Chỉ hiện cho staff */}
-                      {isStaff && (
-                        <View style={styles.actionButtonsContainer}>
-                          <TouchableOpacity
-                            style={[styles.actionButton, styles.editButton]}
-                            onPress={() => handleEdit(activity)}
-                            disabled={isDeleting}
-                            activeOpacity={0.7}
-                          >
-                            <MaterialIcons name="edit" size={16} color={COLORS.SURFACE} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.actionButton, styles.deleteButton]}
-                            onPress={() => handleDelete(activity)}
-                            disabled={isDeleting}
-                            activeOpacity={0.7}
-                          >
-                            {isDeleting ? (
-                              <ActivityIndicator size="small" color={COLORS.SURFACE} />
-                            ) : (
-                              <MaterialIcons name="delete" size={16} color={COLORS.SURFACE} />
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                      <View style={styles.actionButtonsContainer}>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.editButton]}
+                          onPress={() => handleEdit(activity)}
+                          disabled={isDeleting}
+                          activeOpacity={0.7}
+                        >
+                          <MaterialIcons name="edit" size={16} color={COLORS.SURFACE} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.deleteButton]}
+                          onPress={() => handleDelete(activity)}
+                          disabled={isDeleting}
+                          activeOpacity={0.7}
+                        >
+                          {isDeleting ? (
+                            <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                          ) : (
+                            <MaterialIcons name="delete" size={16} color={COLORS.SURFACE} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
 
@@ -438,12 +387,7 @@ const StudentActivityScreen: React.FC = () => {
                   {activity.imageUrl && (
                     <TouchableOpacity
                       style={styles.imageContainer}
-                      onPress={() => {
-                        handleImagePress(activity.imageUrl);
-                        if (!isStaff) {
-                          handleMarkAsViewed(activity);
-                        }
-                      }}
+                      onPress={() => activity.imageUrl && handleImagePress(activity.imageUrl)}
                       activeOpacity={0.9}
                       disabled={isDeleting}
                     >
@@ -453,14 +397,6 @@ const StudentActivityScreen: React.FC = () => {
                         <Text style={styles.imageOverlayText}>Chạm để xem ảnh</Text>
                       </View>
                     </TouchableOpacity>
-                  )}
-
-                  {/* Loading indicator khi đang đánh dấu */}
-                  {isMarking && (
-                    <View style={styles.markingIndicator}>
-                      <ActivityIndicator size="small" color={COLORS.PRIMARY} />
-                      <Text style={styles.markingText}>Đang đánh dấu đã đọc...</Text>
-                    </View>
                   )}
                 </View>
               );
@@ -488,7 +424,12 @@ const StudentActivityScreen: React.FC = () => {
       </ScrollView>
 
       {/* Image Modal */}
-      <Modal visible={selectedImage !== null} transparent={true} animationType="fade" onRequestClose={closeImageModal}>
+      <Modal
+        visible={selectedImage !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeImageModal}
+      >
         <View style={styles.imageModalContainer}>
           <TouchableOpacity style={styles.imageModalClose} onPress={closeImageModal}>
             <MaterialIcons name="close" size={28} color={COLORS.SURFACE} />
@@ -726,21 +667,7 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH,
     height: '80%',
   },
-  markingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: SPACING.MD,
-    padding: SPACING.SM,
-    backgroundColor: COLORS.INFO_BG,
-    borderRadius: 8,
-  },
-  markingText: {
-    fontSize: FONTS.SIZES.XS,
-    color: COLORS.TEXT_SECONDARY,
-    marginLeft: SPACING.XS,
-  },
 });
 
-export default StudentActivityScreen;
+export default StaffStudentActivityScreen;
 

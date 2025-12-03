@@ -162,18 +162,8 @@ const EditActivityScreen: React.FC = () => {
       
       const response = await imageService.uploadImage(uri, undefined, mimeType);
       
-      let imageUrl: string | null = null;
-      if (typeof response === 'string') {
-        imageUrl = response;
-      } else if (response?.imageUrl) {
-        imageUrl = response.imageUrl;
-      } else if (response?.url) {
-        imageUrl = response.url;
-      } else if (response?.data?.imageUrl) {
-        imageUrl = response.data.imageUrl;
-      } else if (response?.data?.url) {
-        imageUrl = response.data.url;
-      }
+      // UploadImageResponse chỉ có property imageUrl
+      const imageUrl = response.imageUrl;
       
       if (!imageUrl) {
         throw new Error('Không nhận được URL ảnh từ server.');
