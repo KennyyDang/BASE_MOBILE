@@ -38,6 +38,7 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import ManagerHomeScreen from '../screens/manager/ManagerHomeScreen';
 import ManagerRegisterParentScreen from '../screens/manager/ManagerRegisterParentScreen';
+import ManagerProfileScreen from '../screens/manager/ManagerProfileScreen';
 import StaffScheduleScreen from '../screens/staff/StaffScheduleScreen';
 import ActivityTypesScreen from '../screens/staff/ActivityTypesScreen';
 import StaffDashboardScreen from '../screens/staff/StaffDashboardScreen';
@@ -489,6 +490,19 @@ const AppNavigator = () => {
                       component={ManagerRegisterParentScreen}
                       options={{ 
                         title: 'Đăng ký phụ huynh',
+                        headerStyle: {
+                          backgroundColor: COLORS.PRIMARY,
+                        },
+                        headerTintColor: COLORS.SURFACE,
+                        headerTitleStyle: { fontWeight: 'bold' },
+                        headerTitleAlign: 'center',
+                      }}
+                    />
+                    <Stack.Screen
+                      name="ManagerProfile"
+                      component={ManagerProfileScreen}
+                      options={{ 
+                        title: 'Hồ sơ',
                         headerStyle: {
                           backgroundColor: COLORS.PRIMARY,
                         },

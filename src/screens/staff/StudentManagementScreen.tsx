@@ -370,69 +370,56 @@ const StudentManagementScreen: React.FC = () => {
         <View style={styles.headerRight} />
       </View>
 
-      {/* Slot Info */}
+      {/* Slot Info Card */}
       {slotInfo && (
-        <View style={styles.slotInfoContainer}>
-          <View style={styles.slotInfoRow}>
-            <MaterialIcons name="access-time" size={18} color={COLORS.PRIMARY} />
-            <Text style={styles.slotInfoText}>
-              {slotInfo.timeframe ? formatTimeRange(slotInfo.timeframe) : 'Chưa có khung giờ'} - {date ? formatDateDisplay(date) : 'Chưa có ngày'}
-            </Text>
-          </View>
+        <View style={styles.slotInfoCard}>
+          <Text style={styles.slotInfoTime}>
+            {slotInfo.timeframe ? formatTimeRange(slotInfo.timeframe) : 'Chưa có khung giờ'}
+            {date ? ` - ${formatDateDisplay(date)}` : ''}
+          </Text>
           {roomName && (
-            <View style={styles.slotInfoRow}>
-              <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />
-              <Text style={styles.slotInfoText}>Phòng: {roomName}</Text>
-            </View>
+            <Text style={styles.slotInfoRoom}>Phòng: {roomName}</Text>
           )}
           {branchName && (
-            <View style={styles.slotInfoRow}>
-              <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
-              <Text style={styles.slotInfoText}>{branchName}</Text>
-            </View>
+            <Text style={styles.slotInfoBranch}>{branchName}</Text>
           )}
           {slotInfo.slotType?.name && (
-            <View style={styles.slotInfoRow}>
-              <MaterialIcons name="category" size={18} color={COLORS.PRIMARY} />
-              <Text style={styles.slotInfoText}>{slotInfo.slotType.name}</Text>
-            </View>
+            <Text style={styles.slotInfoActivity}>{slotInfo.slotType.name}</Text>
           )}
         </View>
       )}
 
-      {/* Action Buttons */}
+      {/* Attendance Button */}
       <View style={styles.actionButtonsContainer}>
         <TouchableOpacity
           style={styles.attendanceButton}
           onPress={handleAttendance}
-          activeOpacity={0.7}
+          activeOpacity={0.8}
         >
-          <MaterialIcons name="check-circle" size={20} color={COLORS.SURFACE} />
+          <MaterialIcons name="check-circle" size={24} color={COLORS.SURFACE} />
           <Text style={styles.attendanceButtonText}>Điểm danh</Text>
         </TouchableOpacity>
       </View>
 
       {/* Search Bar */}
-      {students.length > 0 && (
-        <View style={styles.searchContainer}>
-          <MaterialIcons name="search" size={20} color={COLORS.TEXT_SECONDARY} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Tìm kiếm học sinh..."
-            placeholderTextColor={COLORS.TEXT_SECONDARY}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setSearchQuery('')}
-              style={styles.clearSearchButton}
-            >
-              <MaterialIcons name="close" size={18} color={COLORS.TEXT_SECONDARY} />
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+      <View style={styles.searchContainer}>
+        <MaterialIcons name="search" size={20} color={COLORS.TEXT_SECONDARY} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Tìm kiếm học sinh..."
+          placeholderTextColor={COLORS.TEXT_SECONDARY}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setSearchQuery('')}
+            style={styles.clearSearchButton}
+          >
+            <MaterialIcons name="close" size={18} color={COLORS.TEXT_SECONDARY} />
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* Students List */}
       {loading ? (
@@ -464,7 +451,11 @@ const StudentManagementScreen: React.FC = () => {
             
             return (
               <View style={styles.studentCard}>
-                <View style={styles.studentHeader}>
+                <TouchableOpacity 
+                  style={styles.studentHeader}
+                  onPress={() => handleViewStudentActivities(student)}
+                  activeOpacity={0.7}
+                >
                   {student.studentImage ? (
                     <TouchableOpacity
                       onPress={() => handleImagePress(student.studentImage!)}
@@ -478,110 +469,46 @@ const StudentManagementScreen: React.FC = () => {
                     </TouchableOpacity>
                   ) : (
                     <View style={styles.studentIcon}>
-                      <MaterialIcons name="person" size={24} color={COLORS.PRIMARY} />
+                      <MaterialIcons name="qr-code-2" size={24} color={COLORS.PRIMARY} />
                     </View>
                   )}
-                  <TouchableOpacity
-                    style={styles.studentContent}
-                    onPress={() => handleViewStudentActivities(student)}
-                    activeOpacity={0.7}
-                  >
+                  <View style={styles.studentContent}>
                     <Text style={styles.studentName}>{student.studentName}</Text>
                     {student.parentName && (
                       <Text style={styles.studentParent}>
                         Phụ huynh: {student.parentName}
                       </Text>
                     )}
-                  </TouchableOpacity>
-                  <View style={styles.studentActions}>
-                    <TouchableOpacity
-                      style={styles.viewActivitiesButton}
-                      onPress={() => handleToggleStudentExpanded(student)}
-                      activeOpacity={0.7}
-                    >
-                      <MaterialIcons 
-                        name={isExpanded ? "expand-less" : "expand-more"} 
-                        size={20} 
-                        color={COLORS.SECONDARY} 
-                      />
-                      <Text style={styles.viewActivitiesButtonText}>
-                        {isExpanded ? 'Thu gọn' : 'Xem hoạt động'}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.addActivityButton}
-                      onPress={() => handleCreateActivity(student)}
-                      activeOpacity={0.7}
-                    >
-                      <MaterialIcons name="add-circle" size={20} color={COLORS.PRIMARY} />
-                      <Text style={styles.addActivityButtonText}>Thêm</Text>
-                    </TouchableOpacity>
                   </View>
+                </TouchableOpacity>
+                <View style={styles.studentActions}>
+                  <TouchableOpacity
+                    style={styles.viewActivitiesButton}
+                    onPress={() => handleViewStudentActivities(student)}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons 
+                      name="visibility" 
+                      size={18} 
+                      color={COLORS.SURFACE} 
+                    />
+                    <Text style={styles.viewActivitiesButtonText}>
+                      Xem hoạt động
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.addActivityButton}
+                    onPress={() => handleCreateActivity(student)}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons name="add" size={18} color={COLORS.SURFACE} />
+                    <Text style={styles.addActivityButtonText}>Thêm</Text>
+                  </TouchableOpacity>
                 </View>
                 {student.parentNote && (
                   <View style={styles.studentNote}>
                     <MaterialIcons name="note" size={16} color={COLORS.TEXT_SECONDARY} />
                     <Text style={styles.studentNoteText}>{student.parentNote}</Text>
-                  </View>
-                )}
-                
-                {/* Activities List */}
-                {isExpanded && (
-                  <View style={styles.activitiesContainer}>
-                    {isLoadingActivities ? (
-                      <View style={styles.activitiesLoading}>
-                        <ActivityIndicator size="small" color={COLORS.PRIMARY} />
-                        <Text style={styles.activitiesLoadingText}>Đang tải hoạt động...</Text>
-                      </View>
-                    ) : activities.length === 0 ? (
-                      <View style={styles.activitiesEmpty}>
-                        <MaterialIcons name="event-busy" size={24} color={COLORS.TEXT_SECONDARY} />
-                        <Text style={styles.activitiesEmptyText}>Chưa có hoạt động nào</Text>
-                      </View>
-                    ) : (
-                      activities.map((activity) => (
-                        <TouchableOpacity
-                          key={activity.id}
-                          style={styles.activityItem}
-                          onPress={() => handleViewActivityDetail(activity)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.activityItemHeader}>
-                            <MaterialIcons
-                              name={activity.activityType.name.includes('Bài tập') ? 'assignment' : 'child-care'}
-                              size={18}
-                              color={COLORS.PRIMARY}
-                            />
-                            <Text style={styles.activityItemType} numberOfLines={1}>
-                              {activity.activityType.name}
-                            </Text>
-                            {!activity.isViewed && (
-                              <View style={styles.newActivityBadge}>
-                                <Text style={styles.newActivityBadgeText}>Mới</Text>
-                              </View>
-                            )}
-                          </View>
-                          {activity.note && (
-                            <Text style={styles.activityItemNote} numberOfLines={2}>
-                              {activity.note}
-                            </Text>
-                          )}
-                          <View style={styles.activityItemFooter}>
-                            <MaterialIcons name="person" size={14} color={COLORS.TEXT_SECONDARY} />
-                            <Text style={styles.activityItemStaff}>{activity.staffName}</Text>
-                            <MaterialIcons name="access-time" size={14} color={COLORS.TEXT_SECONDARY} style={{ marginLeft: SPACING.SM }} />
-                            <Text style={styles.activityItemTime}>
-                              {new Date(activity.createdTime).toLocaleString('vi-VN', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      ))
-                    )}
                   </View>
                 )}
               </View>
@@ -649,21 +576,34 @@ const styles = StyleSheet.create({
   headerRight: {
     width: 40,
   },
-  slotInfoContainer: {
+  slotInfoCard: {
     backgroundColor: COLORS.INFO_BG,
     padding: SPACING.MD,
     margin: SPACING.MD,
-    borderRadius: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY + '30',
   },
-  slotInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.SM,
+  slotInfoTime: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS,
   },
-  slotInfoText: {
+  slotInfoRoom: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
-    marginLeft: SPACING.SM,
+    marginBottom: SPACING.XS,
+  },
+  slotInfoBranch: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS,
+  },
+  slotInfoActivity: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    fontWeight: '500',
   },
   actionButtonsContainer: {
     paddingHorizontal: SPACING.MD,
@@ -674,20 +614,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.PRIMARY,
-    paddingVertical: SPACING.MD,
-    paddingHorizontal: SPACING.LG,
-    borderRadius: 8,
-    elevation: 2,
+    paddingVertical: SPACING.LG,
+    paddingHorizontal: SPACING.XL,
+    borderRadius: 12,
+    elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    gap: SPACING.SM,
   },
   attendanceButtonText: {
-    fontSize: FONTS.SIZES.MD,
-    fontWeight: '600',
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: '700',
     color: COLORS.SURFACE,
-    marginLeft: SPACING.SM,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -749,23 +689,28 @@ const styles = StyleSheet.create({
   },
   studentHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.MD,
   },
   studentIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.INFO_BG,
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: COLORS.BACKGROUND,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
   },
   studentAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 8,
     marginRight: SPACING.MD,
-    backgroundColor: COLORS.INFO_BG,
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
   },
   studentContent: {
     flex: 1,
@@ -784,33 +729,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.SM,
+    marginTop: SPACING.SM,
   },
   viewActivitiesButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.SECONDARY_50,
+    backgroundColor: COLORS.SECONDARY,
     paddingVertical: SPACING.SM,
     paddingHorizontal: SPACING.MD,
-    borderRadius: 6,
+    borderRadius: 8,
+    gap: SPACING.XS,
   },
   viewActivitiesButtonText: {
     fontSize: FONTS.SIZES.SM,
-    color: COLORS.SECONDARY,
-    marginLeft: SPACING.XS,
+    color: COLORS.SURFACE,
     fontWeight: '600',
   },
   addActivityButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.INFO_BG,
+    backgroundColor: COLORS.PRIMARY,
     paddingVertical: SPACING.SM,
     paddingHorizontal: SPACING.MD,
-    borderRadius: 6,
+    borderRadius: 8,
+    gap: SPACING.XS,
   },
   addActivityButtonText: {
     fontSize: FONTS.SIZES.SM,
-    color: COLORS.PRIMARY,
-    marginLeft: SPACING.XS,
+    color: COLORS.SURFACE,
     fontWeight: '600',
   },
   activitiesContainer: {

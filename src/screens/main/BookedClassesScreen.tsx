@@ -818,6 +818,13 @@ const BookedClassesScreen: React.FC = () => {
                             </View>
                           )}
 
+                          {slot.branchSlot?.slotType?.name && (
+                            <View style={styles.slotMetaRow}>
+                              <MaterialIcons name="category" size={18} color={COLORS.TEXT_SECONDARY} />
+                              <Text style={styles.slotMetaText}>{slot.branchSlot.slotType.name}</Text>
+                            </View>
+                          )}
+
                           {slot.room?.roomName && (
                             <View style={styles.slotMetaRow}>
                               <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />

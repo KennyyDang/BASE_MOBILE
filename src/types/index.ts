@@ -245,6 +245,7 @@ export type RootStackParamList = {
   StaffMain: undefined;
   ManagerHome: undefined;
   ManagerRegisterParent: undefined;
+  ManagerProfile: undefined;
   TopUp: undefined;
   Wallet: undefined;
   Settings: undefined;
@@ -327,6 +328,7 @@ export type RootStackParamList = {
 export type StaffStackParamList = {
   ManagerHome: undefined;
   ManagerRegisterParent: undefined;
+  ManagerProfile: undefined;
   StaffSchedule: undefined;
 };
 

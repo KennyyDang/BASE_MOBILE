@@ -475,6 +475,23 @@ const ClassDetailScreen: React.FC = () => {
               <Text style={styles.infoValue}>{slot?.branchSlot?.branchName || 'Chưa có'}</Text>
             </View>
 
+            <Divider style={styles.divider} />
+
+            {/* Slot Type */}
+            {slot?.branchSlot?.slotType?.name && (
+              <>
+                <View style={styles.infoRow}>
+                  <View style={styles.infoIconContainer}>
+                    <MaterialIcons name="category" size={20} color={COLORS.PRIMARY} />
+                  </View>
+                  <Text style={styles.infoLabel}>Loại hoạt động</Text>
+                  <Text style={styles.infoValue}>{slot.branchSlot.slotType.name}</Text>
+                </View>
+
+                <Divider style={styles.divider} />
+              </>
+            )}
+
             {/* Status - Chỉ hiển thị nếu không phải Cancelled */}
             {slot?.status && slot.status.toLowerCase() !== 'cancelled' && (
               <>

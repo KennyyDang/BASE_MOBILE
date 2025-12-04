@@ -982,7 +982,6 @@ const SelectSlotScreen: React.FC = () => {
                       
                       <View style={styles.slotTimeRight}>
                         <Text style={styles.slotTime}>{formatTime(slot.timeframe?.endTime)}</Text>
-                        <Text style={styles.slotLocation}>{getSchoolName}</Text>
                       </View>
                     </View>
 
@@ -992,10 +991,12 @@ const SelectSlotScreen: React.FC = () => {
                         <MaterialIcons name="location-on" size={16} color={COLORS.TEXT_SECONDARY} />
                         <Text style={styles.slotInfoText}>{slot.branch?.branchName || 'Chưa có'}</Text>
                       </View>
-                      <View style={styles.slotInfoRow}>
-                        <MaterialIcons name="school" size={16} color={COLORS.TEXT_SECONDARY} />
-                        <Text style={styles.slotInfoText}>{getSchoolName}</Text>
-                      </View>
+                      {slot.slotType?.name && (
+                        <View style={styles.slotInfoRow}>
+                          <MaterialIcons name="category" size={16} color={COLORS.TEXT_SECONDARY} />
+                          <Text style={styles.slotInfoText}>{slot.slotType.name}</Text>
+                        </View>
+                      )}
                       <View style={styles.slotInfoRow}>
                         <MaterialIcons name="card-membership" size={16} color={COLORS.TEXT_SECONDARY} />
                         <Text style={styles.slotInfoText}>{getPackageName}</Text>
@@ -1040,37 +1041,45 @@ const SelectSlotScreen: React.FC = () => {
                           </Text>
                         </TouchableOpacity>
 
-                        {isExpanded && (
-                          <View style={styles.roomsContainer}>
-                            {roomsFromSlot.length === 0 ? (
-                              <Text style={styles.noRoomsText}>Không có phòng nào</Text>
-                            ) : (
-                              roomsFromSlot.map((room) => {
-                                const isSelected = (room.roomId || room.id) === selectedRoomId;
-                                const staffName = room.staff?.staffName || room.staff?.fullName || null;
-                                const staffRole = room.staff?.staffRole || room.staff?.role || null;
-                                const facilityName = room.facilityName || null;
-                                
-                                return (
-                                  <TouchableOpacity
-                                    key={room.roomId || room.id}
-                                    style={[
-                                      styles.roomItem,
-                                      isSelected && styles.roomItemSelected,
-                                    ]}
-                                    onPress={() => {
-                                      setSlotRoomsState((prev) => {
-                                        const existing = prev[slot.id] || createDefaultSlotRoomsState();
-                                        return {
-                                          ...prev,
-                                          [slot.id]: {
-                                            ...existing,
-                                            selectedRoomId: room.roomId || room.id || null,
-                                          },
-                                        };
-                                      });
-                                    }}
-                                  >
+                        {isExpanded && (() => {
+                          // Loại bỏ duplicate rooms dựa trên roomId hoặc id
+                          const uniqueRooms = roomsFromSlot.filter((room, index, self) => {
+                            const roomIdentifier = room.roomId || room.id;
+                            if (!roomIdentifier) return false;
+                            return index === self.findIndex((r) => (r.roomId || r.id) === roomIdentifier);
+                          });
+                          
+                          return (
+                            <View style={styles.roomsContainer}>
+                              {uniqueRooms.length === 0 ? (
+                                <Text style={styles.noRoomsText}>Không có phòng nào</Text>
+                              ) : (
+                                uniqueRooms.map((room) => {
+                                  const isSelected = (room.roomId || room.id) === selectedRoomId;
+                                  const staffName = room.staff?.staffName || room.staff?.fullName || null;
+                                  const staffRole = room.staff?.staffRole || room.staff?.role || null;
+                                  const facilityName = room.facilityName || null;
+                                  
+                                  return (
+                                    <TouchableOpacity
+                                      key={room.roomId || room.id || `room-${Math.random()}`}
+                                      style={[
+                                        styles.roomItem,
+                                        isSelected && styles.roomItemSelected,
+                                      ]}
+                                      onPress={() => {
+                                        setSlotRoomsState((prev) => {
+                                          const existing = prev[slot.id] || createDefaultSlotRoomsState();
+                                          return {
+                                            ...prev,
+                                            [slot.id]: {
+                                              ...existing,
+                                              selectedRoomId: room.roomId || room.id || null,
+                                            },
+                                          };
+                                        });
+                                      }}
+                                    >
                                     <MaterialIcons
                                       name={isSelected ? 'radio-button-checked' : 'radio-button-unchecked'}
                                       size={20}
@@ -1124,7 +1133,8 @@ const SelectSlotScreen: React.FC = () => {
                               </TouchableOpacity>
                             )}
                           </View>
-                        )}
+                          );
+                        })()}
                       </>
                     )}
                   </View>
