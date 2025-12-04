@@ -307,7 +307,7 @@ const ForgotPasswordScreen: React.FC = () => {
                       setNewPassword('');
                       setConfirmPassword('');
                     }}
-                    style={styles.backButton}
+                    style={styles.backToSendCodeButton}
                     textColor={COLORS.PRIMARY}
                   >
                     Quay lại gửi mã
@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
   resetButtonContent: {
     paddingVertical: SPACING.SM,
   },
-  backButton: {
+  backToSendCodeButton: {
     marginTop: SPACING.SM,
   },
   backToLoginButton: {

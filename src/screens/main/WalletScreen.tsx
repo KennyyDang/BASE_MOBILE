@@ -491,10 +491,7 @@ const WalletScreen: React.FC = () => {
         {/* Recent Transactions */}
         <View style={styles.recentTransactionsSection}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Giao dịch gần đây</Text>
-            <TouchableOpacity onPress={handleTransactionHistory}>
-              <Text style={styles.viewAllText}>Xem tất cả</Text>
-            </TouchableOpacity>
+            <Text style={styles.sectionTitle}>Lịch sử nạp tiền</Text>
           </View>
           
           {transactionsLoading ? (
@@ -513,11 +510,9 @@ const WalletScreen: React.FC = () => {
                 index === self.findIndex((t) => t.id === transaction.id)
               )
               .map((transaction) => (
-              <TouchableOpacity
+              <View
                 key={transaction.id}
                 style={styles.transactionCard}
-                onPress={handleTransactionHistory}
-                activeOpacity={0.85}
               >
                 <View style={styles.transactionIcon}>
                   <MaterialIcons 
@@ -545,7 +540,7 @@ const WalletScreen: React.FC = () => {
                   {transaction.status === 'Completed' ? '+' : ''}
                   {transaction.amount.toLocaleString('vi-VN')} VNĐ
                 </Text>
-              </TouchableOpacity>
+              </View>
             ))
           ) : null}
         </View>

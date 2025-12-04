@@ -541,16 +541,27 @@ const SelectSlotScreen: React.FC = () => {
 
   // Check if slot is booked
   const isSlotBooked = useCallback(
-    (slot: BranchSlotResponse): StudentSlotResponse | null => {
+    (slot: BranchSlotResponse, checkDate?: Date): StudentSlotResponse | null => {
       if (!selectedStudentId || !slot.id) return null;
-      const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
-      const slotDateStr = slotDate.toISOString().split('T')[0];
+      
+      // Sử dụng checkDate nếu có (thường là selectedDate), nếu không thì tính từ weekOffset
+      const slotDate = checkDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+      // Normalize ngày về UTC để so sánh chính xác
+      const slotDateNormalized = new Date(slotDate);
+      slotDateNormalized.setHours(0, 0, 0, 0);
+      const slotDateStr = slotDateNormalized.toISOString().split('T')[0];
       
       return (
         bookedSlots.find((booked) => {
           if (booked.branchSlotId !== slot.id) return false;
-          const bookedDate = booked.date ? new Date(booked.date).toISOString().split('T')[0] : '';
-          return bookedDate === slotDateStr;
+          if (!booked.date) return false;
+          
+          // Normalize booked date về UTC để so sánh
+          const bookedDateObj = new Date(booked.date);
+          bookedDateObj.setHours(0, 0, 0, 0);
+          const bookedDateStr = bookedDateObj.toISOString().split('T')[0];
+          
+          return bookedDateStr === slotDateStr;
         }) || null
       );
     },
@@ -558,17 +569,27 @@ const SelectSlotScreen: React.FC = () => {
   );
 
   const getCancelledSlot = useCallback(
-    (slot: BranchSlotResponse): StudentSlotResponse | null => {
+    (slot: BranchSlotResponse, checkDate?: Date): StudentSlotResponse | null => {
       if (!selectedStudentId || !slot.id) return null;
-      const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
-      const slotDateStr = slotDate.toISOString().split('T')[0];
+      // Sử dụng checkDate nếu có (thường là selectedDate), nếu không thì tính từ weekOffset
+      const slotDate = checkDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+      // Normalize ngày về UTC để so sánh chính xác
+      const slotDateNormalized = new Date(slotDate);
+      slotDateNormalized.setHours(0, 0, 0, 0);
+      const slotDateStr = slotDateNormalized.toISOString().split('T')[0];
       
       return (
         bookedSlots.find((booked) => {
           if (booked.branchSlotId !== slot.id) return false;
-          const bookedDate = booked.date ? new Date(booked.date).toISOString().split('T')[0] : '';
+          if (!booked.date) return false;
+          
+          // Normalize booked date về UTC để so sánh
+          const bookedDateObj = new Date(booked.date);
+          bookedDateObj.setHours(0, 0, 0, 0);
+          const bookedDateStr = bookedDateObj.toISOString().split('T')[0];
           const status = (booked.status || '').toLowerCase();
-          return bookedDate === slotDateStr && status === 'cancelled';
+          
+          return bookedDateStr === slotDateStr && status === 'cancelled';
         }) || null
       );
     },
@@ -595,6 +616,16 @@ const SelectSlotScreen: React.FC = () => {
         return;
       }
 
+      // Kiểm tra slot đã được đặt chưa - sử dụng selectedDate để đảm bảo khớp với ngày đang xem
+      const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+      const bookedSlot = isSlotBooked(slot, slotDate);
+      const cancelledSlot = getCancelledSlot(slot, slotDate);
+      
+      if (bookedSlot && !cancelledSlot) {
+        Alert.alert('Thông báo', 'Bạn đã đặt ca này rồi. Vui lòng chọn ca khác.');
+        return;
+      }
+
       const entry = slotRoomsState[slot.id];
       const roomsFromSlot = slot.rooms || [];
       
@@ -617,7 +648,6 @@ const SelectSlotScreen: React.FC = () => {
         return;
       }
 
-      const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
       const slotDateDisplay = formatDateDisplay(slotDate);
       const selectedRoom = roomsFromSlot.find((room) => (room.roomId || room.id) === entry.selectedRoomId);
 
@@ -698,7 +728,7 @@ const SelectSlotScreen: React.FC = () => {
         ]
       );
     },
-    [selectedStudentId, slotRoomsState, resolvePackageSubscriptionId, fetchSubscriptions, fetchSlots, fetchBookedSlots, weekOffset]
+    [selectedStudentId, slotRoomsState, resolvePackageSubscriptionId, fetchSubscriptions, fetchSlots, fetchBookedSlots, weekOffset, isSlotBooked, getCancelledSlot]
   );
 
   // Get branch name
@@ -896,9 +926,10 @@ const SelectSlotScreen: React.FC = () => {
           ) : (
             <View style={styles.slotsList}>
               {getSlotsForSelectedDate.map((slot) => {
-                const bookedSlot = isSlotBooked(slot);
+                // Sử dụng selectedDate để kiểm tra slot đã đặt, đảm bảo khớp với ngày đang xem
+                const bookedSlot = isSlotBooked(slot, selectedDate);
                 const cancelledSlot = getCancelledSlot(slot);
-                const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+                const slotDate = selectedDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
                 const slotDateDisplay = formatDateDisplay(slotDate);
                 const roomState = slotRoomsState[slot.id];
                 const roomsFromSlot = slot.rooms || [];
@@ -907,6 +938,14 @@ const SelectSlotScreen: React.FC = () => {
                 
                 return (
                   <View key={slot.id} style={styles.slotCard}>
+                    {/* Booked Notice */}
+                    {bookedSlot && !cancelledSlot && (
+                      <View style={styles.slotBookedNotice}>
+                        <MaterialIcons name="info" size={18} color={COLORS.SUCCESS} />
+                        <Text style={styles.slotBookedNoticeText}>Bạn đã đặt ca này rồi</Text>
+                      </View>
+                    )}
+                    
                     {/* Time Section */}
                     <View style={styles.slotTimeSection}>
                       <View style={styles.slotTimeLeft}>
@@ -965,12 +1004,25 @@ const SelectSlotScreen: React.FC = () => {
 
                     {/* Status and Action */}
                     {bookedSlot && !cancelledSlot ? (
-                      <View style={styles.slotActionSection}>
+                      <TouchableOpacity
+                        style={styles.slotActionSection}
+                        onPress={() => {
+                          // Navigate to ClassDetail khi slot đã đặt
+                          if (bookedSlot && selectedStudentId) {
+                            navigation.navigate('ClassDetail', {
+                              slotId: bookedSlot.id,
+                              studentId: selectedStudentId,
+                            });
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
                         <View style={styles.slotBookedBadge}>
                           <MaterialIcons name="check-circle" size={16} color={COLORS.SUCCESS} />
                           <Text style={styles.slotBookedText}>Đã đặt</Text>
                         </View>
-                      </View>
+                        <MaterialIcons name="chevron-right" size={20} color={COLORS.TEXT_SECONDARY} />
+                      </TouchableOpacity>
                     ) : (
                       <>
                         <TouchableOpacity
@@ -1352,6 +1404,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+  },
+  slotBookedNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.SUCCESS_BG,
+    padding: SPACING.SM,
+    borderRadius: 8,
+    marginBottom: SPACING.MD,
+    gap: SPACING.XS,
+  },
+  slotBookedNoticeText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.SUCCESS,
+    flex: 1,
   },
   slotTimeSection: {
     flexDirection: 'row',
