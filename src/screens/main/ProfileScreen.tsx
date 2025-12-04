@@ -271,8 +271,8 @@ const ProfileScreen: React.FC = () => {
         return timeB - timeA;
       });
       
-      // Limit to latest 20 activities
-      setActivities(allActivities.slice(0, 20));
+      // Limit to latest 5 activities
+      setActivities(allActivities.slice(0, 5));
     } catch (error: any) {
       const message = error?.response?.data?.message || error?.message || 'Không thể tải hoạt động';
       setActivitiesError(message);

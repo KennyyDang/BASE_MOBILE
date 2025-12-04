@@ -218,9 +218,6 @@ const StaffDashboardScreen: React.FC = () => {
               <Text style={styles.welcomeSubtitle}>
                 Chào mừng bạn đến với BASE - Hệ thống quản lý trung tâm đào tạo Brightway
               </Text>
-              {user?.email && (
-                <Text style={styles.userEmail}>{user.email}</Text>
-              )}
             </View>
           </View>
         </View>

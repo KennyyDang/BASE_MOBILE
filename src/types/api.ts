@@ -194,6 +194,11 @@ export interface StudentSlotResponse {
   branchSlot?: {
     id: string;
     branchName: string;
+    slotType?: {
+      id: string;
+      name: string;
+      description?: string | null;
+    } | null;
   } | null;
   packageSubscriptionId: string;
   date: string;
