@@ -129,6 +129,7 @@ const ClassDetailScreen: React.FC = () => {
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [roomDetails, setRoomDetails] = useState<BranchSlotRoomResponse | null>(null);
   const [roomLoading, setRoomLoading] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const fetchSlotDetails = useCallback(async (silent = false) => {
     if (!silent) {
@@ -268,6 +269,90 @@ const ClassDetailScreen: React.FC = () => {
     } catch (error: any) {
       Alert.alert('Lỗi', error?.message || 'Không thể chuyển sang trang mua dịch vụ bổ sung');
     }
+  };
+
+  const handleCancelSlot = () => {
+    if (!slot || !slot.studentId) {
+      Alert.alert('Lỗi', 'Không tìm thấy thông tin lớp học để hủy');
+      return;
+    }
+
+    // Kiểm tra trạng thái slot
+    const status = (slot.status || '').toLowerCase();
+    if (status === 'cancelled') {
+      Alert.alert('Thông báo', 'Lớp học này đã được hủy rồi.');
+      return;
+    }
+
+    if (status === 'completed') {
+      Alert.alert('Thông báo', 'Lớp học này đã hoàn thành, không thể hủy.');
+      return;
+    }
+
+    // Kiểm tra ngày học - không cho hủy nếu đã qua ngày học
+    if (slot.date) {
+      try {
+        const slotDate = new Date(slot.date);
+        const today = new Date();
+
+        // So sánh theo ngày (bỏ phần giờ phút giây)
+        slotDate.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0);
+
+        if (slotDate < today) {
+          Alert.alert(
+            'Không thể hủy',
+            'Lớp học này đã qua rồi, không thể hủy.'
+          );
+          return;
+        }
+      } catch {
+        // Nếu parse ngày lỗi thì bỏ qua việc chặn theo ngày
+      }
+    }
+
+    Alert.alert(
+      'Xác nhận hủy lịch học',
+      'Bạn có chắc chắn muốn hủy lịch học này?',
+      [
+        {
+          text: 'Không',
+          style: 'cancel',
+        },
+        {
+          text: 'Có, hủy lịch',
+          style: 'destructive',
+          onPress: async () => {
+            setCancelling(true);
+            try {
+              await studentSlotService.cancelSlot(slot.id, slot.studentId);
+              Alert.alert(
+                'Thành công',
+                'Đã hủy lịch học thành công.',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Refresh slot details và quay lại màn hình trước
+                      fetchSlotDetails();
+                      navigation.goBack();
+                    },
+                  },
+                ]
+              );
+            } catch (error: any) {
+              const message =
+                error?.response?.data?.message ||
+                error?.message ||
+                'Không thể hủy lịch học. Vui lòng thử lại.';
+              Alert.alert('Lỗi', message);
+            } finally {
+              setCancelling(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading && !slot) {
@@ -494,6 +579,32 @@ const ClassDetailScreen: React.FC = () => {
           </Card.Content>
         </Card>
 
+        {/* Cancel Slot Card - Chỉ hiển thị nếu slot chưa bị hủy và chưa hoàn thành */}
+        {slot && slot.status && slot.status.toLowerCase() !== 'cancelled' && slot.status.toLowerCase() !== 'completed' && (
+          <Card style={styles.card} mode="elevated" elevation={2}>
+            <Card.Content>
+              <TouchableOpacity
+                style={[styles.cancelButton, cancelling && styles.cancelButtonDisabled]}
+                onPress={handleCancelSlot}
+                activeOpacity={0.8}
+                disabled={cancelling}
+              >
+                {cancelling ? (
+                  <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                ) : (
+                  <MaterialIcons name="cancel" size={24} color={COLORS.SURFACE} />
+                )}
+                <Text style={styles.cancelButtonText}>
+                  {cancelling ? 'Đang hủy...' : 'Hủy lịch học'}
+                </Text>
+              </TouchableOpacity>
+              <Text style={styles.cancelHint}>
+                Bấm để hủy lịch học này. Lưu ý: Chỉ có thể hủy trước ngày học.
+              </Text>
+            </Card.Content>
+          </Card>
+        )}
+
         {/* Purchase Services Card */}
         <Card style={styles.card} mode="elevated" elevation={2}>
           <Card.Content>
@@ -708,6 +819,31 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: FONTS.SIZES.SM,
     fontWeight: '600',
+  },
+  cancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.ERROR,
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.LG,
+    borderRadius: 12,
+    marginBottom: SPACING.SM,
+    gap: SPACING.SM,
+  },
+  cancelButtonDisabled: {
+    opacity: 0.6,
+  },
+  cancelButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
+  },
+  cancelHint: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
 
