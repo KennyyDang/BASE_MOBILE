@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,15 +11,27 @@ import {
   FlatList,
   TextInput,
   Linking,
+  Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+// Tạm thời comment để tránh lỗi native module
+// import { captureRef } from 'react-native-view-shot';
+let captureRef: any = null;
+try {
+  const viewShot = require('react-native-view-shot');
+  captureRef = viewShot.captureRef;
+} catch (error) {
+  console.warn('react-native-view-shot chưa được setup');
+}
 import { COLORS, SPACING, FONTS } from '../../constants';
 import studentSlotService from '../../services/studentSlotService';
 import activityService from '../../services/activityService';
 import { StudentSlotResponse } from '../../types/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { getWatermarkInfo, ImageWithWatermark, formatTimestamp } from '../../utils/imageWatermark';
+import { WatermarkImageProcessor } from '../../components/WatermarkImageProcessor';
 
 type AttendanceRouteParams = {
   branchSlotId: string;
@@ -82,6 +94,13 @@ const AttendanceScreen: React.FC = () => {
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [capturingImage, setCapturingImage] = useState<string | null>(null); // ID của học sinh đang chụp ảnh
+  const [processingWatermark, setProcessingWatermark] = useState(false);
+  const watermarkViewRef = useRef<View>(null);
+  const [watermarkData, setWatermarkData] = useState<{
+    imageUri: string;
+    timestamp: string;
+    location: any;
+  } | null>(null);
 
   // Kiểm tra quyền truy cập - chỉ dành cho staff
   useEffect(() => {
@@ -289,16 +308,75 @@ const AttendanceScreen: React.FC = () => {
         return; // Người dùng hủy chụp ảnh
       }
 
-      const imageUri = result.assets[0].uri;
+      const originalImageUri = result.assets[0].uri;
       setCapturingImage(null);
       setCheckingIn(studentId);
 
-      // Gọi API checkin với ảnh
-      await activityService.checkInStudentWithImage(studentId, imageUri);
-      Alert.alert('Thành công', 'Đã điểm danh học sinh thành công!');
-      
-      // Refresh danh sách
-      await fetchStudents();
+      // Xử lý watermark với timeout
+      let finalImageUri = originalImageUri;
+      try {
+        setProcessingWatermark(true);
+        
+        // Lấy watermark info với timeout
+        const watermarkInfo = await Promise.race([
+          getWatermarkInfo(),
+          new Promise<{ timestamp: string; location: any }>((resolve) => 
+            setTimeout(() => resolve({ timestamp: formatTimestamp(), location: null }), 5000)
+          )
+        ]);
+        
+        // Set data để render watermark
+        setWatermarkData({
+          imageUri: originalImageUri,
+          timestamp: watermarkInfo.timestamp,
+          location: watermarkInfo.location,
+        });
+
+        // Đợi View render và Image load xong
+        // Cần đợi lâu hơn để Image load từ local storage
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        
+        // Đợi thêm một chút để đảm bảo Image đã render xong
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        // Capture ảnh với watermark với timeout
+        if (watermarkViewRef.current && captureRef) {
+          try {
+            const watermarkedUri = await Promise.race([
+              captureRef(watermarkViewRef, {
+                format: 'jpg',
+                quality: 0.9,
+              }),
+              new Promise<string>((_, reject) => 
+                setTimeout(() => reject(new Error('Capture timeout')), 8000)
+              )
+            ]);
+            if (watermarkedUri) {
+              finalImageUri = watermarkedUri;
+            }
+          } catch (captureError: any) {
+            console.warn('Error capturing watermark, using original image:', captureError?.message || captureError);
+            // Vẫn tiếp tục với ảnh gốc
+          }
+        } else if (!captureRef) {
+          console.warn('react-native-view-shot chưa được setup, sử dụng ảnh gốc');
+        }
+      } catch (watermarkError: any) {
+        console.error('Error processing watermark:', watermarkError?.message || watermarkError);
+        // Nếu có lỗi watermark, vẫn tiếp tục với ảnh gốc
+      } finally {
+        setProcessingWatermark(false);
+        setWatermarkData(null);
+      }
+
+      // Gọi API checkin với ảnh (có hoặc không có watermark)
+      try {
+        await activityService.checkInStudentWithImage(studentId, finalImageUri);
+        Alert.alert('Thành công', 'Đã điểm danh học sinh thành công!');
+        await fetchStudents();
+      } catch (apiError: any) {
+        throw apiError; // Re-throw để xử lý ở catch block bên ngoài
+      }
     } catch (error: any) {
       const message =
         error?.response?.data?.message ||
@@ -308,6 +386,8 @@ const AttendanceScreen: React.FC = () => {
     } finally {
       setCheckingIn(null);
       setCapturingImage(null);
+      setProcessingWatermark(false);
+      setWatermarkData(null);
     }
   };
 
@@ -360,8 +440,59 @@ const AttendanceScreen: React.FC = () => {
                     continue; // Bỏ qua học sinh này nếu hủy chụp ảnh
                   }
 
-                  const imageUri = result.assets[0].uri;
-                  await activityService.checkInStudentWithImage(studentId, imageUri);
+                  const originalImageUri = result.assets[0].uri;
+                  
+                  // Xử lý watermark với timeout
+                  let finalImageUri = originalImageUri;
+                  try {
+                    // Lấy watermark info với timeout
+                    const watermarkInfo = await Promise.race([
+                      getWatermarkInfo(),
+                      new Promise<{ timestamp: string; location: any }>((resolve) => 
+                        setTimeout(() => resolve({ timestamp: formatTimestamp(), location: null }), 5000)
+                      )
+                    ]);
+                    
+                    // Set data để render watermark
+                    setWatermarkData({
+                      imageUri: originalImageUri,
+                      timestamp: watermarkInfo.timestamp,
+                      location: watermarkInfo.location,
+                    });
+
+                    // Đợi View render và Image load xong
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                    
+                    // Đợi thêm một chút để đảm bảo Image đã render xong
+                    await new Promise((resolve) => setTimeout(resolve, 300));
+
+        // Capture ảnh với watermark với timeout
+        if (watermarkViewRef.current && captureRef) {
+          try {
+            const watermarkedUri = await Promise.race([
+              captureRef(watermarkViewRef, {
+                format: 'jpg',
+                quality: 0.9,
+              }),
+              new Promise<string>((_, reject) => 
+                setTimeout(() => reject(new Error('Capture timeout')), 8000)
+              )
+            ]);
+            if (watermarkedUri) {
+              finalImageUri = watermarkedUri;
+            }
+          } catch (captureError: any) {
+            console.warn('Error capturing watermark, using original image:', captureError?.message || captureError);
+          }
+        } else if (!captureRef) {
+          console.warn('react-native-view-shot chưa được setup, sử dụng ảnh gốc');
+        }
+                  } catch (watermarkError: any) {
+                    console.error('Error processing watermark:', watermarkError?.message || watermarkError);
+                    // Nếu có lỗi watermark, vẫn dùng ảnh gốc
+                  }
+
+                  await activityService.checkInStudentWithImage(studentId, finalImageUri);
                   successCount++;
                 } catch (error) {
                   failCount++;
@@ -424,6 +555,21 @@ const AttendanceScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Hidden View để render watermark - Đặt ở ngoài SafeAreaView để có thể render */}
+      {watermarkData && (
+        <View 
+          ref={watermarkViewRef} 
+          style={styles.hiddenWatermarkView} 
+          collapsable={false}
+          pointerEvents="none"
+        >
+          <ImageWithWatermark
+            imageUri={watermarkData.imageUri}
+            timestamp={watermarkData.timestamp}
+            location={watermarkData.location}
+          />
+        </View>
+      )}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Điểm danh</Text>
       </View>
@@ -971,6 +1117,17 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.SM,
     color: COLORS.SUCCESS,
     fontWeight: '600',
+  },
+  hiddenWatermarkView: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').width * 1.5,
+    opacity: 1, // Phải là 1 để render được, nhưng đặt ngoài màn hình
+    zIndex: -9999,
+    overflow: 'hidden',
+    backgroundColor: '#000',
   },
 });
 

@@ -529,6 +529,24 @@ const ClassDetailScreen: React.FC = () => {
                 </View>
               </>
             )}
+
+            {/* Parent Note - Ghi chú của phụ huynh */}
+            {slot?.parentNote && (
+              <>
+                <Divider style={styles.divider} />
+                <View style={styles.parentNoteSection}>
+                  <View style={styles.parentNoteHeader}>
+                    <View style={styles.infoIconContainer}>
+                      <MaterialIcons name="family-restroom" size={20} color={COLORS.SECONDARY} />
+                    </View>
+                    <Text style={styles.parentNoteLabel}>Ghi chú của phụ huynh</Text>
+                  </View>
+                  <View style={styles.parentNoteBox}>
+                    <Text style={styles.parentNoteText}>{slot.parentNote}</Text>
+                  </View>
+                </View>
+              </>
+            )}
           </Card.Content>
         </Card>
 
@@ -860,6 +878,34 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.XS,
     color: COLORS.TEXT_SECONDARY,
     textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  parentNoteSection: {
+    marginTop: SPACING.XS,
+  },
+  parentNoteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  parentNoteLabel: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.SECONDARY,
+    marginLeft: SPACING.MD,
+  },
+  parentNoteBox: {
+    backgroundColor: COLORS.INFO_BG,
+    padding: SPACING.MD,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.SECONDARY,
+    marginLeft: SPACING.XL + SPACING.MD, // Align with content after icon
+  },
+  parentNoteText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    lineHeight: 20,
     fontStyle: 'italic',
   },
 });

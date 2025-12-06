@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,16 +11,27 @@ import {
   Image,
   Platform,
   KeyboardAvoidingView,
+  Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { TextInput, Button } from 'react-native-paper';
+// Tạm thời comment để tránh lỗi native module
+// import { captureRef } from 'react-native-view-shot';
+let captureRef: any = null;
+try {
+  const viewShot = require('react-native-view-shot');
+  captureRef = viewShot.captureRef;
+} catch (error) {
+  console.warn('react-native-view-shot chưa được setup');
+}
 import { COLORS, SPACING, FONTS } from '../../constants';
 import activityTypeService, { ActivityType } from '../../services/activityTypeService';
 import imageService from '../../services/imageService';
 import activityService from '../../services/activityService';
 import { ActivityResponse } from '../../types/api';
+import { getWatermarkInfo, ImageWithWatermark, formatTimestamp } from '../../utils/imageWatermark';
 
 type EditActivityRouteParams = {
   activityId: string;
@@ -41,6 +52,12 @@ const EditActivityScreen: React.FC = () => {
   const [loadingActivity, setLoadingActivity] = useState(true);
   const [loadingActivityTypes, setLoadingActivityTypes] = useState(true);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const watermarkViewRef = useRef<View>(null);
+  const [watermarkData, setWatermarkData] = useState<{
+    imageUri: string;
+    timestamp: string;
+    location: any;
+  } | null>(null);
 
   useEffect(() => {
     if (activityId) {
@@ -114,10 +131,13 @@ const EditActivityScreen: React.FC = () => {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const selectedImage = result.assets[0];
-        setImageUri(selectedImage.uri);
+        const originalImageUri = selectedImage.uri;
+        
+        // Xử lý watermark trước khi set và upload (chỉ cho ảnh chụp từ camera)
+        // Ảnh từ thư viện không cần watermark
+        setImageUri(originalImageUri);
         setUploadedImageUrl(null);
-
-        await handleUploadImage(selectedImage.uri);
+        await handleUploadImage(originalImageUri);
       }
     } catch (error: any) {
       Alert.alert('Lỗi', 'Không thể chọn ảnh. Vui lòng thử lại.');
@@ -143,10 +163,65 @@ const EditActivityScreen: React.FC = () => {
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const selectedImage = result.assets[0];
-        setImageUri(selectedImage.uri);
+        const originalImageUri = selectedImage.uri;
+        
+        // Xử lý watermark trước khi set và upload với timeout
+        let finalImageUri = originalImageUri;
+        try {
+          // Lấy watermark info với timeout
+          const watermarkInfo = await Promise.race([
+            getWatermarkInfo(),
+            new Promise<{ timestamp: string; location: any }>((resolve) => 
+              setTimeout(() => resolve({ timestamp: formatTimestamp(), location: null }), 5000)
+            )
+          ]);
+          
+          // Set data để render watermark
+          setWatermarkData({
+            imageUri: originalImageUri,
+            timestamp: watermarkInfo.timestamp,
+            location: watermarkInfo.location,
+          });
+
+          // Đợi View render và Image load xong
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          
+          // Đợi thêm một chút để đảm bảo Image đã render xong
+          await new Promise((resolve) => setTimeout(resolve, 300));
+
+          // Capture ảnh với watermark với timeout
+          if (watermarkViewRef.current && captureRef) {
+            try {
+              const watermarkedUri = await Promise.race([
+                captureRef(watermarkViewRef, {
+                  format: 'jpg',
+                  quality: 0.9,
+                }),
+                new Promise<string>((_, reject) => 
+                  setTimeout(() => reject(new Error('Capture timeout')), 8000)
+                )
+              ]);
+              if (watermarkedUri) {
+                finalImageUri = watermarkedUri;
+              }
+            } catch (captureError: any) {
+              console.warn('Error capturing watermark, using original image:', captureError?.message || captureError);
+            }
+          } else if (!captureRef) {
+            console.warn('react-native-view-shot chưa được setup, sử dụng ảnh gốc');
+          }
+        } catch (watermarkError: any) {
+          console.error('Error processing watermark:', watermarkError?.message || watermarkError);
+          // Nếu có lỗi watermark, vẫn dùng ảnh gốc
+        } finally {
+          setWatermarkData(null);
+        }
+
+        setImageUri(finalImageUri);
         setUploadedImageUrl(null);
 
-        await handleUploadImage(selectedImage.uri);
+        // Auto upload image (có hoặc không có watermark)
+        await handleUploadImage(finalImageUri);
       }
     } catch (error: any) {
       Alert.alert('Lỗi', 'Không thể chụp ảnh. Vui lòng thử lại.');
@@ -349,6 +424,22 @@ const EditActivityScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Hidden View để render watermark - Phải render để capture được */}
+      {watermarkData && (
+        <View 
+          ref={watermarkViewRef} 
+          style={styles.hiddenWatermarkView} 
+          collapsable={false}
+          pointerEvents="none"
+          removeClippedSubviews={false}
+        >
+          <ImageWithWatermark
+            imageUri={watermarkData.imageUri}
+            timestamp={watermarkData.timestamp}
+            location={watermarkData.location}
+          />
+        </View>
+      )}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -447,9 +538,12 @@ const EditActivityScreen: React.FC = () => {
             <Text style={styles.charCount}>{note.length}/500</Text>
           </View>
 
-          {/* Image Upload */}
+          {/* Image Upload - Chỉ cho phép chụp ảnh để có watermark thời gian + vị trí */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Ảnh (tùy chọn)</Text>
+            <Text style={styles.sectionSubtitle}>
+              Chụp ảnh để tự động thêm thời gian và vị trí xác thực
+            </Text>
             {imageUri ? (
               <View style={styles.imageContainer}>
                 {uploadingImage ? (
@@ -478,20 +572,15 @@ const EditActivityScreen: React.FC = () => {
             ) : (
               <View style={styles.imagePickerContainer}>
                 <TouchableOpacity
-                  style={styles.imagePickerButton}
-                  onPress={handlePickImage}
-                  disabled={uploadingImage}
-                >
-                  <MaterialIcons name="photo-library" size={32} color={COLORS.PRIMARY} />
-                  <Text style={styles.imagePickerText}>Chọn ảnh từ thư viện</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.imagePickerButton}
+                  style={[styles.imagePickerButton, styles.imagePickerButtonFull]}
                   onPress={handleTakePhoto}
                   disabled={uploadingImage}
                 >
                   <MaterialIcons name="camera-alt" size={32} color={COLORS.PRIMARY} />
                   <Text style={styles.imagePickerText}>Chụp ảnh</Text>
+                  <Text style={styles.imagePickerSubtext}>
+                    Ảnh sẽ tự động có thời gian và vị trí
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -657,11 +746,21 @@ const styles = StyleSheet.create({
     borderColor: COLORS.BORDER,
     borderStyle: 'dashed',
   },
+  imagePickerButtonFull: {
+    flex: 1,
+    width: '100%',
+  },
   imagePickerText: {
     marginTop: SPACING.SM,
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
     fontWeight: '500',
+  },
+  imagePickerSubtext: {
+    marginTop: SPACING.XS,
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    textAlign: 'center',
   },
   imageContainer: {
     position: 'relative',
@@ -721,6 +820,17 @@ const styles = StyleSheet.create({
   },
   updateButtonContent: {
     paddingVertical: SPACING.SM,
+  },
+  hiddenWatermarkView: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').width * 1.5,
+    opacity: 1, // Phải là 1 để render được
+    zIndex: -9999,
+    overflow: 'hidden',
+    backgroundColor: '#000',
   },
 });
 

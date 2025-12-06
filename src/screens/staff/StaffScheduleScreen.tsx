@@ -245,7 +245,9 @@ const StaffScheduleScreen: React.FC = () => {
         setError(message);
         setSlots([]);
       } finally {
-        setLoading(false);
+        if (!silent) {
+          setLoading(false);
+        }
         setRefreshing(false);
       }
     },
