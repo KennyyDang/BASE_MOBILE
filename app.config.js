@@ -51,6 +51,13 @@ module.exports = {
         {
           color: "#5cbdb9"
         }
+      ],
+      [
+        "expo-location",
+        {
+          locationAlwaysAndWhenInUsePermission: "Ứng dụng cần quyền truy cập vị trí để thêm thông tin xác thực vào ảnh chụp.",
+          locationWhenInUsePermission: "Ứng dụng cần quyền truy cập vị trí để thêm thông tin xác thực vào ảnh chụp."
+        }
       ]
     ],
     ios: {
@@ -63,7 +70,9 @@ module.exports = {
               "baseapp"
             ]
           }
-        ]
+        ],
+        NSLocationWhenInUseUsageDescription: "Ứng dụng cần quyền truy cập vị trí để thêm thông tin xác thực vào ảnh chụp.",
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Ứng dụng cần quyền truy cập vị trí để thêm thông tin xác thực vào ảnh chụp."
       }
     },
     android: {
@@ -74,7 +83,9 @@ module.exports = {
       googleServicesFile: "./google-services.json",
       permissions: [
         "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE"
+        "VIBRATE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ],
       intentFilters: [
         {

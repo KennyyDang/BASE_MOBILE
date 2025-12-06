@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   Platform,
@@ -1043,10 +1044,25 @@ const SelectSlotScreen: React.FC = () => {
 
                         {isExpanded && (() => {
                           // Loại bỏ duplicate rooms dựa trên roomId hoặc id
-                          const uniqueRooms = roomsFromSlot.filter((room, index, self) => {
+                          const seenIdentifiers = new Set<string>();
+                          const uniqueRooms = roomsFromSlot.filter((room) => {
+                            // Ưu tiên roomId, nếu không có thì dùng id
                             const roomIdentifier = room.roomId || room.id;
+                            
+                            // Nếu không có identifier, bỏ qua
                             if (!roomIdentifier) return false;
-                            return index === self.findIndex((r) => (r.roomId || r.id) === roomIdentifier);
+                            
+                            // Chuyển thành string để so sánh chính xác
+                            const identifierStr = String(roomIdentifier);
+                            
+                            // Nếu đã thấy identifier này rồi, bỏ qua
+                            if (seenIdentifiers.has(identifierStr)) {
+                              return false;
+                            }
+                            
+                            // Đánh dấu đã thấy và giữ lại phòng này
+                            seenIdentifiers.add(identifierStr);
+                            return true;
                           });
                           
                           return (
@@ -1111,6 +1127,41 @@ const SelectSlotScreen: React.FC = () => {
                                   </TouchableOpacity>
                                 );
                               })
+                            )}
+                            
+                            {/* Parent Note Input */}
+                            {selectedRoomId && (
+                              <View style={styles.parentNoteContainer}>
+                                <View style={styles.parentNoteHeader}>
+                                  <MaterialIcons name="note" size={16} color={COLORS.PRIMARY} />
+                                  <Text style={styles.parentNoteLabel}>Ghi chú cho con (tùy chọn)</Text>
+                                </View>
+                                <TextInput
+                                  style={styles.parentNoteInput}
+                                  placeholder="Nhập ghi chú cho con (ví dụ: Nhớ uống nước, mặc áo ấm...)"
+                                  placeholderTextColor={COLORS.TEXT_SECONDARY}
+                                  value={roomState?.parentNote || ''}
+                                  onChangeText={(text) => {
+                                    setSlotRoomsState((prev) => {
+                                      const existing = prev[slot.id] || createDefaultSlotRoomsState();
+                                      return {
+                                        ...prev,
+                                        [slot.id]: {
+                                          ...existing,
+                                          parentNote: text,
+                                        },
+                                      };
+                                    });
+                                  }}
+                                  multiline
+                                  numberOfLines={3}
+                                  maxLength={500}
+                                  textAlignVertical="top"
+                                />
+                                <Text style={styles.parentNoteCharCount}>
+                                  {(roomState?.parentNote || '').length}/500
+                                </Text>
+                              </View>
                             )}
                             
                             {selectedRoomId && (
@@ -1589,6 +1640,41 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.SURFACE,
+  },
+  parentNoteContainer: {
+    marginTop: SPACING.MD,
+    paddingTop: SPACING.MD,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.BORDER,
+  },
+  parentNoteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+    gap: SPACING.XS,
+  },
+  parentNoteLabel: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  parentNoteInput: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    padding: SPACING.MD,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    minHeight: 80,
+    maxHeight: 120,
+    textAlignVertical: 'top',
+  },
+  parentNoteCharCount: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    textAlign: 'right',
+    marginTop: SPACING.XS,
   },
   studentPickerOverlay: {
     flex: 1,

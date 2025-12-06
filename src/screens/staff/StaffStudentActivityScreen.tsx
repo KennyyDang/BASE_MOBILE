@@ -18,6 +18,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
 import activityService, { StaffActivityResponse } from '../../services/activityService';
+import studentSlotService from '../../services/studentSlotService';
 import { RootStackParamList } from '../../types';
 import { ActivityResponse } from '../../types/api';
 import { COLORS } from '../../constants';
@@ -115,7 +116,55 @@ const StaffStudentActivityScreen: React.FC = () => {
         });
 
         // API đã filter theo studentId rồi, không cần filter lại
-        const filteredItems: StaffActivityResponse[] = response.items || [];
+        let filteredItems: StaffActivityResponse[] = response.items || [];
+
+        // Fetch studentSlots để lấy parentNote và map vào activities
+        try {
+          const studentSlotsResponse = await studentSlotService.getStudentSlots({
+            studentId: studentId,
+            pageIndex: 1,
+            pageSize: 100, // Lấy nhiều để cover tất cả slots
+          });
+
+          // Tạo map: studentSlotId -> parentNote
+          const parentNoteMap = new Map<string, string>();
+          studentSlotsResponse.items?.forEach((slot) => {
+            if (slot.id && slot.parentNote) {
+              parentNoteMap.set(slot.id, slot.parentNote);
+            }
+          });
+
+          // Nếu có nhiều trang, fetch thêm
+          let currentPage = 1;
+          while (studentSlotsResponse.hasNextPage && currentPage < 10) {
+            currentPage++;
+            const nextPageResponse = await studentSlotService.getStudentSlots({
+              studentId: studentId,
+              pageIndex: currentPage,
+              pageSize: 100,
+            });
+            nextPageResponse.items?.forEach((slot) => {
+              if (slot.id && slot.parentNote) {
+                parentNoteMap.set(slot.id, slot.parentNote);
+              }
+            });
+            if (!nextPageResponse.hasNextPage) break;
+          }
+
+          // Map parentNote vào activities
+          filteredItems = filteredItems.map((activity) => {
+            const parentNote = activity.studentSlotId 
+              ? parentNoteMap.get(activity.studentSlotId) 
+              : undefined;
+            return {
+              ...activity,
+              parentNote: parentNote || activity.parentNote, // Giữ parentNote từ API nếu có, nếu không thì dùng từ map
+            };
+          });
+        } catch (slotError) {
+          // Nếu không fetch được studentSlots, vẫn tiếp tục với activities (không có parentNote)
+          console.warn('Could not fetch student slots for parentNote:', slotError);
+        }
 
         if (append) {
           setActivities((prev) => {
@@ -369,7 +418,7 @@ const StaffStudentActivityScreen: React.FC = () => {
                     </TouchableOpacity>
                   )}
 
-                  {/* Activity Note */}
+                  {/* Activity Note (from staff) */}
                   {activity.note && (
                     <TouchableOpacity
                       onPress={() => handleActivityPress(activity)}
@@ -378,7 +427,27 @@ const StaffStudentActivityScreen: React.FC = () => {
                     >
                       <View style={styles.noteBox}>
                         <MaterialIcons name="note" size={16} color={COLORS.PRIMARY} />
-                        <Text style={styles.noteText}>{activity.note}</Text>
+                        <View style={styles.noteContent}>
+                          <Text style={styles.noteLabel}>Ghi chú từ staff:</Text>
+                          <Text style={styles.noteText}>{activity.note}</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Parent Note (from parent) */}
+                  {activity.parentNote && (
+                    <TouchableOpacity
+                      onPress={() => handleActivityPress(activity)}
+                      activeOpacity={0.7}
+                      disabled={isDeleting}
+                    >
+                      <View style={styles.parentNoteBox}>
+                        <MaterialIcons name="family-restroom" size={16} color={COLORS.SECONDARY} />
+                        <View style={styles.noteContent}>
+                          <Text style={styles.parentNoteLabel}>Ghi chú từ phụ huynh:</Text>
+                          <Text style={styles.parentNoteText}>{activity.parentNote}</Text>
+                        </View>
                       </View>
                     </TouchableOpacity>
                   )}
@@ -595,12 +664,44 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: SPACING.MD,
   },
-  noteText: {
+  noteContent: {
     flex: 1,
+    marginLeft: SPACING.SM,
+  },
+  noteLabel: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '600',
+    marginBottom: SPACING.XS,
+    textTransform: 'uppercase',
+  },
+  noteText: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
-    marginLeft: SPACING.SM,
     lineHeight: 20,
+  },
+  parentNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.INFO_BG,
+    padding: SPACING.MD,
+    borderRadius: 12,
+    marginBottom: SPACING.MD,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.SECONDARY,
+  },
+  parentNoteLabel: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.SECONDARY,
+    fontWeight: '600',
+    marginBottom: SPACING.XS,
+    textTransform: 'uppercase',
+  },
+  parentNoteText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    lineHeight: 20,
+    fontStyle: 'italic',
   },
   imageContainer: {
     position: 'relative',

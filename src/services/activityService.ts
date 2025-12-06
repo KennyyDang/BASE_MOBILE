@@ -21,6 +21,7 @@ export interface StaffActivityResponse {
   isViewed: boolean;
   viewedTime?: string;
   createdTime: string;
+  parentNote?: string; // Note từ phụ huynh khi đặt lịch
 }
 
 export interface PagedActivitiesResponse {
