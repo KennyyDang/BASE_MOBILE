@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -61,13 +61,46 @@ const formatTime = (time?: string | null) => {
 const formatDate = (dateString?: string | null) => {
   if (!dateString) return 'Chưa có';
   try {
-    const date = new Date(dateString);
+    let date = new Date(dateString);
+    
+    // Kiểm tra xem date có hợp lệ không
+    if (isNaN(date.getTime())) {
+      // Nếu không parse được, thử parse lại bằng cách loại bỏ timezone
+      const cleanedDateString = dateString.split('T')[0]; // Lấy phần date trước 'T'
+      const fallbackDate = new Date(cleanedDateString);
+      if (isNaN(fallbackDate.getTime())) {
+        // Nếu vẫn không được, thử format đơn giản hơn
+        const parts = cleanedDateString.split('-');
+        if (parts.length === 3) {
+          return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        return dateString.split('T')[0] || dateString; // Trả về phần date trước 'T'
+      }
+      date = fallbackDate;
+    }
+    
     const day = date.getDate().toString().padStart(2, '0');
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
+    
+    // Thêm thứ trong tuần
+    const weekdays = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+    const weekday = weekdays[date.getDay()];
+    
+    return `${weekday}, ${day}/${month}/${year}`;
   } catch {
-    return dateString;
+    // Nếu có lỗi, thử format đơn giản hơn
+    try {
+      const cleanedDateString = dateString.split('T')[0]; // Lấy phần date trước 'T'
+      const parts = cleanedDateString.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      return cleanedDateString;
+    } catch {
+      // Nếu vẫn lỗi, trả về nguyên bản nhưng loại bỏ phần time nếu có
+      return dateString.split('T')[0] || dateString;
+    }
   }
 };
 
@@ -130,6 +163,48 @@ const ClassDetailScreen: React.FC = () => {
   const [roomDetails, setRoomDetails] = useState<BranchSlotRoomResponse | null>(null);
   const [roomLoading, setRoomLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+
+  // Group services by serviceId để gộp các services giống nhau
+  const groupedServicesArray = useMemo(() => {
+    if (!slot?.services || !Array.isArray(slot.services) || slot.services.length === 0) {
+      return [];
+    }
+
+    const groupedServices = new Map<string, {
+      serviceId: string;
+      serviceName: string;
+      totalQuantity: number;
+      unitPrice: number;
+      totalPrice: number;
+    }>();
+
+    slot.services.forEach((service, serviceIndex) => {
+      if (!service) return;
+      
+      const serviceId = service.serviceId || `service-${serviceIndex}`;
+      const quantity = service.quantity || 1;
+      const unitPrice = service.unitPrice || 0;
+      const totalPrice = service.totalPrice || (unitPrice * quantity);
+
+      const groupKey = serviceId;
+      
+      if (groupedServices.has(groupKey)) {
+        const existing = groupedServices.get(groupKey)!;
+        existing.totalQuantity += quantity;
+        existing.totalPrice += totalPrice;
+      } else {
+        groupedServices.set(groupKey, {
+          serviceId: serviceId,
+          serviceName: service.serviceName || 'Dịch vụ',
+          totalQuantity: quantity,
+          unitPrice: unitPrice,
+          totalPrice: totalPrice,
+        });
+      }
+    });
+
+    return Array.from(groupedServices.values());
+  }, [slot?.services]);
 
   const fetchSlotDetails = useCallback(async (silent = false) => {
     if (!silent) {
@@ -394,111 +469,123 @@ const ClassDetailScreen: React.FC = () => {
         }
       >
         {/* Class Information Card */}
-        <Card style={styles.card} mode="elevated" elevation={2}>
-          <Card.Content>
+        <Card style={styles.card} mode="elevated" elevation={1}>
+          <Card.Content style={styles.cardContent}>
             <View style={styles.cardHeader}>
+              <MaterialIcons name="info-outline" size={22} color={COLORS.PRIMARY} />
               <Text style={styles.cardTitle}>Thông tin lớp học</Text>
             </View>
 
-            <View style={styles.infoRow}>
-              <View style={styles.infoIconContainer}>
-                <MaterialIcons name="calendar-today" size={20} color={COLORS.PRIMARY} />
+            <View style={styles.infoSection}>
+              <View style={styles.infoRow}>
+                <View style={styles.infoIconContainer}>
+                  <MaterialIcons name="calendar-today" size={18} color={COLORS.PRIMARY} />
+                </View>
+                <Text style={styles.infoLabel}>Ngày học</Text>
+                <Text style={styles.infoValue}>{formatDate(slot?.date)}</Text>
               </View>
-              <Text style={styles.infoLabel}>Ngày học</Text>
-              <Text style={styles.infoValue}>{formatDate(slot?.date)}</Text>
-            </View>
 
-            <Divider style={styles.divider} />
-
-            <View style={styles.infoRow}>
-              <View style={styles.infoIconContainer}>
-                <MaterialIcons name="access-time" size={20} color={COLORS.PRIMARY} />
+              <View style={styles.infoRow}>
+                <View style={styles.infoIconContainer}>
+                  <MaterialIcons name="access-time" size={18} color={COLORS.PRIMARY} />
+                </View>
+                <Text style={styles.infoLabel}>Giờ học</Text>
+                <Text style={styles.infoValue}>{formatTimeRange(slot?.timeframe)}</Text>
               </View>
-              <Text style={styles.infoLabel}>Giờ học</Text>
-              <Text style={styles.infoValue}>{formatTimeRange(slot?.timeframe)}</Text>
-            </View>
 
-            <Divider style={styles.divider} />
-
-            <View style={styles.infoRow}>
-              <View style={styles.infoIconContainer}>
-                <MaterialIcons name="meeting-room" size={20} color={COLORS.PRIMARY} />
+              <View style={styles.infoRow}>
+                <View style={styles.infoIconContainer}>
+                  <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />
+                </View>
+                <Text style={styles.infoLabel}>Phòng</Text>
+                <Text style={styles.infoValue}>
+                  {slot?.room?.roomName || roomDetails?.roomName || 'Chưa có'}
+                </Text>
               </View>
-              <Text style={styles.infoLabel}>Phòng</Text>
-              <Text style={styles.infoValue}>
-                {slot?.room?.roomName || roomDetails?.roomName || 'Chưa có'}
-              </Text>
-            </View>
 
-            <Divider style={styles.divider} />
-
-            {/* Facility (Cơ sở) */}
-            {roomDetails?.facilityName ? (
-              <>
+              {/* Facility (Cơ sở) */}
+              {roomDetails?.facilityName && (
                 <View style={styles.infoRow}>
                   <View style={styles.infoIconContainer}>
-                    <MaterialIcons name="business" size={20} color={COLORS.PRIMARY} />
+                    <MaterialIcons name="business" size={18} color={COLORS.PRIMARY} />
                   </View>
                   <Text style={styles.infoLabel}>Cơ sở</Text>
                   <Text style={styles.infoValue}>{roomDetails.facilityName}</Text>
                 </View>
+              )}
 
-                <Divider style={styles.divider} />
-              </>
-            ) : null}
+              {/* Staff (Nhân viên quản lý ca) */}
+              {(() => {
+                // Ưu tiên: slot.staffs > slot.room.staff > roomDetails.staff
+                let staffInfo = null;
+                
+                if (slot?.staffs && slot.staffs.length > 0) {
+                  staffInfo = slot.staffs[0];
+                } else if (slot?.room?.staff) {
+                  staffInfo = slot.room.staff;
+                } else if (roomDetails?.staff) {
+                  staffInfo = roomDetails.staff;
+                }
 
-            {/* Staff (Giáo viên / Nhân viên phụ trách) */}
-            {roomDetails?.staff ? (
+                if (staffInfo) {
+                  const staffName = 
+                    staffInfo.staffName || 
+                    staffInfo.fullName || 
+                    'Chưa có';
+                  
+                  const staffRole = 
+                    staffInfo.staffRole || 
+                    staffInfo.role || 
+                    '';
+                  
+                  const isValidRole = staffRole && 
+                    staffRole.trim() !== '' && 
+                    staffRole.toLowerCase() !== 'string' &&
+                    staffRole !== 'null' &&
+                    staffRole !== 'undefined';
+
+                  return (
+                    <View style={styles.infoRow}>
+                      <View style={styles.infoIconContainer}>
+                        <MaterialIcons name="person" size={18} color={COLORS.PRIMARY} />
+                      </View>
+                      <Text style={styles.infoLabel}>Nhân viên quản lý ca</Text>
+                      <Text style={styles.infoValue}>
+                        {staffName}
+                        {isValidRole ? ` (${staffRole})` : ''}
+                      </Text>
+                    </View>
+                  );
+                }
+                return null;
+              })()}
+
               <View style={styles.infoRow}>
                 <View style={styles.infoIconContainer}>
-                  <MaterialIcons name="person" size={20} color={COLORS.PRIMARY} />
+                  <MaterialIcons name="location-on" size={18} color={COLORS.PRIMARY} />
                 </View>
-                <Text style={styles.infoLabel}>Nhân viên</Text>
-                <Text style={styles.infoValue}>
-                  {roomDetails.staff.staffName ||
-                    roomDetails.staff.fullName ||
-                    'Chưa có'} 
-                  {roomDetails.staff.staffRole || roomDetails.staff.role
-                    ? ` (${roomDetails.staff.staffRole || roomDetails.staff.role})`
-                    : ''}
-                </Text>
+                <Text style={styles.infoLabel}>Chi nhánh</Text>
+                <Text style={styles.infoValue}>{slot?.branchSlot?.branchName || 'Chưa có'}</Text>
               </View>
-            ) : null}
 
-            <Divider style={styles.divider} />
-
-            <View style={styles.infoRow}>
-              <View style={styles.infoIconContainer}>
-                <MaterialIcons name="location-on" size={20} color={COLORS.PRIMARY} />
-              </View>
-              <Text style={styles.infoLabel}>Chi nhánh</Text>
-              <Text style={styles.infoValue}>{slot?.branchSlot?.branchName || 'Chưa có'}</Text>
-            </View>
-
-            <Divider style={styles.divider} />
-
-            {/* Slot Type */}
-            {slot?.branchSlot?.slotType?.name && (
-              <>
+              {/* Slot Type */}
+              {slot?.branchSlot?.slotType?.name && (
                 <View style={styles.infoRow}>
                   <View style={styles.infoIconContainer}>
-                    <MaterialIcons name="category" size={20} color={COLORS.PRIMARY} />
+                    <MaterialIcons name="category" size={18} color={COLORS.PRIMARY} />
                   </View>
                   <Text style={styles.infoLabel}>Loại hoạt động</Text>
-                  <Text style={styles.infoValue}>{slot.branchSlot.slotType.name}</Text>
+                  <Text style={styles.infoValue} numberOfLines={2}>
+                    {slot.branchSlot.slotType.name}
+                  </Text>
                 </View>
+              )}
 
-                <Divider style={styles.divider} />
-              </>
-            )}
-
-            {/* Status - Chỉ hiển thị nếu không phải Cancelled */}
-            {slot?.status && slot.status.toLowerCase() !== 'cancelled' && (
-              <>
-                <Divider style={styles.divider} />
+              {/* Status - Chỉ hiển thị nếu không phải Cancelled */}
+              {slot?.status && slot.status.toLowerCase() !== 'cancelled' && (
                 <View style={styles.infoRow}>
                   <View style={styles.infoIconContainer}>
-                    <MaterialIcons name="info" size={20} color={COLORS.PRIMARY} />
+                    <MaterialIcons name="info" size={18} color={COLORS.PRIMARY} />
                   </View>
                   <Text style={styles.infoLabel}>Trạng thái</Text>
                   <View style={styles.statusContainer}>
@@ -512,7 +599,7 @@ const ClassDetailScreen: React.FC = () => {
                     >
                       <MaterialIcons
                         name="circle"
-                        size={12}
+                        size={10}
                         color={getStatusColor(slot.status)}
                         style={styles.statusIcon}
                       />
@@ -527,33 +614,79 @@ const ClassDetailScreen: React.FC = () => {
                     </View>
                   </View>
                 </View>
-              </>
-            )}
+              )}
+            </View>
 
             {/* Parent Note - Ghi chú của phụ huynh */}
             {slot?.parentNote && (
-              <>
-                <Divider style={styles.divider} />
-                <View style={styles.parentNoteSection}>
-                  <View style={styles.parentNoteHeader}>
-                    <View style={styles.infoIconContainer}>
-                      <MaterialIcons name="family-restroom" size={20} color={COLORS.SECONDARY} />
-                    </View>
-                    <Text style={styles.parentNoteLabel}>Ghi chú của phụ huynh</Text>
-                  </View>
-                  <View style={styles.parentNoteBox}>
-                    <Text style={styles.parentNoteText}>{slot.parentNote}</Text>
-                  </View>
+              <View style={styles.parentNoteSection}>
+                <View style={styles.parentNoteHeader}>
+                  <MaterialIcons name="family-restroom" size={18} color={COLORS.SECONDARY} />
+                  <Text style={styles.parentNoteLabel}>Ghi chú của phụ huynh</Text>
                 </View>
-              </>
+                <View style={styles.parentNoteBox}>
+                  <Text style={styles.parentNoteText}>{slot.parentNote}</Text>
+                </View>
+              </View>
             )}
           </Card.Content>
         </Card>
 
+        {/* Services Add-On Section - Dịch vụ đã mua */}
+        {groupedServicesArray.length > 0 && (
+          <Card style={styles.card} mode="elevated" elevation={1}>
+            <Card.Content style={styles.cardContent}>
+              <View style={styles.cardHeader}>
+                <MaterialIcons name="shopping-cart" size={22} color={COLORS.PRIMARY} />
+                <Text style={styles.cardTitle}>Dịch vụ bổ sung đã mua</Text>
+              </View>
+              <View style={styles.servicesList}>
+                {groupedServicesArray.map((service, index) => {
+                  // Validate service data trước khi render
+                  if (!service || service.totalQuantity <= 0) {
+                    return null;
+                  }
+
+                  const unitPrice = service.unitPrice || 0;
+                  const totalPrice = service.totalPrice || (unitPrice * service.totalQuantity);
+                  
+                  // Dùng index làm key vì sau khi group, mỗi service trong array là unique
+                  // Kết hợp với slotId để đảm bảo unique hoàn toàn
+                  const uniqueKey = `service-${slot?.id || 'slot'}-${index}`;
+
+                  return (
+                    <View key={uniqueKey} style={styles.serviceItem}>
+                      <View style={styles.serviceInfo}>
+                        <Text style={styles.serviceName} numberOfLines={2}>
+                          {service.serviceName || 'Dịch vụ'}
+                        </Text>
+                        <View style={styles.servicePriceRow}>
+                          <Text style={styles.serviceQuantity}>
+                            {service.totalQuantity} ×
+                          </Text>
+                          <Text style={styles.servicePrice}>
+                            {unitPrice.toLocaleString('vi-VN')} đ
+                          </Text>
+                          <Text style={styles.serviceTotal}>
+                            = {totalPrice.toLocaleString('vi-VN')} đ
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </Card.Content>
+          </Card>
+        )}
+
         {/* Activities Card */}
-        <Card style={styles.card} mode="elevated" elevation={2}>
-          <Card.Content pointerEvents="box-none">
-            <Text style={styles.sectionTitle}>Hoạt động ({activities.length})</Text>
+        <Card style={styles.card} mode="elevated" elevation={1}>
+          <Card.Content style={styles.cardContent} pointerEvents="box-none">
+            <View style={styles.cardHeader}>
+              <MaterialIcons name="event-note" size={22} color={COLORS.PRIMARY} />
+              <Text style={styles.cardTitle}>Hoạt động ({activities.length})</Text>
+            </View>
             {activitiesLoading ? (
               <View style={styles.stateContainer}>
                 <ActivityIndicator size="small" color={COLORS.PRIMARY} />
@@ -614,49 +747,38 @@ const ClassDetailScreen: React.FC = () => {
           </Card.Content>
         </Card>
 
-        {/* Cancel Slot Card - Chỉ hiển thị nếu slot chưa bị hủy và chưa hoàn thành */}
-        {slot && slot.status && slot.status.toLowerCase() !== 'cancelled' && slot.status.toLowerCase() !== 'completed' && (
-          <Card style={styles.card} mode="elevated" elevation={2}>
-            <Card.Content>
-              <TouchableOpacity
-                style={[styles.cancelButton, cancelling && styles.cancelButtonDisabled]}
-                onPress={handleCancelSlot}
-                activeOpacity={0.8}
-                disabled={cancelling}
-              >
-                {cancelling ? (
-                  <ActivityIndicator size="small" color={COLORS.SURFACE} />
-                ) : (
-                  <MaterialIcons name="cancel" size={24} color={COLORS.SURFACE} />
-                )}
-                <Text style={styles.cancelButtonText}>
-                  {cancelling ? 'Đang hủy...' : 'Hủy lịch học'}
-                </Text>
-              </TouchableOpacity>
-              <Text style={styles.cancelHint}>
-                Bấm để hủy lịch học này. Lưu ý: Chỉ có thể hủy trước ngày học.
-              </Text>
-            </Card.Content>
-          </Card>
-        )}
-
-        {/* Purchase Services Card */}
-        <Card style={styles.card} mode="elevated" elevation={2}>
-          <Card.Content>
+        {/* Action Buttons */}
+        <View style={styles.actionButtonsContainer}>
+          {/* Cancel Slot Button - Chỉ hiển thị nếu slot chưa bị hủy và chưa hoàn thành */}
+          {slot && slot.status && slot.status.toLowerCase() !== 'cancelled' && slot.status.toLowerCase() !== 'completed' && (
             <TouchableOpacity
-              style={styles.purchaseButton}
-              onPress={handlePurchaseServices}
+              style={[styles.cancelButton, cancelling && styles.cancelButtonDisabled]}
+              onPress={handleCancelSlot}
               activeOpacity={0.8}
+              disabled={cancelling}
             >
-              <MaterialIcons name="shopping-cart" size={24} color={COLORS.SURFACE} />
-              <Text style={styles.purchaseButtonText}>Mua dịch vụ bổ sung</Text>
-              <MaterialIcons name="arrow-forward" size={24} color={COLORS.SURFACE} />
+              {cancelling ? (
+                <ActivityIndicator size="small" color={COLORS.SURFACE} />
+              ) : (
+                <MaterialIcons name="cancel" size={20} color={COLORS.SURFACE} />
+              )}
+              <Text style={styles.cancelButtonText}>
+                {cancelling ? 'Đang hủy...' : 'Hủy lịch học'}
+              </Text>
             </TouchableOpacity>
-            <Text style={styles.purchaseHint}>
-              Bấm để xem và mua các dịch vụ bổ sung cho lớp học này
-            </Text>
-          </Card.Content>
-        </Card>
+          )}
+
+          {/* Purchase Services Button */}
+          <TouchableOpacity
+            style={styles.purchaseButton}
+            onPress={handlePurchaseServices}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="shopping-cart" size={20} color={COLORS.SURFACE} />
+            <Text style={styles.purchaseButtonText}>Mua dịch vụ bổ sung</Text>
+            <MaterialIcons name="arrow-forward" size={20} color={COLORS.SURFACE} />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -746,12 +868,6 @@ const styles = StyleSheet.create({
   divider: {
     marginVertical: SPACING.SM,
   },
-  sectionTitle: {
-    fontSize: FONTS.SIZES.LG,
-    fontWeight: 'bold',
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.MD,
-  },
   stateContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -819,22 +935,16 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.PRIMARY,
     paddingVertical: SPACING.MD,
     paddingHorizontal: SPACING.LG,
-    borderRadius: 12,
-    marginBottom: SPACING.SM,
+    borderRadius: 10,
+    gap: SPACING.SM,
+    minHeight: 48,
   },
   purchaseButtonText: {
     flex: 1,
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.SURFACE,
-    marginLeft: SPACING.SM,
     textAlign: 'center',
-  },
-  purchaseHint: {
-    fontSize: FONTS.SIZES.XS,
-    color: COLORS.TEXT_SECONDARY,
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
   statusContainer: {
     flex: 2,
@@ -862,9 +972,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.ERROR,
     paddingVertical: SPACING.MD,
     paddingHorizontal: SPACING.LG,
-    borderRadius: 12,
-    marginBottom: SPACING.SM,
+    borderRadius: 10,
     gap: SPACING.SM,
+    minHeight: 48,
   },
   cancelButtonDisabled: {
     opacity: 0.6,
@@ -874,25 +984,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.SURFACE,
   },
-  cancelHint: {
-    fontSize: FONTS.SIZES.XS,
-    color: COLORS.TEXT_SECONDARY,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
   parentNoteSection: {
-    marginTop: SPACING.XS,
+    marginTop: SPACING.MD,
+    paddingTop: SPACING.MD,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.BORDER,
   },
   parentNoteHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: SPACING.SM,
+    gap: SPACING.XS,
   },
   parentNoteLabel: {
     fontSize: FONTS.SIZES.SM,
     fontWeight: '600',
     color: COLORS.SECONDARY,
-    marginLeft: SPACING.MD,
   },
   parentNoteBox: {
     backgroundColor: COLORS.INFO_BG,
@@ -900,13 +1007,55 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderLeftWidth: 3,
     borderLeftColor: COLORS.SECONDARY,
-    marginLeft: SPACING.XL + SPACING.MD, // Align with content after icon
   },
   parentNoteText: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
     lineHeight: 20,
-    fontStyle: 'italic',
+  },
+  servicesList: {
+    gap: SPACING.SM,
+  },
+  serviceItem: {
+    padding: SPACING.MD,
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.PRIMARY,
+  },
+  serviceInfo: {
+    gap: SPACING.SM,
+  },
+  serviceName: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    lineHeight: 20,
+  },
+  servicePriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.XS,
+    flexWrap: 'wrap',
+  },
+  serviceQuantity: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '500',
+  },
+  servicePrice: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '500',
+  },
+  serviceTotal: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '700',
+  },
+  actionButtonsContainer: {
+    gap: SPACING.SM,
+    marginTop: SPACING.XS,
   },
 });
 

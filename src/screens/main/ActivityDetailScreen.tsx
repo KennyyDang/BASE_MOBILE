@@ -18,8 +18,9 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
 import activityService from '../../services/activityService';
+import studentSlotService from '../../services/studentSlotService';
 import { RootStackParamList } from '../../types';
-import { ActivityResponse } from '../../types/api';
+import { ActivityResponse, StudentSlotResponse } from '../../types/api';
 import { COLORS } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -79,6 +80,8 @@ const ActivityDetailScreen: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [markingViewed, setMarkingViewed] = useState(false);
+  const [slot, setSlot] = useState<StudentSlotResponse | null>(null);
+  const [servicesLoading, setServicesLoading] = useState(false);
 
   // Kiểm tra xem user có phải staff không (có quyền sửa/xóa)
   const isStaff = user?.role && (user.role.toUpperCase().includes('STAFF') || user.role.toUpperCase() === 'ADMIN');
@@ -104,9 +107,37 @@ const ActivityDetailScreen: React.FC = () => {
     }
   }, [activityId]);
 
+  const fetchSlotWithServices = useCallback(async () => {
+    if (!activity?.studentSlotId) {
+      setSlot(null);
+      return;
+    }
+
+    setServicesLoading(true);
+    try {
+      // Fetch slot details để lấy services trực tiếp từ API
+      const slotData = await studentSlotService.getStudentSlotById(
+        activity.studentSlotId,
+        activity.studentId || undefined
+      );
+      setSlot(slotData);
+    } catch (err: any) {
+      console.warn('Failed to fetch slot with services:', err);
+      setSlot(null);
+    } finally {
+      setServicesLoading(false);
+    }
+  }, [activity?.studentSlotId, activity?.studentId]);
+
   useEffect(() => {
     fetchActivity();
   }, [fetchActivity]);
+
+  useEffect(() => {
+    if (activity?.studentSlotId) {
+      fetchSlotWithServices();
+    }
+  }, [activity?.studentSlotId, fetchSlotWithServices]);
 
   // Refresh khi quay lại từ EditActivity
   useEffect(() => {
@@ -345,6 +376,92 @@ const ActivityDetailScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* Services Add-On Section */}
+        {slot?.services && slot.services.length > 0 && (() => {
+          // Group services by serviceId để gộp các services giống nhau
+          const groupedServices = new Map<string, {
+            serviceId: string;
+            serviceName: string;
+            totalQuantity: number;
+            unitPrice: number;
+            totalPrice: number;
+          }>();
+
+          slot.services.forEach((service, serviceIndex) => {
+            if (!service) return;
+            
+            const serviceId = service.serviceId || `service-${serviceIndex}`;
+            const quantity = service.quantity || 1;
+            const unitPrice = service.unitPrice || 0;
+            const totalPrice = service.totalPrice || (unitPrice * quantity);
+
+            const groupKey = serviceId;
+            
+            if (groupedServices.has(groupKey)) {
+              const existing = groupedServices.get(groupKey)!;
+              existing.totalQuantity += quantity;
+              existing.totalPrice += totalPrice;
+            } else {
+              groupedServices.set(groupKey, {
+                serviceId: serviceId,
+                serviceName: service.serviceName || 'Dịch vụ',
+                totalQuantity: quantity,
+                unitPrice: unitPrice,
+                totalPrice: totalPrice,
+              });
+            }
+          });
+
+          const servicesArray = Array.from(groupedServices.values());
+
+          return (
+            <View style={styles.servicesCard}>
+              <View style={styles.sectionHeader}>
+                <MaterialIcons name="shopping-cart" size={20} color={COLORS.PRIMARY} />
+                <Text style={styles.sectionTitle}>Dịch vụ bổ sung</Text>
+              </View>
+              {servicesLoading ? (
+                <View style={styles.servicesLoadingContainer}>
+                  <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                  <Text style={styles.servicesLoadingText}>Đang tải...</Text>
+                </View>
+              ) : (
+                <View style={styles.servicesList}>
+                  {servicesArray.map((service, index) => {
+                    if (!service || service.totalQuantity <= 0) {
+                      return null;
+                    }
+
+                    const unitPrice = service.unitPrice || 0;
+                    const totalPrice = service.totalPrice || (unitPrice * service.totalQuantity);
+                    
+                    return (
+                      <View key={`activity-service-${service.serviceId}-${index}`} style={styles.serviceItem}>
+                        <View style={styles.serviceInfo}>
+                          <Text style={styles.serviceName} numberOfLines={2}>
+                            {service.serviceName || 'Dịch vụ'}
+                          </Text>
+                          <View style={styles.servicePriceRow}>
+                            <Text style={styles.serviceQuantity}>
+                              {service.totalQuantity} ×
+                            </Text>
+                            <Text style={styles.servicePrice}>
+                              {unitPrice.toLocaleString('vi-VN')} đ
+                            </Text>
+                            <Text style={styles.serviceTotal}>
+                              = {totalPrice.toLocaleString('vi-VN')} đ
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          );
+        })()}
 
         {/* Loading indicator khi đang đánh dấu */}
         {markingViewed && (
@@ -662,6 +779,70 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.SURFACE,
+  },
+  servicesCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 16,
+    padding: SPACING.LG,
+    marginBottom: SPACING.MD,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  servicesList: {
+    gap: SPACING.SM,
+  },
+  serviceItem: {
+    padding: SPACING.MD,
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.PRIMARY,
+  },
+  serviceInfo: {
+    gap: SPACING.XS,
+  },
+  serviceName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  servicePriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.XS,
+    flexWrap: 'wrap',
+    marginTop: SPACING.XS,
+  },
+  serviceQuantity: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '500',
+  },
+  servicePrice: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '500',
+  },
+  serviceTotal: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '700',
+  },
+  servicesLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.MD,
+  },
+  servicesLoadingText: {
+    marginLeft: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
   },
 });
 

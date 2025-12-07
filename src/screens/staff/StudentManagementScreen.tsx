@@ -210,15 +210,21 @@ const StudentManagementScreen: React.FC = () => {
             // Chỉ lấy những studentSlot có student hợp lệ
             return studentSlot && studentSlot.student && studentSlot.student.id;
           })
-          .map((studentSlot: any) => ({
-            id: studentSlot.studentSlotId || studentSlot.id || '',
-            studentId: studentSlot.student?.id || '',
-            studentName: studentSlot.student?.name || 'Chưa có tên',
-            parentName: studentSlot.parent?.name || '',
-            status: studentSlot.status || 'Booked',
-            parentNote: studentSlot.parentNote || undefined,
-            studentImage: studentSlot.student?.image || undefined,
-          }))
+          .map((studentSlot: any) => {
+            // studentSlot.id là studentSlotId (ID của StudentSlot)
+            // studentSlot.studentSlotId có thể không tồn tại trong response từ getStaffSlots
+            const studentSlotId = studentSlot.id || studentSlot.studentSlotId || '';
+            
+            return {
+              id: studentSlotId, // studentSlotId là ID của StudentSlot
+              studentId: studentSlot.student?.id || '',
+              studentName: studentSlot.student?.name || 'Chưa có tên',
+              parentName: studentSlot.parent?.name || '',
+              status: studentSlot.status || 'Booked',
+              parentNote: studentSlot.parentNote || undefined,
+              studentImage: studentSlot.student?.image || undefined,
+            };
+          })
           .filter((student: SlotStudent) => {
             // Lọc bỏ những student không có id hoặc studentId
             return student.id && student.studentId;
@@ -352,7 +358,8 @@ const StudentManagementScreen: React.FC = () => {
       navigation.navigate('StaffStudentActivities', {
         studentId: student.studentId,
         studentName: student.studentName,
-        studentSlotId: student.id, // student.id là studentSlotId
+        studentSlotId: student.id, // student.id là studentSlotId (ID của StudentSlot)
+        date: date, // Truyền date để filter activities theo ngày
       });
     } catch (error: any) {
       Alert.alert('Lỗi', 'Không thể mở trang hoạt động của học sinh. Vui lòng thử lại.');

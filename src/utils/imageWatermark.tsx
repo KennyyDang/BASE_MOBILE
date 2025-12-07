@@ -46,9 +46,19 @@ export async function getCurrentLocation(): Promise<LocationInfo | null> {
 
     // Lấy vị trí hiện tại với độ chính xác cao
     // Sử dụng Balanced thay vì High để tránh timeout trên một số thiết bị
-    const location = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
+    // Thêm timeout để tránh lag quá lâu
+    const location = await Promise.race([
+      Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      }),
+      new Promise<any>((_, reject) => 
+        setTimeout(() => reject(new Error('Location timeout')), 2000)
+      )
+    ]).catch(() => null);
+    
+    if (!location) {
+      return null;
+    }
 
     if (!location) {
       return null;

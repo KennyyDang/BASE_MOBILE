@@ -271,6 +271,7 @@ export type RootStackParamList = {
     studentId: string;
     studentName: string;
     studentSlotId: string;
+    date?: string; // ISO date string để filter theo ngày
   };
   ActivityDetail: {
     activityId: string;

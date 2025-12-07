@@ -226,6 +226,13 @@ export interface StudentSlotResponse {
     endTime: string;
   } | null;
   staffs?: StudentSlotStaffResponse[] | null;
+  services?: {
+    serviceId: string;
+    serviceName: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+  }[] | null;
 }
 
 // Student API Response

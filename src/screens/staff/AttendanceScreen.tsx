@@ -312,16 +312,16 @@ const AttendanceScreen: React.FC = () => {
       setCapturingImage(null);
       setCheckingIn(studentId);
 
-      // Xử lý watermark với timeout
+      // Xử lý watermark với timeout - tối ưu để giảm lag
       let finalImageUri = originalImageUri;
       try {
         setProcessingWatermark(true);
         
-        // Lấy watermark info với timeout
+        // Lấy watermark info với timeout ngắn hơn (3s thay vì 5s)
         const watermarkInfo = await Promise.race([
           getWatermarkInfo(),
           new Promise<{ timestamp: string; location: any }>((resolve) => 
-            setTimeout(() => resolve({ timestamp: formatTimestamp(), location: null }), 5000)
+            setTimeout(() => resolve({ timestamp: formatTimestamp(), location: null }), 3000)
           )
         ]);
         
@@ -332,23 +332,24 @@ const AttendanceScreen: React.FC = () => {
           location: watermarkInfo.location,
         });
 
-        // Đợi View render và Image load xong
-        // Cần đợi lâu hơn để Image load từ local storage
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        
-        // Đợi thêm một chút để đảm bảo Image đã render xong
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        // Giảm delay: chỉ đợi 500ms thay vì 1300ms (1000 + 300)
+        // Sử dụng requestAnimationFrame để đảm bảo render xong
+        await new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            setTimeout(resolve, 500);
+          });
+        });
 
-        // Capture ảnh với watermark với timeout
+        // Capture ảnh với watermark với timeout ngắn hơn (5s thay vì 8s)
         if (watermarkViewRef.current && captureRef) {
           try {
             const watermarkedUri = await Promise.race([
               captureRef(watermarkViewRef, {
                 format: 'jpg',
-                quality: 0.9,
+                quality: 0.85, // Giảm quality một chút để nhanh hơn
               }),
               new Promise<string>((_, reject) => 
-                setTimeout(() => reject(new Error('Capture timeout')), 8000)
+                setTimeout(() => reject(new Error('Capture timeout')), 5000)
               )
             ]);
             if (watermarkedUri) {
@@ -442,14 +443,16 @@ const AttendanceScreen: React.FC = () => {
 
                   const originalImageUri = result.assets[0].uri;
                   
-                  // Xử lý watermark với timeout
+                  // Xử lý watermark với timeout - tối ưu để giảm lag
                   let finalImageUri = originalImageUri;
                   try {
-                    // Lấy watermark info với timeout
+                    setProcessingWatermark(true);
+                    
+                    // Lấy watermark info với timeout ngắn hơn (3s thay vì 5s)
                     const watermarkInfo = await Promise.race([
                       getWatermarkInfo(),
                       new Promise<{ timestamp: string; location: any }>((resolve) => 
-                        setTimeout(() => resolve({ timestamp: formatTimestamp(), location: null }), 5000)
+                        setTimeout(() => resolve({ timestamp: formatTimestamp(), location: null }), 3000)
                       )
                     ]);
                     
@@ -460,36 +463,42 @@ const AttendanceScreen: React.FC = () => {
                       location: watermarkInfo.location,
                     });
 
-                    // Đợi View render và Image load xong
-                    await new Promise((resolve) => setTimeout(resolve, 1000));
-                    
-                    // Đợi thêm một chút để đảm bảo Image đã render xong
-                    await new Promise((resolve) => setTimeout(resolve, 300));
+                    // Giảm delay: chỉ đợi 500ms thay vì 1300ms (1000 + 300)
+                    // Sử dụng requestAnimationFrame để đảm bảo render xong
+                    await new Promise((resolve) => {
+                      requestAnimationFrame(() => {
+                        setTimeout(resolve, 500);
+                      });
+                    });
 
-        // Capture ảnh với watermark với timeout
-        if (watermarkViewRef.current && captureRef) {
-          try {
-            const watermarkedUri = await Promise.race([
-              captureRef(watermarkViewRef, {
-                format: 'jpg',
-                quality: 0.9,
-              }),
-              new Promise<string>((_, reject) => 
-                setTimeout(() => reject(new Error('Capture timeout')), 8000)
-              )
-            ]);
-            if (watermarkedUri) {
-              finalImageUri = watermarkedUri;
-            }
-          } catch (captureError: any) {
-            console.warn('Error capturing watermark, using original image:', captureError?.message || captureError);
-          }
-        } else if (!captureRef) {
-          console.warn('react-native-view-shot chưa được setup, sử dụng ảnh gốc');
-        }
+                    // Capture ảnh với watermark với timeout ngắn hơn (5s thay vì 8s)
+                    if (watermarkViewRef.current && captureRef) {
+                      try {
+                        const watermarkedUri = await Promise.race([
+                          captureRef(watermarkViewRef, {
+                            format: 'jpg',
+                            quality: 0.85, // Giảm quality một chút để nhanh hơn
+                          }),
+                          new Promise<string>((_, reject) => 
+                            setTimeout(() => reject(new Error('Capture timeout')), 5000)
+                          )
+                        ]);
+                        if (watermarkedUri) {
+                          finalImageUri = watermarkedUri;
+                        }
+                      } catch (captureError: any) {
+                        console.warn('Error capturing watermark, using original image:', captureError?.message || captureError);
+                        // Vẫn tiếp tục với ảnh gốc
+                      }
+                    } else if (!captureRef) {
+                      console.warn('react-native-view-shot chưa được setup, sử dụng ảnh gốc');
+                    }
                   } catch (watermarkError: any) {
                     console.error('Error processing watermark:', watermarkError?.message || watermarkError);
                     // Nếu có lỗi watermark, vẫn dùng ảnh gốc
+                  } finally {
+                    setProcessingWatermark(false);
+                    setWatermarkData(null);
                   }
 
                   await activityService.checkInStudentWithImage(studentId, finalImageUri);
