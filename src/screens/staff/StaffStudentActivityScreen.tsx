@@ -17,10 +17,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 
-import activityService, { StaffActivityResponse } from '../../services/activityService';
+import activityService, { StaffActivityResponse, PagedActivitiesResponse } from '../../services/activityService';
 import studentSlotService from '../../services/studentSlotService';
 import { RootStackParamList } from '../../types';
-import { ActivityResponse } from '../../types/api';
+import { ActivityResponse, StudentSlotResponse } from '../../types/api';
 import { COLORS } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -68,9 +68,11 @@ const formatDateTime = (dateString: string) => {
 
 const StaffStudentActivityScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const route = useRoute<StaffStudentActivityRouteProp>();
   const {
-    params: { studentId, studentName, studentSlotId },
-  } = useRoute<StaffStudentActivityRouteProp>();
+    params: { studentId, studentName, studentSlotId, date },
+  } = route;
+
 
   const [activities, setActivities] = useState<StaffActivityResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,8 +87,40 @@ const StaffStudentActivityScreen: React.FC = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [slotsMap, setSlotsMap] = useState<Map<string, StudentSlotResponse>>(new Map());
+  const [servicesLoading, setServicesLoading] = useState<Set<string>>(new Set());
 
   const { user } = useAuth();
+
+  // Tính toán FromDate và ToDate từ date param
+  // Format: YYYY-MM-DD (chỉ date, không có time) như API yêu cầu
+  const getDateRange = useCallback((dateString?: string) => {
+    if (!dateString) {
+      return { FromDate: undefined, ToDate: undefined };
+    }
+
+    try {
+      const selectedDate = new Date(dateString);
+      
+      // Kiểm tra xem date có hợp lệ không
+      if (isNaN(selectedDate.getTime())) {
+        return { FromDate: undefined, ToDate: undefined };
+      }
+
+      // Format theo YYYY-MM-DD (chỉ date, không có time) như API yêu cầu
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const dateOnly = `${year}-${month}-${day}`;
+
+      return {
+        FromDate: dateOnly,
+        ToDate: dateOnly,
+      };
+    } catch (error) {
+      return { FromDate: undefined, ToDate: undefined };
+    }
+  }, []);
 
   const fetchActivities = useCallback(
     async ({ page = 1, append = false, silent = false }: { page?: number; append?: boolean; silent?: boolean } = {}) => {
@@ -105,14 +139,19 @@ const StaffStudentActivityScreen: React.FC = () => {
           return;
         }
 
-        console.log('Fetching activities for studentId:', studentId, 'studentSlotId:', studentSlotId);
+        // Tính toán date range nếu có date param
+        const dateRange = getDateRange(date);
 
-        // Sử dụng API getStudentActivities để lấy activities của học sinh
+        // Dùng API /api/Activity/student-activities với cả studentId, studentSlotId và FromDate/ToDate
+        // API này hỗ trợ filter theo studentId, studentSlotId và date range
         const response = await activityService.getStudentActivities({
           studentId: studentId,
           pageIndex: page,
           pageSize: PAGE_SIZE,
-          // Không truyền studentSlotId để lấy tất cả activities của học sinh, không chỉ của một slot
+          studentSlotId: studentSlotId, // Truyền studentSlotId nếu có
+          // Convert date từ YYYY-MM-DD sang ISO string với time
+          FromDate: dateRange.FromDate ? new Date(dateRange.FromDate + 'T00:00:00').toISOString() : undefined,
+          ToDate: dateRange.ToDate ? new Date(dateRange.ToDate + 'T23:59:59').toISOString() : undefined,
         });
 
         // API đã filter theo studentId rồi, không cần filter lại
@@ -205,7 +244,7 @@ const StaffStudentActivityScreen: React.FC = () => {
         }
       }
     },
-    [studentId]
+    [studentId, studentSlotId, date, getDateRange]
   );
 
   useEffect(() => {
@@ -240,6 +279,33 @@ const StaffStudentActivityScreen: React.FC = () => {
   const handleEdit = (activity: StaffActivityResponse) => {
     navigation.navigate('EditActivity', { activityId: activity.id });
   };
+
+  const fetchSlotForActivity = useCallback(async (activityId: string, studentSlotId: string, studentId?: string) => {
+    if (!studentSlotId) {
+      return;
+    }
+
+    setServicesLoading((prev) => new Set(prev).add(activityId));
+    try {
+      // Fetch slot details để lấy services trực tiếp từ API
+      const slotData = await studentSlotService.getStudentSlotById(studentSlotId, studentId);
+      if (slotData) {
+        setSlotsMap((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(activityId, slotData);
+          return newMap;
+        });
+      }
+    } catch (err: any) {
+      console.warn('Failed to fetch slot for activity:', err);
+    } finally {
+      setServicesLoading((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(activityId);
+        return newSet;
+      });
+    }
+  }, []);
 
   const handleDelete = (activity: StaffActivityResponse) => {
     Alert.alert(
@@ -310,6 +376,17 @@ const StaffStudentActivityScreen: React.FC = () => {
             <Text style={styles.headerTitle}>Hoạt động của {studentName}</Text>
             <Text style={styles.headerSubtitle}>
               Tổng số hoạt động: {pagination?.totalCount ?? activities.length}
+              {date && (
+                <Text style={styles.dateFilterText}>
+                  {' • '}
+                  {new Date(date).toLocaleDateString('vi-VN', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })}
+                </Text>
+              )}
             </Text>
           </View>
         </View>
@@ -467,6 +544,113 @@ const StaffStudentActivityScreen: React.FC = () => {
                       </View>
                     </TouchableOpacity>
                   )}
+
+                  {/* Services Add-On Section */}
+                  {(() => {
+                    const slot = slotsMap.get(activity.id);
+                    const isLoading = servicesLoading.has(activity.id);
+                    const services = slot?.services || [];
+                    
+                    // Fetch slot if not already loaded
+                    if (!slot && !isLoading && activity.studentSlotId) {
+                      fetchSlotForActivity(activity.id, activity.studentSlotId, studentId);
+                    }
+
+                    if (isLoading) {
+                      return (
+                        <View style={styles.servicesCard}>
+                          <View style={styles.sectionHeader}>
+                            <MaterialIcons name="shopping-cart" size={16} color={COLORS.PRIMARY} />
+                            <Text style={styles.servicesSectionTitle}>Dịch vụ bổ sung</Text>
+                          </View>
+                          <View style={styles.servicesLoadingContainer}>
+                            <ActivityIndicator size="small" color={COLORS.PRIMARY} />
+                            <Text style={styles.servicesLoadingText}>Đang tải...</Text>
+                          </View>
+                        </View>
+                      );
+                    }
+
+                    if (services.length > 0) {
+                      // Group services by serviceId để gộp các services giống nhau
+                      const groupedServices = new Map<string, {
+                        serviceId: string;
+                        serviceName: string;
+                        totalQuantity: number;
+                        unitPrice: number;
+                        totalPrice: number;
+                      }>();
+
+                      services.forEach((service, serviceIndex) => {
+                        if (!service) return;
+                        
+                        const serviceId = service.serviceId || `service-${serviceIndex}`;
+                        const quantity = service.quantity || 1;
+                        const unitPrice = service.unitPrice || 0;
+                        const totalPrice = service.totalPrice || (unitPrice * quantity);
+
+                        const groupKey = serviceId;
+                        
+                        if (groupedServices.has(groupKey)) {
+                          const existing = groupedServices.get(groupKey)!;
+                          existing.totalQuantity += quantity;
+                          existing.totalPrice += totalPrice;
+                        } else {
+                          groupedServices.set(groupKey, {
+                            serviceId: serviceId,
+                            serviceName: service.serviceName || 'Dịch vụ',
+                            totalQuantity: quantity,
+                            unitPrice: unitPrice,
+                            totalPrice: totalPrice,
+                          });
+                        }
+                      });
+
+                      const servicesArray = Array.from(groupedServices.values());
+
+                      return (
+                        <View style={styles.servicesCard}>
+                          <View style={styles.sectionHeader}>
+                            <MaterialIcons name="shopping-cart" size={16} color={COLORS.PRIMARY} />
+                            <Text style={styles.servicesSectionTitle}>Dịch vụ bổ sung</Text>
+                          </View>
+                          <View style={styles.servicesList}>
+                            {servicesArray.map((service, index) => {
+                              if (!service || service.totalQuantity <= 0) {
+                                return null;
+                              }
+
+                              const unitPrice = service.unitPrice || 0;
+                              const totalPrice = service.totalPrice || (unitPrice * service.totalQuantity);
+                              
+                              return (
+                                <View key={`service-${activity.id}-${index}`} style={styles.serviceItem}>
+                                  <View style={styles.serviceInfo}>
+                                    <Text style={styles.serviceName} numberOfLines={2}>
+                                      {service.serviceName || 'Dịch vụ'}
+                                    </Text>
+                                    <View style={styles.servicePriceRow}>
+                                      <Text style={styles.serviceQuantity}>
+                                        {service.totalQuantity} ×
+                                      </Text>
+                                      <Text style={styles.servicePrice}>
+                                        {unitPrice.toLocaleString('vi-VN')} đ
+                                      </Text>
+                                      <Text style={styles.serviceTotal}>
+                                        = {totalPrice.toLocaleString('vi-VN')} đ
+                                      </Text>
+                                    </View>
+                                  </View>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      );
+                    }
+
+                    return null;
+                  })()}
                 </View>
               );
             })}
@@ -533,6 +717,11 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
     marginTop: SPACING.XS,
+  },
+  dateFilterText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
   },
   stateCard: {
     backgroundColor: COLORS.SURFACE,
@@ -767,6 +956,69 @@ const styles = StyleSheet.create({
   fullImage: {
     width: SCREEN_WIDTH,
     height: '80%',
+  },
+  servicesCard: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    marginTop: SPACING.SM,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.PRIMARY,
+  },
+  servicesSectionTitle: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.PRIMARY,
+    marginLeft: SPACING.XS,
+  },
+  servicesList: {
+    gap: SPACING.SM,
+    marginTop: SPACING.SM,
+  },
+  serviceItem: {
+    padding: SPACING.SM,
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 8,
+  },
+  serviceInfo: {
+    gap: SPACING.XS / 2,
+  },
+  serviceName: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  servicePriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.XS,
+    flexWrap: 'wrap',
+  },
+  serviceQuantity: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '500',
+  },
+  servicePrice: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '500',
+  },
+  serviceTotal: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.PRIMARY,
+    fontWeight: '700',
+  },
+  servicesLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.SM,
+  },
+  servicesLoadingText: {
+    marginLeft: SPACING.XS,
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
   },
 });
 

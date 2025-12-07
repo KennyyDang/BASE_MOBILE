@@ -165,14 +165,14 @@ const EditActivityScreen: React.FC = () => {
         const selectedImage = result.assets[0];
         const originalImageUri = selectedImage.uri;
         
-        // Xử lý watermark trước khi set và upload với timeout
+        // Xử lý watermark trước khi set và upload với timeout - tối ưu để giảm lag
         let finalImageUri = originalImageUri;
         try {
-          // Lấy watermark info với timeout
+          // Lấy watermark info với timeout ngắn hơn (3s thay vì 5s)
           const watermarkInfo = await Promise.race([
             getWatermarkInfo(),
             new Promise<{ timestamp: string; location: any }>((resolve) => 
-              setTimeout(() => resolve({ timestamp: formatTimestamp(), location: null }), 5000)
+              setTimeout(() => resolve({ timestamp: formatTimestamp(), location: null }), 3000)
             )
           ]);
           
@@ -183,22 +183,24 @@ const EditActivityScreen: React.FC = () => {
             location: watermarkInfo.location,
           });
 
-          // Đợi View render và Image load xong
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          
-          // Đợi thêm một chút để đảm bảo Image đã render xong
-          await new Promise((resolve) => setTimeout(resolve, 300));
+          // Giảm delay: chỉ đợi 500ms thay vì 1300ms (1000 + 300)
+          // Sử dụng requestAnimationFrame để đảm bảo render xong
+          await new Promise((resolve) => {
+            requestAnimationFrame(() => {
+              setTimeout(resolve, 500);
+            });
+          });
 
-          // Capture ảnh với watermark với timeout
+          // Capture ảnh với watermark với timeout ngắn hơn (5s thay vì 8s)
           if (watermarkViewRef.current && captureRef) {
             try {
               const watermarkedUri = await Promise.race([
                 captureRef(watermarkViewRef, {
                   format: 'jpg',
-                  quality: 0.9,
+                  quality: 0.85, // Giảm quality một chút để nhanh hơn
                 }),
                 new Promise<string>((_, reject) => 
-                  setTimeout(() => reject(new Error('Capture timeout')), 8000)
+                  setTimeout(() => reject(new Error('Capture timeout')), 5000)
                 )
               ]);
               if (watermarkedUri) {

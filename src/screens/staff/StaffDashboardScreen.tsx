@@ -83,39 +83,86 @@ const StaffDashboardScreen: React.FC = () => {
       
       // Map response từ API sang format StudentSlotResponse
       // API trả về structure khác: có branch (không phải branchSlot), roomId/roomName trực tiếp, studentSlots array
-      const mappedItems: StudentSlotResponse[] = rawItems.map((item: any) => {
-        // Lấy student đầu tiên từ studentSlots array (nếu có)
-        const firstStudentSlot = item.studentSlots?.[0];
+      // Mỗi item có thể có nhiều studentSlots, nên cần tạo nhiều StudentSlotResponse từ mỗi item
+      const mappedItems: StudentSlotResponse[] = [];
+      let globalIndex = 0; // Counter to ensure unique IDs
+      
+      rawItems.forEach((item: any, itemIndex: number) => {
+        const studentSlots = item.studentSlots || [];
         
-        return {
-          id: item.id, // branchSlotId
-          branchSlotId: item.id,
-          branchSlot: item.branch ? {
-            id: item.branch.id,
-            branchName: item.branch.branchName,
-          } : null,
-          packageSubscriptionId: '', // Không có trong response
-          date: item.date,
-          status: item.status,
-          parentNote: firstStudentSlot?.parentNote || null,
-          roomId: item.roomId || '',
-          room: item.roomName ? {
-            id: item.roomId || '',
-            roomName: item.roomName,
-            facilityId: item.facilityId || null,
-            facilityName: item.facilityName || null,
-          } : null,
-          studentId: firstStudentSlot?.student?.id || '',
-          studentName: firstStudentSlot?.student?.name || '',
-          parentId: firstStudentSlot?.parent?.id || '',
-          parentName: firstStudentSlot?.parent?.name || '',
-          timeframe: item.timeframe ? {
-            id: item.timeframe.id,
-            name: item.timeframe.name,
-            startTime: item.timeframe.startTime,
-            endTime: item.timeframe.endTime,
-          } : null,
-        } as StudentSlotResponse;
+        // Nếu có studentSlots, tạo một slot cho mỗi studentSlot
+        if (studentSlots.length > 0) {
+          studentSlots.forEach((studentSlot: any, slotIndex: number) => {
+            // Tạo unique ID: branchSlotId + studentSlotId + globalIndex để đảm bảo unique hoàn toàn
+            const studentSlotId = studentSlot.id || `slot-${slotIndex}`;
+            const uniqueId = `${item.id}-${studentSlotId}-${globalIndex}`;
+            globalIndex++;
+            
+            mappedItems.push({
+              id: uniqueId,
+              branchSlotId: item.id,
+              branchSlot: item.branch ? {
+                id: item.branch.id,
+                branchName: item.branch.branchName,
+              } : null,
+              packageSubscriptionId: '', // Không có trong response
+              date: item.date,
+              status: item.status,
+              parentNote: studentSlot?.parentNote || null,
+              roomId: item.roomId || '',
+              room: item.roomName ? {
+                id: item.roomId || '',
+                roomName: item.roomName,
+                facilityId: item.facilityId || null,
+                facilityName: item.facilityName || null,
+              } : null,
+              studentId: studentSlot?.student?.id || '',
+              studentName: studentSlot?.student?.name || '',
+              parentId: studentSlot?.parent?.id || '',
+              parentName: studentSlot?.parent?.name || '',
+              timeframe: item.timeframe ? {
+                id: item.timeframe.id,
+                name: item.timeframe.name,
+                startTime: item.timeframe.startTime,
+                endTime: item.timeframe.endTime,
+              } : null,
+            } as StudentSlotResponse);
+          });
+        } else {
+          // Nếu không có studentSlots, vẫn tạo một slot với thông tin branchSlot
+          const uniqueId = `${item.id}-empty-${globalIndex}`;
+          globalIndex++;
+          
+          mappedItems.push({
+            id: uniqueId,
+            branchSlotId: item.id,
+            branchSlot: item.branch ? {
+              id: item.branch.id,
+              branchName: item.branch.branchName,
+            } : null,
+            packageSubscriptionId: '',
+            date: item.date,
+            status: item.status,
+            parentNote: null,
+            roomId: item.roomId || '',
+            room: item.roomName ? {
+              id: item.roomId || '',
+              roomName: item.roomName,
+              facilityId: item.facilityId || null,
+              facilityName: item.facilityName || null,
+            } : null,
+            studentId: '',
+            studentName: '',
+            parentId: '',
+            parentName: '',
+            timeframe: item.timeframe ? {
+              id: item.timeframe.id,
+              name: item.timeframe.name,
+              startTime: item.timeframe.startTime,
+              endTime: item.timeframe.endTime,
+            } : null,
+          } as StudentSlotResponse);
+        }
       });
 
       // Filter today's slots
@@ -324,13 +371,16 @@ const StaffDashboardScreen: React.FC = () => {
               <Text style={styles.emptyText}>Chưa có lớp học nào hôm nay</Text>
             </View>
           ) : (
-            todaySlots.map((slot) => {
+            todaySlots.map((slot, index) => {
               const slotDate = new Date(slot.date);
               const isToday = slotDate.toDateString() === new Date().toDateString();
               
+              // Đảm bảo key unique: kết hợp slot.id với index và prefix để tránh duplicate
+              const uniqueKey = `today-slot-${slot.id}-${index}-${slot.studentId || 'no-student'}`;
+              
               return (
                 <TouchableOpacity
-                  key={slot.id}
+                  key={uniqueKey}
                   style={styles.classCard}
                   activeOpacity={0.85}
                   onPress={() => {
@@ -401,13 +451,16 @@ const StaffDashboardScreen: React.FC = () => {
               <Text style={styles.emptyText}>Chưa có lớp học sắp tới</Text>
             </View>
           ) : (
-            upcomingSlots.map((slot) => {
+            upcomingSlots.map((slot, index) => {
               const slotDate = new Date(slot.date);
               const isTomorrow = slotDate.toDateString() === new Date(Date.now() + 86400000).toDateString();
               
+              // Đảm bảo key unique: kết hợp slot.id với index và studentId để tránh duplicate
+              const uniqueKey = `upcoming-slot-${slot.id}-${index}-${slot.studentId || 'no-student'}`;
+              
               return (
                 <TouchableOpacity
-                  key={slot.id}
+                  key={uniqueKey}
                   style={styles.classCard}
                   activeOpacity={0.85}
                   onPress={() => {

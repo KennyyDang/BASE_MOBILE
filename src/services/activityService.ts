@@ -92,6 +92,8 @@ class ActivityService {
     pageIndex?: number;
     pageSize?: number;
     studentSlotId?: string;
+    FromDate?: string;
+    ToDate?: string;
   }): Promise<PagedActivitiesResponse> {
     try {
       const queryParams = new URLSearchParams();
@@ -109,6 +111,13 @@ class ActivityService {
       // Chỉ thêm studentSlotId nếu được cung cấp và không phải empty string
       if (params.studentSlotId && params.studentSlotId.trim() !== '') {
         queryParams.append('studentSlotId', params.studentSlotId);
+      }
+      // Thêm FromDate và ToDate nếu có
+      if (params.FromDate) {
+        queryParams.append('FromDate', params.FromDate);
+      }
+      if (params.ToDate) {
+        queryParams.append('ToDate', params.ToDate);
       }
 
       const url = `/api/Activity/student-activities?${queryParams.toString()}`;
@@ -173,9 +182,10 @@ class ActivityService {
         queryParams.append('Keyword', params.Keyword);
       }
 
-      const response = await axiosInstance.get<PagedActivitiesResponse>(
-        `/api/Activity/paged?${queryParams.toString()}`
-      );
+      const url = `/api/Activity/paged?${queryParams.toString()}`;
+      
+      const response = await axiosInstance.get<PagedActivitiesResponse>(url);
+      
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to fetch paged activities';
