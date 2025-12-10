@@ -21,6 +21,7 @@ import studentSlotService from '../../services/studentSlotService';
 import activityService from '../../services/activityService';
 import { useAuth } from '../../contexts/AuthContext';
 import { ActivityResponse } from '../../types/api';
+import { StaffActivityResponse } from '../../services/activityService';
 
 type StudentManagementRouteParams = {
   branchSlotId: string;
@@ -93,7 +94,7 @@ const StudentManagementScreen: React.FC = () => {
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set());
-  const [studentActivities, setStudentActivities] = useState<Record<string, ActivityResponse[]>>({});
+  const [studentActivities, setStudentActivities] = useState<Record<string, StaffActivityResponse[]>>({});
   const [loadingActivities, setLoadingActivities] = useState<Set<string>>(new Set());
 
   // Kiểm tra quyền truy cập - chỉ dành cho staff
@@ -144,13 +145,14 @@ const StudentManagementScreen: React.FC = () => {
       }
 
       // Filter để chỉ lấy slots có cùng branchSlotId và date
-      let matchingSlots = response.items.filter((item: any) => {
-        if (!item || !item.id) {
+      // StudentSlotResponse có branchSlotId, không phải id
+      let matchingSlots = response.items.filter((item) => {
+        if (!item || !item.branchSlotId) {
           return false;
         }
         
         // So sánh branchSlotId
-        const slotIdMatch = item.id === branchSlotId;
+        const slotIdMatch = item.branchSlotId === branchSlotId;
         
         // So sánh date (chỉ so sánh phần date, không so sánh time)
         let dateMatch = true;
@@ -174,7 +176,7 @@ const StudentManagementScreen: React.FC = () => {
 
       // Nếu có roomId, filter thêm theo roomId
       if (roomId) {
-        matchingSlots = matchingSlots.filter((item: any) => item.roomId === roomId);
+        matchingSlots = matchingSlots.filter((item) => item.roomId === roomId);
       }
 
       if (matchingSlots && matchingSlots.length > 0) {
@@ -182,47 +184,36 @@ const StudentManagementScreen: React.FC = () => {
         const firstSlot = matchingSlots[0];
         setSlotInfo({
           timeframe: firstSlot.timeframe,
-          slotType: firstSlot.slotType,
-          branch: firstSlot.branch,
+          slotType: firstSlot.branchSlot?.slotType || null,
+          branch: firstSlot.branchSlot?.branchName || null,
         });
 
-        // Lấy tất cả studentSlots từ tất cả các slots phù hợp và merge lại
-        const allStudentSlots: any[] = [];
-        matchingSlots.forEach((slot: any) => {
-          if (slot.studentSlots && Array.isArray(slot.studentSlots)) {
-            allStudentSlots.push(...slot.studentSlots);
-          }
-        });
-
+        // StudentSlotResponse chính là student slot rồi, không cần lấy nested studentSlots
         // Deduplicate dựa trên studentId để tránh hiển thị duplicate học sinh
         // Nếu cùng một học sinh có nhiều studentSlotId, chỉ lấy một cái (ưu tiên cái đầu tiên)
-        const uniqueStudentSlotsMap = new Map<string, any>();
-        allStudentSlots.forEach((studentSlot: any) => {
-          const studentId = studentSlot.student?.id;
+        const uniqueStudentSlotsMap = new Map<string, typeof matchingSlots[0]>();
+        matchingSlots.forEach((studentSlot) => {
+          const studentId = studentSlot.studentId;
           if (studentId && !uniqueStudentSlotsMap.has(studentId)) {
             uniqueStudentSlotsMap.set(studentId, studentSlot);
           }
         });
 
-        // Map từ studentSlots array sang SlotStudent format
+        // Map từ StudentSlotResponse sang SlotStudent format
         const studentsList: SlotStudent[] = Array.from(uniqueStudentSlotsMap.values())
-          .filter((studentSlot: any) => {
-            // Chỉ lấy những studentSlot có student hợp lệ
-            return studentSlot && studentSlot.student && studentSlot.student.id;
+          .filter((studentSlot) => {
+            // Chỉ lấy những studentSlot có studentId hợp lệ
+            return studentSlot && studentSlot.studentId;
           })
-          .map((studentSlot: any) => {
-            // studentSlot.id là studentSlotId (ID của StudentSlot)
-            // studentSlot.studentSlotId có thể không tồn tại trong response từ getStaffSlots
-            const studentSlotId = studentSlot.id || studentSlot.studentSlotId || '';
-            
+          .map((studentSlot) => {
             return {
-              id: studentSlotId, // studentSlotId là ID của StudentSlot
-              studentId: studentSlot.student?.id || '',
-              studentName: studentSlot.student?.name || 'Chưa có tên',
-              parentName: studentSlot.parent?.name || '',
+              id: studentSlot.id, // ID của StudentSlot
+              studentId: studentSlot.studentId || '',
+              studentName: studentSlot.studentName || 'Chưa có tên',
+              parentName: studentSlot.parentName || '',
               status: studentSlot.status || 'Booked',
               parentNote: studentSlot.parentNote || undefined,
-              studentImage: studentSlot.student?.image || undefined,
+              studentImage: undefined, // StudentSlotResponse không có image, cần lấy từ student service nếu cần
             };
           })
           .filter((student: SlotStudent) => {
@@ -347,7 +338,7 @@ const StudentManagementScreen: React.FC = () => {
     }
   };
 
-  const handleViewActivityDetail = (activity: ActivityResponse) => {
+  const handleViewActivityDetail = (activity: StaffActivityResponse) => {
     navigation.navigate('ActivityDetail', {
       activityId: activity.id,
     });

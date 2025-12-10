@@ -1,5 +1,5 @@
 import axiosInstance from '../config/axios.config';
-import { BookStudentSlotRequest, BookStudentSlotResponse, StudentSlotResponse, PaginatedResponse } from '../types/api';
+import { BookStudentSlotRequest, BookStudentSlotResponse, BookMultipleSlotsRequest, BookMultipleSlotsResponse, StudentSlotResponse, PaginatedResponse } from '../types/api';
 
 class StudentSlotService {
   /**
@@ -117,6 +117,21 @@ class StudentSlotService {
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to fetch staff slots';
+    }
+  }
+
+  /**
+   * Book multiple slots for a student in one request
+   * Endpoint: POST /api/StudentSlot/book-multiple
+   * @param payload Booking request with studentId, packageSubscriptionId, and array of slots
+   * @returns Booking response with success status and message
+   */
+  async bookMultipleSlots(payload: BookMultipleSlotsRequest): Promise<BookMultipleSlotsResponse> {
+    try {
+      const response = await axiosInstance.post<BookMultipleSlotsResponse>('/api/StudentSlot/book-multiple', payload);
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to book multiple slots';
     }
   }
 

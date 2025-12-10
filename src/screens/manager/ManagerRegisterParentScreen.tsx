@@ -3,6 +3,7 @@ import { View, Image, ScrollView, StyleSheet, Alert, Modal, TouchableOpacity, Te
 import { Button, Text, TextInput, HelperText, ActivityIndicator } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { extractCccdData, formatDateToDDMMYYYY, formatDateToISO, OcrCccdResponse } from '../../services/ocrService';
 import axiosInstance from '../../config/axios.config';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,7 +15,6 @@ const ManagerRegisterParentScreen: React.FC = () => {
 	const [ocrData, setOcrData] = useState<OcrCccdResponse | null>(null);
 	const [form, setForm] = useState({
 		email: '',
-		password: '',
 		fullName: '',
 		phoneNumber: '',
 		cccdNumber: '',
@@ -42,13 +42,30 @@ const ManagerRegisterParentScreen: React.FC = () => {
 			return;
 		}
 		const result = await ImagePicker.launchCameraAsync({
-			quality: 0.8,
+			quality: 0.2, // Giảm quality xuống mức tối thiểu (0.2) để giảm tối đa kích thước
 			allowsEditing: false,
 		});
 		if (!result.canceled && result.assets?.[0]) {
 			const asset = result.assets[0];
-			setImageUri(asset.uri);
-			await onOcr(asset.uri);
+			// Resize và compress ảnh tối đa nhưng vẫn đảm bảo OCR đọc được text
+			try {
+				const manipulatedImage = await ImageManipulator.manipulateAsync(
+					asset.uri,
+					[
+						{ resize: { width: 720 } }, // Resize max width 720px (tối ưu tối đa, vẫn đủ nét cho OCR text)
+					],
+					{
+						compress: 0.4, // Compress với quality 0.4 (mức tối thiểu vẫn đảm bảo text rõ)
+						format: ImageManipulator.SaveFormat.JPEG,
+					}
+				);
+				setImageUri(manipulatedImage.uri);
+				await onOcr(manipulatedImage.uri);
+			} catch (error) {
+				// Fallback nếu manipulate lỗi
+				setImageUri(asset.uri);
+				await onOcr(asset.uri);
+			}
 		}
 	};
 
@@ -69,17 +86,20 @@ const ManagerRegisterParentScreen: React.FC = () => {
 			
 			setOcrData(ocrResult);
 			
-			// Auto-fill form with OCR data (xử lý nhanh)
+			// Auto-fill form with OCR data (tối ưu: chỉ format khi có data)
+			const formattedDateOfBirth = ocrResult.dateOfBirth ? formatDateToDDMMYYYY(ocrResult.dateOfBirth) : '';
+			const formattedIssuedDate = ocrResult.issuedDate ? formatDateToDDMMYYYY(ocrResult.issuedDate) : '';
+			
+			// Batch update form một lần để tối ưu re-render
 			setForm((prev) => ({
 				...prev,
 				fullName: ocrResult.fullName || prev.fullName,
 				cccdNumber: ocrResult.identityCardNumber || prev.cccdNumber,
-				dateOfBirth: formatDateToDDMMYYYY(ocrResult.dateOfBirth) || prev.dateOfBirth,
+				dateOfBirth: formattedDateOfBirth || prev.dateOfBirth,
 				gender: ocrResult.gender || prev.gender,
 				address: ocrResult.address || prev.address,
-				issuedDate: formatDateToDDMMYYYY(ocrResult.issuedDate) || prev.issuedDate,
+				issuedDate: formattedIssuedDate || prev.issuedDate,
 				issuedPlace: ocrResult.issuedPlace || prev.issuedPlace,
-				password: prev.password || generateDefaultPassword(ocrResult),
 			}));
 			
 			setSuccess(`Đã nhận dạng CCCD thành công! (${processingTime}s) Vui lòng kiểm tra và điền thêm thông tin.`);
@@ -89,13 +109,6 @@ const ManagerRegisterParentScreen: React.FC = () => {
 		} finally {
 			setLoading(false);
 		}
-	};
-
-	const generateDefaultPassword = (ocrData: OcrCccdResponse) => {
-		// Generate default password: 6 last digits of CCCD + birth year
-		const last6 = (ocrData.identityCardNumber || '').slice(-6);
-		const birthYear = ocrData.dateOfBirth ? new Date(ocrData.dateOfBirth).getFullYear() : '';
-		return (last6 + birthYear) || 'Base@1234';
 	};
 
 	const handleConfirmIssuedDate = () => {
@@ -130,10 +143,6 @@ const ManagerRegisterParentScreen: React.FC = () => {
 			setError('Vui lòng nhập email.');
 			return;
 		}
-		if (!form.password) {
-			setError('Vui lòng nhập mật khẩu.');
-			return;
-		}
 		if (!form.fullName) {
 			setError('Vui lòng nhập họ và tên.');
 			return;
@@ -154,7 +163,6 @@ const ManagerRegisterParentScreen: React.FC = () => {
 			// Prepare payload for API
 			const payload = {
 				email: form.email,
-				password: form.password,
 				name: form.fullName,
 				branchId: user?.branchId || '00000000-0000-0000-0000-000000000000', // TODO: Get from user context or require input
 				identityCardNumber: form.cccdNumber,
@@ -173,7 +181,6 @@ const ManagerRegisterParentScreen: React.FC = () => {
 				setTimeout(() => {
 					setForm({
 						email: '',
-						password: '',
 						fullName: '',
 						phoneNumber: '',
 						cccdNumber: '',
@@ -240,15 +247,6 @@ const ManagerRegisterParentScreen: React.FC = () => {
 					mode="outlined"
 					keyboardType="email-address"
 					autoCapitalize="none"
-					style={styles.input}
-					required
-				/>
-				<TextInput
-					label="Mật khẩu tạm *"
-					value={form.password}
-					onChangeText={(t) => setForm((p) => ({ ...p, password: t }))}
-					mode="outlined"
-					secureTextEntry
 					style={styles.input}
 					required
 				/>

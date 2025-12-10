@@ -135,9 +135,9 @@ const parentProfileService = {
     try {
       const formData = new FormData();
       
-      // Append text fields as strings
-      formData.append('Name', String(name));
-      formData.append('PhoneNumber', String(phoneNumber));
+      // Append text fields as strings - xử lý null/undefined để tránh gửi "null" string
+      formData.append('Name', name ? String(name) : '');
+      formData.append('PhoneNumber', phoneNumber ? String(phoneNumber) : '');
       
       // Add avatar file if provided
       if (avatarFileUri) {

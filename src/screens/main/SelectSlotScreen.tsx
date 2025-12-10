@@ -206,6 +206,15 @@ const SelectSlotScreen: React.FC = () => {
   const [selectedTimeframe, setSelectedTimeframe] = useState<string | null>(null);
   const [showStudentPicker, setShowStudentPicker] = useState(false);
   const dateScrollViewRef = useRef<ScrollView>(null);
+  
+  // Multiple booking states
+  const [selectedSlotsForMultiple, setSelectedSlotsForMultiple] = useState<Record<string, {
+    slot: BranchSlotResponse;
+    roomId: string;
+    date: string;
+    parentNote?: string;
+  }>>({});
+  const [bookingMultiple, setBookingMultiple] = useState(false);
 
   useEffect(() => {
     if (students.length && !selectedStudentId) {
@@ -610,6 +619,247 @@ const SelectSlotScreen: React.FC = () => {
     });
   }, []);
 
+  // Toggle slot selection for multiple booking
+  const handleToggleSlotSelection = useCallback((slot: BranchSlotResponse, checkDate?: Date) => {
+    const slotDate = checkDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+    const bookedSlot = isSlotBooked(slot, slotDate);
+    const cancelledSlot = getCancelledSlot(slot, slotDate);
+    
+    // Không cho chọn slot đã đặt
+    if (bookedSlot && !cancelledSlot) {
+      Alert.alert('Thông báo', 'Slot này đã được đặt rồi.');
+      return;
+    }
+
+    const entry = slotRoomsState[slot.id];
+    const roomsFromSlot = slot.rooms || [];
+    
+    if (!entry || roomsFromSlot.length === 0) {
+      Alert.alert('Thông báo', 'Vui lòng mở danh sách phòng và chọn phòng trước khi chọn slot.');
+      return;
+    }
+
+    if (!entry.selectedRoomId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn phòng trước khi chọn slot.');
+      return;
+    }
+
+    const slotKey = `${slot.id}_${computeSlotDateISO(slot, weekOffset)}`;
+    
+    setSelectedSlotsForMultiple((prev) => {
+      if (prev[slotKey]) {
+        // Bỏ chọn
+        const newState = { ...prev };
+        delete newState[slotKey];
+        return newState;
+      } else {
+        // Chọn
+        return {
+          ...prev,
+          [slotKey]: {
+            slot,
+            roomId: entry.selectedRoomId!,
+            date: computeSlotDateISO(slot, weekOffset),
+            parentNote: entry.parentNote?.trim() || undefined,
+          },
+        };
+      }
+    });
+  }, [slotRoomsState, weekOffset, isSlotBooked, getCancelledSlot]);
+
+  // Select/Deselect all available slots
+  const handleSelectAllSlots = useCallback(() => {
+    const availableSlots: Record<string, {
+      slot: BranchSlotResponse;
+      roomId: string;
+      date: string;
+      parentNote?: string;
+    }> = {};
+
+    // Lấy tất cả slot có thể chọn được
+    getSlotsForSelectedDate.forEach((slot) => {
+      const slotDate = selectedDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+      const bookedSlot = isSlotBooked(slot, slotDate);
+      const cancelledSlot = getCancelledSlot(slot, slotDate);
+      
+      // Chỉ chọn slot chưa đặt hoặc đã hủy
+      if (bookedSlot && !cancelledSlot) {
+        return;
+      }
+
+      const entry = slotRoomsState[slot.id];
+      const roomsFromSlot = slot.rooms || [];
+      
+      // Chỉ chọn slot đã chọn phòng
+      if (!entry || roomsFromSlot.length === 0 || !entry.selectedRoomId) {
+        return;
+      }
+
+      const slotKey = `${slot.id}_${computeSlotDateISO(slot, weekOffset)}`;
+      
+      // Kiểm tra package subscription
+      const packageSubscriptionId = resolvePackageSubscriptionId(slot);
+      if (!packageSubscriptionId) {
+        return;
+      }
+
+      availableSlots[slotKey] = {
+        slot,
+        roomId: entry.selectedRoomId,
+        date: computeSlotDateISO(slot, weekOffset),
+        parentNote: entry.parentNote?.trim() || undefined,
+      };
+    });
+
+    if (Object.keys(availableSlots).length === 0) {
+      Alert.alert('Thông báo', 'Không có slot nào có thể chọn. Vui lòng chọn phòng cho các slot trước.');
+      return;
+    }
+
+    setSelectedSlotsForMultiple((prev) => {
+      // Kiểm tra xem tất cả slot có thể chọn đã được chọn chưa
+      const allSelected = Object.keys(availableSlots).every(key => prev[key]);
+      
+      if (allSelected) {
+        // Bỏ chọn tất cả slot hiện tại
+        const newState = { ...prev };
+        Object.keys(availableSlots).forEach(key => {
+          delete newState[key];
+        });
+        return newState;
+      } else {
+        // Chọn tất cả slot có thể chọn
+        return {
+          ...prev,
+          ...availableSlots,
+        };
+      }
+    });
+  }, [getSlotsForSelectedDate, selectedDate, weekOffset, slotRoomsState, isSlotBooked, getCancelledSlot, resolvePackageSubscriptionId]);
+
+  // Book multiple slots
+  const handleBookMultipleSlots = useCallback(async () => {
+    if (!selectedStudentId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn con trước khi đặt lịch.');
+      return;
+    }
+
+    const selectedSlotsArray = Object.values(selectedSlotsForMultiple);
+    if (selectedSlotsArray.length === 0) {
+      Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một slot để đặt lịch.');
+      return;
+    }
+
+    // Validate tất cả slots có packageSubscriptionId
+    const slotsWithPackage = selectedSlotsArray.map((item) => {
+      const packageSubscriptionId = resolvePackageSubscriptionId(item.slot);
+      if (!packageSubscriptionId) {
+        return null;
+      }
+      return {
+        ...item,
+        packageSubscriptionId,
+      };
+    });
+
+    const invalidSlots = slotsWithPackage.filter(s => s === null);
+    if (invalidSlots.length > 0) {
+      Alert.alert(
+        'Thiếu thông tin gói học',
+        'Một số slot không có gói đã đăng ký phù hợp. Vui lòng kiểm tra lại gói của con hoặc liên hệ trung tâm.'
+      );
+      return;
+    }
+
+    // Kiểm tra tất cả slots có cùng packageSubscriptionId
+    const packageIds = new Set(slotsWithPackage.map(s => s!.packageSubscriptionId));
+    if (packageIds.size > 1) {
+      Alert.alert(
+        'Thông báo',
+        'Tất cả các slot phải sử dụng cùng một gói học. Vui lòng chọn lại các slot phù hợp.'
+      );
+      return;
+    }
+
+    const packageSubscriptionId = slotsWithPackage[0]!.packageSubscriptionId;
+    const slotsForRequest = slotsWithPackage.map((item) => ({
+      branchSlotId: item!.slot.id,
+      roomId: item!.roomId,
+      date: item!.date,
+      parentNote: item!.parentNote,
+    }));
+
+    const slotDatesDisplay = selectedSlotsArray
+      .map((item) => {
+        const slotDate = new Date(item.date);
+        return `${WEEKDAY_LABELS[normalizeWeekDate(item.slot.weekDate)].title} - ${formatDateDisplay(slotDate)}`;
+      })
+      .join('\n');
+
+    Alert.alert(
+      'Xác nhận đặt nhiều lịch',
+      `Bạn có chắc muốn đặt ${selectedSlotsArray.length} lịch cho con?\n\n${slotDatesDisplay}`,
+      [
+        {
+          text: 'Hủy',
+          style: 'cancel',
+        },
+        {
+          text: 'Đặt lịch',
+          onPress: async () => {
+            setBookingMultiple(true);
+            try {
+              const payload = {
+                studentId: selectedStudentId,
+                packageSubscriptionId,
+                slots: slotsForRequest,
+              };
+
+              const response = await studentSlotService.bookMultipleSlots(payload);
+              
+              // Xử lý kết quả
+              if (response.failedSlots && response.failedSlots.length > 0) {
+                const failedCount = response.failedSlots.length;
+                const successCount = selectedSlotsArray.length - failedCount;
+                const failedMessages = response.failedSlots
+                  .map((f) => `- ${formatDateDisplay(new Date(f.date))}: ${f.error}`)
+                  .join('\n');
+                
+                Alert.alert(
+                  'Đặt lịch một phần',
+                  `Đã đặt thành công ${successCount} lịch.\n\nCó ${failedCount} lịch không đặt được:\n${failedMessages}`,
+                  [{ text: 'OK' }]
+                );
+              } else {
+                Alert.alert('Thành công', response?.message || `Đã đặt thành công ${selectedSlotsArray.length} lịch cho con.`);
+              }
+
+              // Clear selected slots
+              setSelectedSlotsForMultiple({});
+              
+              // Refresh data
+              await Promise.all([
+                fetchSubscriptions(selectedStudentId),
+                fetchSlots({ page: 1, silent: true }),
+                fetchBookedSlots(selectedStudentId),
+              ]);
+            } catch (error: any) {
+              let message =
+                error?.response?.data?.message ||
+                error?.response?.data?.error ||
+                error?.message ||
+                'Không thể đặt nhiều slot cho con. Vui lòng thử lại sau.';
+              
+              Alert.alert('Lỗi', message);
+            } finally {
+              setBookingMultiple(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [selectedStudentId, selectedSlotsForMultiple, resolvePackageSubscriptionId, fetchSubscriptions, fetchSlots, fetchBookedSlots, weekOffset]);
+
   const handleBookSlot = useCallback(
     async (slot: BranchSlotResponse) => {
       if (!selectedStudentId) {
@@ -906,7 +1156,44 @@ const SelectSlotScreen: React.FC = () => {
 
         {/* Slots List */}
         <View style={styles.slotsContainer}>
-          <Text style={styles.slotsTitle}>Chọn slot</Text>
+          <View style={styles.slotsHeader}>
+            <Text style={styles.slotsTitle}>Chọn slot</Text>
+            {getSlotsForSelectedDate.length > 0 && (() => {
+              // Tính số slot có thể chọn được
+              const selectableSlots = getSlotsForSelectedDate.filter((slot) => {
+                const entry = slotRoomsState[slot.id];
+                const slotDate = selectedDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+                const bookedSlot = isSlotBooked(slot, slotDate);
+                const cancelledSlot = getCancelledSlot(slot, slotDate);
+                return entry?.selectedRoomId && (!bookedSlot || cancelledSlot) && resolvePackageSubscriptionId(slot);
+              });
+              
+              // Tính số slot đã chọn trong số các slot có thể chọn
+              const selectedCount = selectableSlots.filter((slot) => {
+                const slotKey = `${slot.id}_${computeSlotDateISO(slot, weekOffset)}`;
+                return selectedSlotsForMultiple[slotKey];
+              }).length;
+              
+              const allSelected = selectedCount === selectableSlots.length && selectableSlots.length > 0;
+              
+              return selectableSlots.length > 0 ? (
+                <TouchableOpacity
+                  style={styles.selectAllButton}
+                  onPress={handleSelectAllSlots}
+                  activeOpacity={0.7}
+                >
+                  <MaterialIcons
+                    name={allSelected ? 'check-box' : 'check-box-outline-blank'}
+                    size={20}
+                    color={COLORS.PRIMARY}
+                  />
+                  <Text style={styles.selectAllButtonText}>
+                    {allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null;
+            })()}
+          </View>
           
           {slotsLoading ? (
             <View style={styles.loadingContainer}>
@@ -937,6 +1224,10 @@ const SelectSlotScreen: React.FC = () => {
                 const isExpanded = roomState?.expanded ?? false;
                 const selectedRoomId = roomState?.selectedRoomId;
                 
+                const slotKey = `${slot.id}_${computeSlotDateISO(slot, weekOffset)}`;
+                const isSelectedForMultiple = !!selectedSlotsForMultiple[slotKey];
+                const canSelectForMultiple = (!bookedSlot || cancelledSlot) && roomState?.selectedRoomId;
+                
                 return (
                   <View key={slot.id} style={styles.slotCard}>
                     {/* Booked Notice */}
@@ -945,6 +1236,30 @@ const SelectSlotScreen: React.FC = () => {
                         <MaterialIcons name="info" size={18} color={COLORS.SUCCESS} />
                         <Text style={styles.slotBookedNoticeText}>Bạn đã đặt ca này rồi</Text>
                       </View>
+                    )}
+                    
+                    {/* Multiple Selection Checkbox */}
+                    {canSelectForMultiple && (
+                      <TouchableOpacity
+                        style={[
+                          styles.slotCheckboxContainer,
+                          isSelectedForMultiple && styles.slotCheckboxContainerSelected
+                        ]}
+                        onPress={() => handleToggleSlotSelection(slot, selectedDate)}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons
+                          name={isSelectedForMultiple ? 'check-box' : 'check-box-outline-blank'}
+                          size={24}
+                          color={isSelectedForMultiple ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
+                        />
+                        <Text style={[
+                          styles.slotCheckboxText,
+                          isSelectedForMultiple && styles.slotCheckboxTextSelected
+                        ]}>
+                          {isSelectedForMultiple ? 'Đã chọn để đặt nhiều' : 'Chọn để đặt nhiều'}
+                        </Text>
+                      </TouchableOpacity>
                     )}
                     
                     {/* Time Section */}
@@ -1196,6 +1511,29 @@ const SelectSlotScreen: React.FC = () => {
         </View>
       </ScrollView>
 
+      {/* Floating Action Button for Multiple Booking */}
+      {Object.keys(selectedSlotsForMultiple).length > 0 && (
+        <View style={styles.fabContainer}>
+          <TouchableOpacity
+            style={[styles.fabButton, bookingMultiple && styles.fabButtonDisabled]}
+            onPress={handleBookMultipleSlots}
+            disabled={bookingMultiple}
+            activeOpacity={0.8}
+          >
+            {bookingMultiple ? (
+              <ActivityIndicator size="small" color={COLORS.SURFACE} />
+            ) : (
+              <>
+                <MaterialIcons name="check-circle" size={24} color={COLORS.SURFACE} />
+                <Text style={styles.fabButtonText}>
+                  Đặt {Object.keys(selectedSlotsForMultiple).length} lịch
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Student Picker Modal */}
       <Modal
         visible={showStudentPicker}
@@ -1412,11 +1750,32 @@ const styles = StyleSheet.create({
   slotsContainer: {
     marginTop: SPACING.MD,
   },
+  slotsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.MD,
+  },
   slotsTitle: {
     fontSize: FONTS.SIZES.XL,
     fontWeight: '700',
     color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.MD,
+  },
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.PRIMARY,
+    gap: SPACING.XS,
+  },
+  selectAllButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.PRIMARY,
   },
   loadingContainer: {
     alignItems: 'center',
@@ -1739,6 +2098,64 @@ const styles = StyleSheet.create({
   studentPickerItemBranch: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
+  },
+  slotCheckboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.SM,
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 8,
+    marginBottom: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    gap: SPACING.SM,
+  },
+  slotCheckboxContainerSelected: {
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    borderColor: COLORS.PRIMARY,
+  },
+  slotCheckboxText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    flex: 1,
+  },
+  slotCheckboxTextSelected: {
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  fabContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: SPACING.MD,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    pointerEvents: 'box-none',
+  },
+  fabButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.LG,
+    borderRadius: 28,
+    gap: SPACING.SM,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    minWidth: 160,
+  },
+  fabButtonDisabled: {
+    opacity: 0.6,
+  },
+  fabButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '700',
+    color: COLORS.SURFACE,
   },
 });
 
