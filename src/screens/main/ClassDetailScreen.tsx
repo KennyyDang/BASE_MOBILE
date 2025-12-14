@@ -647,9 +647,6 @@ const ClassDetailScreen: React.FC = () => {
                     return null;
                   }
 
-                  const unitPrice = service.unitPrice || 0;
-                  const totalPrice = service.totalPrice || (unitPrice * service.totalQuantity);
-                  
                   // Dùng index làm key vì sau khi group, mỗi service trong array là unique
                   // Kết hợp với slotId để đảm bảo unique hoàn toàn
                   const uniqueKey = `service-${slot?.id || 'slot'}-${index}`;
@@ -660,17 +657,9 @@ const ClassDetailScreen: React.FC = () => {
                         <Text style={styles.serviceName} numberOfLines={2}>
                           {service.serviceName || 'Dịch vụ'}
                         </Text>
-                        <View style={styles.servicePriceRow}>
-                          <Text style={styles.serviceQuantity}>
-                            {service.totalQuantity} ×
-                          </Text>
-                          <Text style={styles.servicePrice}>
-                            {unitPrice.toLocaleString('vi-VN')} đ
-                          </Text>
-                          <Text style={styles.serviceTotal}>
-                            = {totalPrice.toLocaleString('vi-VN')} đ
-                          </Text>
-                        </View>
+                        <Text style={styles.serviceQuantity}>
+                          Số lượng: {service.totalQuantity}
+                        </Text>
                       </View>
                     </View>
                   );

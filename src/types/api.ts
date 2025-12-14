@@ -182,6 +182,30 @@ export interface BookStudentSlotResponse {
   data?: any;
 }
 
+export interface BookMultipleSlotsSlotRequest {
+  branchSlotId: string;
+  roomId: string;
+  date: string;
+  parentNote?: string;
+}
+
+export interface BookMultipleSlotsRequest {
+  studentId: string;
+  packageSubscriptionId: string;
+  slots: BookMultipleSlotsSlotRequest[];
+}
+
+export interface BookMultipleSlotsResponse {
+  success: boolean;
+  message?: string;
+  data?: any;
+  failedSlots?: Array<{
+    branchSlotId: string;
+    date: string;
+    error: string;
+  }>;
+}
+
 export interface StudentSlotStaffResponse {
   staffId: string;
   staffName: string;

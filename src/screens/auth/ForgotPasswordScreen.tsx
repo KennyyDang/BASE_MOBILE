@@ -182,6 +182,7 @@ const ForgotPasswordScreen: React.FC = () => {
               {step === 'send-code' ? (
                 <>
                   <TextInput
+                    testID="forgot-email-input"
                     label="Email"
                     value={email}
                     onChangeText={setEmail}
@@ -189,12 +190,14 @@ const ForgotPasswordScreen: React.FC = () => {
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
+                    placeholder="Email"
                     style={styles.input}
                     left={<TextInput.Icon icon="email" />}
                     editable={!loading}
                   />
 
                   <Button
+                    testID="forgot-send-code-button"
                     mode="contained"
                     onPress={handleSendResetCode}
                     loading={loading}
@@ -227,6 +230,7 @@ const ForgotPasswordScreen: React.FC = () => {
                   </View>
 
                   <TextInput
+                    testID="forgot-code-input"
                     label="Mã đặt lại (5 ký tự)"
                     value={code}
                     onChangeText={(text) => {
@@ -241,10 +245,11 @@ const ForgotPasswordScreen: React.FC = () => {
                     style={styles.input}
                     left={<TextInput.Icon icon="vpn-key" />}
                     editable={!loading}
-                    placeholder="Nhập mã 5 ký tự"
+                    placeholder="Mã xác thực (5 ký tự)"
                   />
 
                   <TextInput
+                    testID="forgot-new-password-input"
                     label="Mật khẩu mới"
                     value={newPassword}
                     onChangeText={setNewPassword}
@@ -260,10 +265,11 @@ const ForgotPasswordScreen: React.FC = () => {
                       />
                     }
                     editable={!loading}
-                    placeholder="Tối thiểu 6 ký tự"
+                    placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
                   />
 
                   <TextInput
+                    testID="forgot-confirm-password-input"
                     label="Xác nhận mật khẩu mới"
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
@@ -279,10 +285,11 @@ const ForgotPasswordScreen: React.FC = () => {
                       />
                     }
                     editable={!loading}
-                    placeholder="Nhập lại mật khẩu mới"
+                    placeholder="Xác nhận mật khẩu mới"
                   />
 
                   <Button
+                    testID="forgot-submit-button"
                     mode="contained"
                     onPress={handleResetPassword}
                     loading={loading}
@@ -300,6 +307,7 @@ const ForgotPasswordScreen: React.FC = () => {
                   </Button>
 
                   <Button
+                    testID="forgot-back-send-code-button"
                     mode="text"
                     onPress={() => {
                       setStep('send-code');
@@ -316,6 +324,7 @@ const ForgotPasswordScreen: React.FC = () => {
               )}
 
               <Button
+                testID="forgot-back-login-button"
                 mode="text"
                 onPress={handleBackToLogin}
                 style={styles.backToLoginButton}

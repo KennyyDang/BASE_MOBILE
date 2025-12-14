@@ -965,6 +965,11 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: COLORS.PRIMARY,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
   servicesSectionTitle: {
     fontSize: FONTS.SIZES.SM,
     fontWeight: '600',

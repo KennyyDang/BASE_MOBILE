@@ -875,7 +875,30 @@ const ProfileScreen: React.FC = () => {
       setUploading(true);
       setError(null);
 
-      const updatedUser = await parentProfileService.uploadProfilePicture(uri, undefined, mimeType);
+      // Sử dụng updateMyProfile thay vì uploadProfilePicture
+      // Vì endpoint POST /api/User/upload-profile-picture không tồn tại hoặc không hoạt động (lỗi 405)
+      // Endpoint PUT /api/User/my-profile hoạt động và có thể upload avatar
+      if (!currentUser) {
+        Alert.alert('Lỗi', 'Không thể lấy thông tin người dùng. Vui lòng thử lại.');
+        return;
+      }
+
+      // Xử lý name và phoneNumber - giống như StaffProfileScreen
+      const name = (currentUser.name || '').trim();
+      const phoneNumber = (currentUser.phoneNumber || '').trim();
+      
+      // Validation - name là bắt buộc, phoneNumber có thể để trống nếu chưa có
+      if (!name) {
+        Alert.alert('Lỗi', 'Vui lòng cập nhật tên trước khi upload ảnh profile.');
+        return;
+      }
+
+      // Gọi API updateMyProfile - giống như StaffProfileScreen
+      const updatedUser = await parentProfileService.updateMyProfile(
+        name,
+        phoneNumber || '', // Đảm bảo không gửi null, chỉ gửi empty string nếu chưa có
+        uri
+      );
       
       // Update local state with new profile picture URL
       setCurrentUser(updatedUser);
@@ -884,7 +907,21 @@ const ProfileScreen: React.FC = () => {
       // Refresh lại để đảm bảo có dữ liệu mới nhất
       await fetchCurrentUser();
     } catch (err: any) {
-      const errorMessage = err?.message || 'Không thể upload ảnh profile';
+      // Xử lý lỗi chi tiết hơn - giống như StaffProfileScreen
+      const errorData = err?.response?.data;
+      let errorMessage = 'Không thể upload ảnh profile';
+      
+      if (errorData) {
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      } else if (err?.message) {
+        errorMessage = err.message;
+      }
       
       // Check if it's an adult/racy content error
       if (errorMessage.includes('Adult content') || errorMessage.includes('Racy content') || errorMessage.includes('không phù hợp')) {

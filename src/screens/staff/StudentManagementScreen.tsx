@@ -21,6 +21,7 @@ import studentSlotService from '../../services/studentSlotService';
 import activityService from '../../services/activityService';
 import { useAuth } from '../../contexts/AuthContext';
 import { ActivityResponse } from '../../types/api';
+import { StaffActivityResponse } from '../../services/activityService';
 
 type StudentManagementRouteParams = {
   branchSlotId: string;
@@ -93,7 +94,7 @@ const StudentManagementScreen: React.FC = () => {
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set());
-  const [studentActivities, setStudentActivities] = useState<Record<string, ActivityResponse[]>>({});
+  const [studentActivities, setStudentActivities] = useState<Record<string, StaffActivityResponse[]>>({});
   const [loadingActivities, setLoadingActivities] = useState<Set<string>>(new Set());
 
   // Kiểm tra quyền truy cập - chỉ dành cho staff
@@ -132,7 +133,9 @@ const StudentManagementScreen: React.FC = () => {
       }
 
       // Gọi API không có filter, rồi filter ở client để đảm bảo lấy đúng
+      // Vì API có thể không filter đúng ở server
       const response = await studentSlotService.getStaffSlots({
+        pageIndex: 1,
         pageSize: 1000, // Lấy nhiều để đảm bảo có đủ data
       });
 
@@ -143,6 +146,7 @@ const StudentManagementScreen: React.FC = () => {
         return;
       }
 
+      // API trả về structure khác: mỗi item là branchSlot với studentSlots array
       // Filter để chỉ lấy slots có cùng branchSlotId và date
       let matchingSlots = response.items.filter((item: any) => {
         if (!item || !item.id) {
@@ -164,7 +168,6 @@ const StudentManagementScreen: React.FC = () => {
             const itemDateStr = itemDate.toISOString().split('T')[0];
             dateMatch = itemDateStr === formattedDate;
           } catch (e) {
-            console.warn('Error parsing date:', item.date, e);
             return false;
           }
         }
@@ -177,65 +180,67 @@ const StudentManagementScreen: React.FC = () => {
         matchingSlots = matchingSlots.filter((item: any) => item.roomId === roomId);
       }
 
-      if (matchingSlots && matchingSlots.length > 0) {
-        // Lấy thông tin slot từ item đầu tiên
-        const firstSlot = matchingSlots[0];
-        setSlotInfo({
-          timeframe: firstSlot.timeframe,
-          slotType: firstSlot.slotType,
-          branch: firstSlot.branch,
-        });
-
-        // Lấy tất cả studentSlots từ tất cả các slots phù hợp và merge lại
-        const allStudentSlots: any[] = [];
-        matchingSlots.forEach((slot: any) => {
-          if (slot.studentSlots && Array.isArray(slot.studentSlots)) {
-            allStudentSlots.push(...slot.studentSlots);
-          }
-        });
-
-        // Deduplicate dựa trên studentId để tránh hiển thị duplicate học sinh
-        // Nếu cùng một học sinh có nhiều studentSlotId, chỉ lấy một cái (ưu tiên cái đầu tiên)
-        const uniqueStudentSlotsMap = new Map<string, any>();
-        allStudentSlots.forEach((studentSlot: any) => {
-          const studentId = studentSlot.student?.id;
-          if (studentId && !uniqueStudentSlotsMap.has(studentId)) {
-            uniqueStudentSlotsMap.set(studentId, studentSlot);
-          }
-        });
-
-        // Map từ studentSlots array sang SlotStudent format
-        const studentsList: SlotStudent[] = Array.from(uniqueStudentSlotsMap.values())
-          .filter((studentSlot: any) => {
-            // Chỉ lấy những studentSlot có student hợp lệ
-            return studentSlot && studentSlot.student && studentSlot.student.id;
-          })
-          .map((studentSlot: any) => {
-            // studentSlot.id là studentSlotId (ID của StudentSlot)
-            // studentSlot.studentSlotId có thể không tồn tại trong response từ getStaffSlots
-            const studentSlotId = studentSlot.id || studentSlot.studentSlotId || '';
-            
-            return {
-              id: studentSlotId, // studentSlotId là ID của StudentSlot
-              studentId: studentSlot.student?.id || '',
-              studentName: studentSlot.student?.name || 'Chưa có tên',
-              parentName: studentSlot.parent?.name || '',
-              status: studentSlot.status || 'Booked',
-              parentNote: studentSlot.parentNote || undefined,
-              studentImage: studentSlot.student?.image || undefined,
-            };
-          })
-          .filter((student: SlotStudent) => {
-            // Lọc bỏ những student không có id hoặc studentId
-            return student.id && student.studentId;
-          });
-
-        setStudents(studentsList);
-      } else {
+      if (!matchingSlots || matchingSlots.length === 0) {
         setStudents([]);
+        setSlotInfo(null);
+        return;
       }
+
+      // Lấy thông tin slot từ item đầu tiên
+      const firstSlot = matchingSlots[0];
+      setSlotInfo({
+        timeframe: firstSlot.timeframe || null,
+        slotType: firstSlot.slotType || null,
+        branch: firstSlot.branch?.branchName || null,
+      });
+
+      // Lấy tất cả studentSlots từ tất cả các slots phù hợp và merge lại
+      const allStudentSlots: any[] = [];
+      matchingSlots.forEach((slot: any) => {
+        if (slot.studentSlots && Array.isArray(slot.studentSlots)) {
+          allStudentSlots.push(...slot.studentSlots);
+        }
+      });
+
+      // Deduplicate dựa trên studentId để tránh hiển thị duplicate học sinh
+      // Nếu cùng một học sinh có nhiều studentSlotId, chỉ lấy một cái (ưu tiên cái đầu tiên)
+      const uniqueStudentSlotsMap = new Map<string, any>();
+      allStudentSlots.forEach((studentSlot: any) => {
+        const studentId = studentSlot?.student?.id || studentSlot?.studentId;
+        if (studentId && !uniqueStudentSlotsMap.has(studentId)) {
+          uniqueStudentSlotsMap.set(studentId, studentSlot);
+        }
+      });
+
+      // Map từ studentSlots array sang SlotStudent format
+      const studentsList: SlotStudent[] = Array.from(uniqueStudentSlotsMap.values())
+        .filter((studentSlot: any) => {
+          // Chỉ lấy những studentSlot có student hợp lệ
+          const studentId = studentSlot?.student?.id || studentSlot?.studentId;
+          return studentId;
+        })
+        .map((studentSlot: any) => {
+          const studentId = studentSlot?.student?.id || studentSlot?.studentId || '';
+          const studentName = studentSlot?.student?.name || studentSlot?.studentName || 'Chưa có tên';
+          const parentName = studentSlot?.parent?.name || studentSlot?.parentName || '';
+          
+          return {
+            id: studentSlot.id || studentSlot.studentSlotId || `${studentId}-${Date.now()}`, // ID của StudentSlot
+            studentId: studentId,
+            studentName: studentName,
+            parentName: parentName,
+            status: studentSlot.status || firstSlot.status || 'Booked',
+            parentNote: studentSlot.parentNote || undefined,
+            studentImage: studentSlot?.student?.image || undefined,
+          };
+        })
+        .filter((student: SlotStudent) => {
+          // Lọc bỏ những student không có id hoặc studentId
+          return student.id && student.studentId;
+        });
+
+      setStudents(studentsList);
     } catch (error: any) {
-      console.error('Error fetching students:', error);
       const message =
         error?.response?.data?.message ||
         error?.response?.data?.error ||
@@ -347,7 +352,7 @@ const StudentManagementScreen: React.FC = () => {
     }
   };
 
-  const handleViewActivityDetail = (activity: ActivityResponse) => {
+  const handleViewActivityDetail = (activity: StaffActivityResponse) => {
     navigation.navigate('ActivityDetail', {
       activityId: activity.id,
     });
@@ -380,31 +385,61 @@ const StudentManagementScreen: React.FC = () => {
       {/* Slot Info Card */}
       {slotInfo && (
         <View style={styles.slotInfoCard}>
-          <Text style={styles.slotInfoTime}>
-            {slotInfo.timeframe ? formatTimeRange(slotInfo.timeframe) : 'Chưa có khung giờ'}
-            {date ? ` - ${formatDateDisplay(date)}` : ''}
-          </Text>
+          <View style={styles.slotInfoHeader}>
+            <MaterialIcons name="schedule" size={20} color={COLORS.PRIMARY} />
+            <Text style={styles.slotInfoTime}>
+              {slotInfo.timeframe ? formatTimeRange(slotInfo.timeframe) : 'Chưa có khung giờ'}
+              {date ? ` - ${formatDateDisplay(date)}` : ''}
+            </Text>
+          </View>
           {roomName && (
-            <Text style={styles.slotInfoRoom}>Phòng: {roomName}</Text>
+            <View style={styles.slotInfoRow}>
+              <MaterialIcons name="meeting-room" size={16} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.slotInfoRoom}>Phòng: {roomName}</Text>
+            </View>
           )}
           {branchName && (
-            <Text style={styles.slotInfoBranch}>{branchName}</Text>
+            <View style={styles.slotInfoRow}>
+              <MaterialIcons name="business" size={16} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.slotInfoBranch}>{branchName}</Text>
+            </View>
           )}
           {slotInfo.slotType?.name && (
-            <Text style={styles.slotInfoActivity}>{slotInfo.slotType.name}</Text>
+            <View style={styles.slotInfoRow}>
+              <MaterialIcons name="category" size={16} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.slotInfoActivity}>{slotInfo.slotType.name}</Text>
+            </View>
+          )}
+          {students.length > 0 && (
+            <View style={styles.slotInfoRow}>
+              <MaterialIcons name="people" size={16} color={COLORS.PRIMARY} />
+              <Text style={styles.slotInfoStudentCount}>
+                {students.length} {students.length === 1 ? 'học sinh' : 'học sinh'}
+              </Text>
+            </View>
           )}
         </View>
       )}
 
-      {/* Attendance Button */}
+      {/* Action Buttons */}
       <View style={styles.actionButtonsContainer}>
         <TouchableOpacity
           style={styles.attendanceButton}
           onPress={handleAttendance}
           activeOpacity={0.8}
+          disabled={students.length === 0}
         >
-          <MaterialIcons name="check-circle" size={24} color={COLORS.SURFACE} />
-          <Text style={styles.attendanceButtonText}>Điểm danh</Text>
+          <MaterialIcons 
+            name="check-circle" 
+            size={24} 
+            color={students.length === 0 ? COLORS.TEXT_SECONDARY : COLORS.SURFACE} 
+          />
+          <Text style={[
+            styles.attendanceButtonText,
+            students.length === 0 && styles.attendanceButtonTextDisabled
+          ]}>
+            Điểm danh
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -476,7 +511,7 @@ const StudentManagementScreen: React.FC = () => {
                     </TouchableOpacity>
                   ) : (
                     <View style={styles.studentIcon}>
-                      <MaterialIcons name="qr-code-2" size={24} color={COLORS.PRIMARY} />
+                      <MaterialIcons name="person" size={24} color={COLORS.PRIMARY} />
                     </View>
                   )}
                   <View style={styles.studentContent}>
@@ -584,33 +619,57 @@ const styles = StyleSheet.create({
     width: 40,
   },
   slotInfoCard: {
-    backgroundColor: COLORS.INFO_BG,
+    backgroundColor: COLORS.SURFACE,
     padding: SPACING.MD,
     margin: SPACING.MD,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.PRIMARY + '30',
+    borderColor: COLORS.BORDER,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  slotInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+    gap: SPACING.SM,
   },
   slotInfoTime: {
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  slotInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: SPACING.XS,
+    gap: SPACING.SM,
   },
   slotInfoRoom: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.XS,
+    flex: 1,
   },
   slotInfoBranch: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.XS,
+    flex: 1,
   },
   slotInfoActivity: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_PRIMARY,
     fontWeight: '500',
+    flex: 1,
+  },
+  slotInfoStudentCount: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+    flex: 1,
   },
   actionButtonsContainer: {
     paddingHorizontal: SPACING.MD,
@@ -635,6 +694,9 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.LG,
     fontWeight: '700',
     color: COLORS.SURFACE,
+  },
+  attendanceButtonTextDisabled: {
+    color: COLORS.TEXT_SECONDARY,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -673,26 +735,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: SPACING.XL,
+    paddingHorizontal: SPACING.XL,
   },
   emptyText: {
     fontSize: FONTS.SIZES.MD,
     color: COLORS.TEXT_SECONDARY,
     marginTop: SPACING.MD,
     textAlign: 'center',
+    lineHeight: 24,
   },
   studentsList: {
     padding: SPACING.MD,
   },
   studentCard: {
     backgroundColor: COLORS.SURFACE,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: SPACING.MD,
     marginBottom: SPACING.MD,
     elevation: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
   },
   studentHeader: {
     flexDirection: 'row',
@@ -700,24 +766,24 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.MD,
   },
   studentIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: COLORS.BACKGROUND,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.PRIMARY + '15',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.MD,
-    borderWidth: 1,
-    borderColor: COLORS.BORDER,
+    borderWidth: 2,
+    borderColor: COLORS.PRIMARY + '30',
   },
   studentAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     marginRight: SPACING.MD,
     backgroundColor: COLORS.BACKGROUND,
-    borderWidth: 1,
-    borderColor: COLORS.BORDER,
+    borderWidth: 2,
+    borderColor: COLORS.PRIMARY + '30',
   },
   studentContent: {
     flex: 1,
