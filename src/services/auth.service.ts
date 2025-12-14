@@ -64,10 +64,6 @@ const authService = {
       let decoded: any;
       try {
         decoded = jwtDecode<DecodedJWT & Record<string, any>>(trimmedToken);
-        
-        if (__DEV__) {
-          console.log('[Auth] Token decoded successfully. User ID:', decoded[JWT_CLAIMS.USER_ID] || decoded['sub']);
-        }
       } catch (decodeError: any) {
         // Clear tokens if JWT is invalid
         await AsyncStorage.multiRemove([
@@ -153,12 +149,6 @@ const authService = {
         // Server responded with error status
         const errorData = error.response.data;
         const status = error.response.status;
-        
-        // Log để debug (chỉ trong dev mode)
-        if (__DEV__) {
-          console.log('[Auth Service Error] Status:', status);
-          console.log('[Auth Service Error] Data:', JSON.stringify(errorData, null, 2));
-        }
         
         // Xử lý validation errors (400 Bad Request) - Format từ ASP.NET Core
         if (status === 400) {

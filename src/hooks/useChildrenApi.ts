@@ -21,7 +21,7 @@ export function useMyChildren() {
     } catch (err: any) {
       const errorMessage = err.message || err.response?.data?.message || 'Không thể lấy danh sách học sinh';
       setError(errorMessage);
-      throw err;
+      return null;
     } finally {
       setLoading(false);
     }
@@ -64,7 +64,7 @@ export function useCurrentUserStudents(
     } catch (err: any) {
       const errorMessage = err.message || err.response?.data?.message || 'Không thể lấy danh sách học sinh';
       setError(errorMessage);
-      throw err;
+      return null;
     } finally {
       setLoading(false);
     }

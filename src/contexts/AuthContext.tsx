@@ -103,10 +103,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         deviceName,
       };
 
-      if (__DEV__) {
-        console.log('Mobile login payload:', payload);
-      }
-
       const response = await authService.login(payload);
 
       setUser(response.user);

@@ -334,6 +334,7 @@ const LoginScreen: React.FC = () => {
                 <View style={styles.roleCardsContainer}>
                   {/* Phụ huynh */}
                   <TouchableOpacity
+                    testID="role-card-parent"
                     style={[
                       styles.roleCard,
                       selectedRole === 'PARENT' && styles.roleCardActive,
@@ -373,6 +374,7 @@ const LoginScreen: React.FC = () => {
 
                   {/* Nhân viên */}
                   <TouchableOpacity
+                    testID="role-card-staff"
                     style={[
                       styles.roleCard,
                       selectedRole === 'STAFF' && styles.roleCardActive,
@@ -412,6 +414,7 @@ const LoginScreen: React.FC = () => {
 
                   {/* Quản lý */}
                   <TouchableOpacity
+                    testID="role-card-manager"
                     style={[
                       styles.roleCard,
                       selectedRole === 'MANAGER' && styles.roleCardActive,
@@ -455,6 +458,7 @@ const LoginScreen: React.FC = () => {
               </View>
 
               <TextInput
+                testID="login-email-input"
                 label="Email"
                 value={formData.email}
                 onChangeText={(text) => setFormData({ ...formData, email: text })}
@@ -462,21 +466,25 @@ const LoginScreen: React.FC = () => {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                placeholder="Email"
                 style={styles.input}
                 left={<TextInput.Icon icon="email" />}
               />
 
               <TextInput
+                testID="login-password-input"
                 label="Mật khẩu"
                 value={formData.password}
                 onChangeText={(text) => setFormData({ ...formData, password: text })}
                 mode="outlined"
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                placeholder="Mật khẩu"
                 style={styles.input}
                 left={<TextInput.Icon icon="lock" />}
                 right={
                   <TextInput.Icon
+                    testID="password-visibility-toggle"
                     icon={showPassword ? 'eye-off' : 'eye'}
                     onPress={() => setShowPassword(!showPassword)}
                   />
@@ -484,6 +492,7 @@ const LoginScreen: React.FC = () => {
               />
 
               <Button
+                testID="login-forgot-password-button"
                 mode="text"
                 onPress={handleForgotPassword}
                 style={styles.forgotPasswordButton}
@@ -493,6 +502,7 @@ const LoginScreen: React.FC = () => {
               </Button>
 
               <Button
+                testID="login-submit-button"
                 mode="contained"
                 onPress={handleLogin}
                 loading={loading}
