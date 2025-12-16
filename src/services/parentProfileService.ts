@@ -45,6 +45,7 @@ export interface FamilyProfileResponse {
   studentRela: string; // Relationship to student (e.g., "Bố", "Mẹ")
   userId: string;
   students: any[]; // Array of student objects
+  identityCardPublicId?: string | null; // Identity card public ID
 }
 
 const parentProfileService = {
@@ -461,6 +462,21 @@ const parentProfileService = {
       }
       
       throw new Error(errorMessage);
+    }
+  },
+
+  /**
+   * Get family profiles by student ID (for staff to see who can pick up the student)
+   * Endpoint: GET /api/FamilyProfile/student/{studentId}
+   * @param studentId - Student ID
+   * @returns Array of family profiles who can pick up this student
+   */
+  getFamilyProfilesByStudentId: async (studentId: string): Promise<FamilyProfileResponse[]> => {
+    try {
+      const response = await axiosInstance.get<FamilyProfileResponse[]>(`/api/FamilyProfile/student/${studentId}`);
+      return response.data || [];
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch family profiles by student ID';
     }
   },
 };

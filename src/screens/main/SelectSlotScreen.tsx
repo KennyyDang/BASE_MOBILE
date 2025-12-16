@@ -952,9 +952,81 @@ const SelectSlotScreen: React.FC = () => {
                     },
                   };
                 });
+
+                // Làm mới dữ liệu sau khi đặt lịch
                 fetchSubscriptions(selectedStudentId);
                 fetchSlots({ page: 1, silent: true });
                 fetchBookedSlots(selectedStudentId);
+
+                // Thử lấy ra studentSlotId từ response để chuyển sang màn mua dịch vụ bổ sung
+                try {
+                  let bookedStudentSlotId: string | null = null;
+                  const data: any = response?.data;
+
+                  if (typeof data === 'string') {
+                    bookedStudentSlotId = data;
+                  } else if (data && typeof data === 'object') {
+                    bookedStudentSlotId =
+                      data.studentSlotId ||
+                      data.id ||
+                      null;
+                  }
+
+                  // Nếu API không trả về rõ ràng, fallback: gọi danh sách slot và tìm theo branchSlot + date
+                  if (!bookedStudentSlotId) {
+                    const slotsResponse = await studentSlotService.getStudentSlots({
+                      studentId: selectedStudentId,
+                      pageIndex: 1,
+                      pageSize: 50,
+                      status: 'Booked',
+                    });
+
+                    const targetDateOnly = computeSlotDateISO(slot, weekOffset).split('T')[0];
+
+                    const matched = slotsResponse.items.find((s) => {
+                      if (!s) return false;
+                      const dateOnly = (s.date || '').split('T')[0];
+                      return s.branchSlotId === slot.id && dateOnly === targetDateOnly;
+                    });
+
+                    if (matched) {
+                      bookedStudentSlotId = matched.id;
+                    }
+                  }
+
+                  // Nếu đã có studentSlotId thì hỏi phụ huynh có muốn mua đồ ăn không
+                  if (bookedStudentSlotId && selectedStudentId) {
+                    Alert.alert(
+                      'Mua đồ ăn cho bé',
+                      'Ba/Mẹ muốn mua đồ ăn cho bé ở slot này không?',
+                      [
+                        {
+                          text: 'Không',
+                          style: 'cancel',
+                        },
+                        {
+                          text: 'Có',
+                          onPress: () => {
+                            try {
+                              navigation.navigate('PurchaseService', {
+                                studentSlotId: bookedStudentSlotId!,
+                                studentId: selectedStudentId,
+                              });
+                            } catch (navErr: any) {
+                              Alert.alert(
+                                'Lỗi',
+                                navErr?.message ||
+                                  'Không thể chuyển sang trang mua dịch vụ bổ sung. Vui lòng vào mục "Dịch vụ bổ sung" để mua.'
+                              );
+                            }
+                          },
+                        },
+                      ]
+                    );
+                  }
+                } catch {
+                  // Nếu có lỗi trong quá trình chuẩn bị điều hướng mua dịch vụ thì bỏ qua, không chặn flow đặt lịch
+                }
               } catch (error: any) {
                 let message =
                   error?.response?.data?.message ||

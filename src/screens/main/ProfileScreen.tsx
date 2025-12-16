@@ -56,7 +56,7 @@ const FONTS = {
 
 const ProfileScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  const { user, logout } = useAuth();
+  const { user, logout, isAuthenticated } = useAuth();
   const [currentUser, setCurrentUser] = useState<CurrentUserResponse | null>(null);
   const [familyProfiles, setFamilyProfiles] = useState<FamilyProfileResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -206,6 +206,13 @@ const ProfileScreen: React.FC = () => {
   }, []); // Empty dependency array - only run once on mount
 
   const fetchActivities = useCallback(async () => {
+    // Kiểm tra authentication trước khi fetch
+    if (!isAuthenticated || !user) {
+      setActivities([]);
+      setLoadingActivities(false);
+      return;
+    }
+
     if (students.length === 0) {
       setActivities([]);
       return;
@@ -218,6 +225,11 @@ const ProfileScreen: React.FC = () => {
       const allActivities: StaffActivityResponse[] = [];
       
       for (const student of students) {
+        // Kiểm tra lại authentication trước mỗi vòng lặp
+        if (!isAuthenticated || !user) {
+          break;
+        }
+
         try {
           // Get student slots first to get studentSlotIds
           const slotsResponse = await studentSlotService.getStudentSlots({
@@ -228,6 +240,11 @@ const ProfileScreen: React.FC = () => {
           
           // Fetch activities for each slot
           for (const slot of slotsResponse.items) {
+            // Kiểm tra lại authentication trước mỗi API call
+            if (!isAuthenticated || !user) {
+              break;
+            }
+
             try {
               const activitiesResponse = await activityService.getMyChildrenActivities({
                 studentId: student.id,
@@ -255,11 +272,25 @@ const ProfileScreen: React.FC = () => {
               }));
               
               allActivities.push(...mappedActivities);
-            } catch (err) {
+            } catch (err: any) {
+              // Bỏ qua lỗi 401 (Unauthorized) khi đã logout - không log warning
+              const statusCode = err?.response?.status || err?.response?.statusCode;
+              if (statusCode === 401) {
+                // Đã logout, dừng fetch và không log warning
+                return;
+              }
+              // Chỉ log warning cho các lỗi khác
               console.warn(`Failed to fetch activities for slot ${slot.id}:`, err);
             }
           }
-        } catch (err) {
+        } catch (err: any) {
+          // Bỏ qua lỗi 401 (Unauthorized) khi đã logout - không log warning
+          const statusCode = err?.response?.status || err?.response?.statusCode;
+          if (statusCode === 401) {
+            // Đã logout, dừng fetch và không log warning
+            return;
+          }
+          // Chỉ log warning cho các lỗi khác
           console.warn(`Failed to fetch slots for student ${student.id}:`, err);
         }
       }
@@ -274,21 +305,28 @@ const ProfileScreen: React.FC = () => {
       // Limit to latest 5 activities
       setActivities(allActivities.slice(0, 5));
     } catch (error: any) {
+      // Bỏ qua lỗi 401 (Unauthorized) khi đã logout
+      const statusCode = error?.response?.status || error?.response?.statusCode;
+      if (statusCode === 401) {
+        setActivities([]);
+        return;
+      }
       const message = error?.response?.data?.message || error?.message || 'Không thể tải hoạt động';
       setActivitiesError(message);
       setActivities([]);
     } finally {
       setLoadingActivities(false);
     }
-  }, [students]);
+  }, [students, isAuthenticated, user]);
 
   useEffect(() => {
-    if (students.length > 0) {
+    // Chỉ fetch activities khi đã authenticated và có students
+    if (isAuthenticated && user && students.length > 0) {
       fetchActivities();
     } else {
       setActivities([]);
     }
-  }, [students, fetchActivities]);
+  }, [students, fetchActivities, isAuthenticated, user]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -1487,13 +1525,6 @@ const ProfileScreen: React.FC = () => {
                       )}
                     </View>
                   </View>
-                  {profile.students && profile.students.length > 0 && (
-                    <View style={styles.familyProfileStudents}>
-                      <Text style={styles.familyProfileStudentsLabel}>
-                        Học sinh: {profile.students.length}
-                      </Text>
-                    </View>
-                  )}
                   
                   {/* Action Buttons */}
                   <View style={styles.familyProfileActions}>
