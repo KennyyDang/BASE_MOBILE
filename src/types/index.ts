@@ -324,6 +324,10 @@ export type RootStackParamList = {
     studentId?: string;
     initialDate?: string;
   };
+  StudentGuardians: {
+    studentId: string;
+    studentName: string;
+  };
 };
 
 export type StaffStackParamList = {

@@ -70,6 +70,7 @@ import PurchaseServiceScreen from '../screens/main/PurchaseServiceScreen';
 import RegisterChildScreen from '../screens/main/RegisterChildScreen';
 import ClassDetailScreen from '../screens/main/ClassDetailScreen';
 import SelectSlotScreen from '../screens/main/SelectSlotScreen';
+import StudentGuardiansScreen from '../screens/staff/StudentGuardiansScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 import BadgeIcon from '../components/BadgeIcon';
 import { useUnreadNotificationCount } from '../hooks/useUnreadNotificationCount';
@@ -748,6 +749,15 @@ const AppNavigator = () => {
               options={{
                 title: 'Chi tiết lớp học',
                 headerTitle: 'Chi tiết lớp học',
+              }}
+            />
+            <Stack.Screen
+              name="StudentGuardians"
+              component={StudentGuardiansScreen}
+              options={{
+                title: 'Người giám hộ',
+                headerTitle: 'Người giám hộ',
+                headerShown: false,
               }}
             />
           </>

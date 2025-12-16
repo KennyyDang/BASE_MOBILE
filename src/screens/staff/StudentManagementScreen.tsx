@@ -539,6 +539,25 @@ const StudentManagementScreen: React.FC = () => {
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    style={styles.viewGuardiansButton}
+                    onPress={() => {
+                      navigation.navigate('StudentGuardians', {
+                        studentId: student.studentId,
+                        studentName: student.studentName,
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <MaterialIcons 
+                      name="family-restroom" 
+                      size={18} 
+                      color={COLORS.SURFACE} 
+                    />
+                    <Text style={styles.viewGuardiansButtonText}>
+                      Người giám hộ
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
                     style={styles.addActivityButton}
                     onPress={() => handleCreateActivity(student)}
                     activeOpacity={0.7}
@@ -812,8 +831,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.MD,
     borderRadius: 8,
     gap: SPACING.XS,
+    flex: 1,
   },
   viewActivitiesButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.SURFACE,
+    fontWeight: '600',
+  },
+  viewGuardiansButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.INFO,
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+    borderRadius: 8,
+    gap: SPACING.XS,
+    flex: 1,
+  },
+  viewGuardiansButtonText: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.SURFACE,
     fontWeight: '600',

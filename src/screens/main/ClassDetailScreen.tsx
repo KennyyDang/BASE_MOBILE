@@ -266,6 +266,13 @@ const ClassDetailScreen: React.FC = () => {
       });
       setActivities(response.items || []);
     } catch (err: any) {
+      // Bỏ qua lỗi 401 (Unauthorized) khi đã logout - không log warning
+      const statusCode = err?.response?.status || err?.response?.statusCode;
+      if (statusCode === 401) {
+        setActivities([]);
+        return;
+      }
+      // Chỉ log warning cho các lỗi khác
       console.warn('Failed to fetch activities:', err);
       setActivities([]);
     } finally {
