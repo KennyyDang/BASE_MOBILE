@@ -215,6 +215,11 @@ const SelectSlotScreen: React.FC = () => {
     parentNote?: string;
   }>>({});
   const [bookingMultiple, setBookingMultiple] = useState(false);
+  
+  // Cache số lượng slot cho từng ngày (date string -> count)
+  const [datesWithSlots, setDatesWithSlots] = useState<Map<string, number>>(new Map());
+  const [checkedDates, setCheckedDates] = useState<Set<string>>(new Set());
+  const [loadingSlotCounts, setLoadingSlotCounts] = useState(false);
 
   useEffect(() => {
     if (students.length && !selectedStudentId) {
@@ -335,7 +340,7 @@ const SelectSlotScreen: React.FC = () => {
 
   const fetchSlots = useCallback(
     async ({ page = 1, append = false, silent = false }: { page?: number; append?: boolean; silent?: boolean } = {}) => {
-      if (!selectedStudentId) {
+      if (!selectedStudentId || !selectedDate) {
         return;
       }
 
@@ -345,20 +350,55 @@ const SelectSlotScreen: React.FC = () => {
       setSlotsError(null);
 
       try {
-        const response = await branchSlotService.getAvailableSlotsForStudent(
+        // Load all slots for the selected date (similar to web's getAllAvailableSlotsForStudent)
+        const allItems = await branchSlotService.getAllAvailableSlotsForStudent(
           selectedStudentId,
-          page,
-          PAGE_SIZE
+          {
+            date: selectedDate,
+            pageSize: 100,
+          }
         );
-        const items = response?.items ?? [];
 
-        setSlots((prev) => (append ? [...prev, ...items] : items));
+        // Filter slots by date (similar to web's logic)
+        // Check if slot.date matches selectedDate, or if slot.weekDate matches selectedDate's weekday
+        const selectedDateOnly = new Date(selectedDate);
+        selectedDateOnly.setHours(0, 0, 0, 0);
+        const selectedDayOfWeek = selectedDateOnly.getDay(); // 0 = Sunday, 1 = Monday, etc.
+
+        const validSlots = allItems.filter((slot) => {
+          // If slot has specific date, check if it matches
+          if (slot.date) {
+            try {
+              const slotDate = new Date(slot.date);
+              slotDate.setHours(0, 0, 0, 0);
+              
+              const slotDateOnly = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate());
+              const checkDateOnly = new Date(selectedDateOnly.getFullYear(), selectedDateOnly.getMonth(), selectedDateOnly.getDate());
+              
+              return slotDateOnly.getTime() === checkDateOnly.getTime();
+            } catch {
+              // If date parsing fails, fall through to weekDate check
+            }
+          }
+          
+          // If slot doesn't have specific date, check if weekDate matches
+          if (slot.weekDate !== undefined && slot.weekDate !== null) {
+            const slotWeekDay = slot.weekDate;
+            // Normalize: web uses 0-6 where 0=Sunday, mobile uses same
+            return selectedDayOfWeek === slotWeekDay;
+          }
+          
+          // If no date restriction, include the slot
+          return true;
+        });
+
+        setSlots(validSlots);
         setPagination({
-          pageIndex: response.pageIndex,
-          totalPages: response.totalPages,
-          totalCount: response.totalCount,
-          pageSize: response.pageSize,
-          hasNextPage: response.hasNextPage,
+          pageIndex: 1,
+          totalPages: 1,
+          totalCount: validSlots.length,
+          pageSize: validSlots.length,
+          hasNextPage: false,
         });
       } catch (error: any) {
         const message =
@@ -378,14 +418,39 @@ const SelectSlotScreen: React.FC = () => {
         }
       }
     },
-    [selectedStudentId]
+    [selectedStudentId, selectedDate]
   );
 
   useEffect(() => {
-    if (selectedStudentId) {
+    if (selectedStudentId && selectedDate) {
       fetchSlots({ page: 1 });
+      
+      // Update slot count for selected date after fetching
+      const dateStr = formatDateToYYYYMMDD(selectedDate);
+      setDatesWithSlots((prev) => {
+        const updated = new Map(prev);
+        updated.set(dateStr, slots.length);
+        return updated;
+      });
+      setCheckedDates((prev) => {
+        const updated = new Set(prev);
+        updated.add(dateStr);
+        return updated;
+      });
     }
-  }, [selectedStudentId, fetchSlots]);
+  }, [selectedStudentId, selectedDate, fetchSlots, formatDateToYYYYMMDD]);
+
+  // Update slot count when slots change
+  useEffect(() => {
+    if (selectedDate && slots.length >= 0) {
+      const dateStr = formatDateToYYYYMMDD(selectedDate);
+      setDatesWithSlots((prev) => {
+        const updated = new Map(prev);
+        updated.set(dateStr, slots.length);
+        return updated;
+      });
+    }
+  }, [slots, selectedDate, formatDateToYYYYMMDD]);
 
   useEffect(() => {
     if (slots.length > 0) {
@@ -436,35 +501,12 @@ const SelectSlotScreen: React.FC = () => {
     }
   }, [selectedStudentId, fetchBookedSlots]);
 
-  // Group slots by weekday
-  const groupedSlots = useMemo(() => {
-    const grouped: Record<WeekdayKey, BranchSlotResponse[]> = {
-      0: [],
-      1: [],
-      2: [],
-      3: [],
-      4: [],
-      5: [],
-      6: [],
-    };
-
-    slots.forEach((slot) => {
-      const day = normalizeWeekDate(slot.weekDate);
-      if (!grouped[day]) {
-        grouped[day] = [];
-      }
-      grouped[day].push(slot);
-    });
-
-    return grouped;
-  }, [slots]);
-
-  // Get slots for selected date
+  // Get slots for selected date - API đã filter theo date rồi, chỉ cần lấy tất cả slots trả về
   const getSlotsForSelectedDate = useMemo(() => {
     if (!selectedDate || !slots.length) return [];
-    const selectedDay = selectedDate.getDay();
-    const normalizedDay = selectedDay === 0 ? 0 : selectedDay;
-    let daySlots = groupedSlots[normalizedDay as WeekdayKey] || [];
+    
+    // API đã filter theo date rồi, nên tất cả slots trả về đều thuộc ngày selectedDate
+    let daySlots = slots;
     
     if (selectedTimeframe) {
       daySlots = daySlots.filter((slot) => {
@@ -475,7 +517,7 @@ const SelectSlotScreen: React.FC = () => {
     }
     
     return daySlots;
-  }, [selectedDate, groupedSlots, selectedTimeframe]);
+  }, [selectedDate, slots, selectedTimeframe]);
 
   // Get available dates for date selector: tất cả các ngày trong tháng của selectedDate
   const getAvailableDates = useMemo(() => {
@@ -501,27 +543,159 @@ const SelectSlotScreen: React.FC = () => {
     return dates;
   }, [selectedDate]);
 
+  // Format date to YYYY-MM-DD string
+  const formatDateToYYYYMMDD = useCallback((date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  // Load slot counts for dates in current month
+  const loadSlotCountsForMonth = useCallback(async (dates: Date[]) => {
+    if (!selectedStudentId || dates.length === 0) {
+      return;
+    }
+
+    setLoadingSlotCounts(true);
+    const newDatesWithSlots = new Map(datesWithSlots);
+    const newCheckedDates = new Set(checkedDates);
+
+    try {
+      // Load in batches (7 days at a time) to optimize API calls
+      const batchSize = 7;
+      for (let i = 0; i < dates.length; i += batchSize) {
+        const batch = dates.slice(i, i + batchSize);
+
+        // Load all dates in the batch in parallel
+        const results = await Promise.all(
+          batch.map(async (date) => {
+            try {
+              const dateStr = formatDateToYYYYMMDD(date);
+              
+              // Skip if already checked
+              if (newCheckedDates.has(dateStr)) {
+                return {
+                  dateStr,
+                  slotCount: newDatesWithSlots.get(dateStr) || 0,
+                };
+              }
+
+              // Load all slots for this date
+              const allItems = await branchSlotService.getAllAvailableSlotsForStudent(
+                selectedStudentId,
+                {
+                  date: date,
+                  pageSize: 100,
+                }
+              );
+
+              // Filter slots by date (same logic as fetchSlots)
+              const dateOnly = new Date(date);
+              dateOnly.setHours(0, 0, 0, 0);
+              const dayOfWeek = dateOnly.getDay();
+
+              const validSlots = allItems.filter((slot) => {
+                if (slot.date) {
+                  try {
+                    const slotDate = new Date(slot.date);
+                    slotDate.setHours(0, 0, 0, 0);
+                    
+                    const slotDateOnly = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate());
+                    const checkDateOnly = new Date(dateOnly.getFullYear(), dateOnly.getMonth(), dateOnly.getDate());
+                    
+                    return slotDateOnly.getTime() === checkDateOnly.getTime();
+                  } catch {
+                    // Fall through to weekDate check
+                  }
+                }
+                
+                if (slot.weekDate !== undefined && slot.weekDate !== null) {
+                  return dayOfWeek === slot.weekDate;
+                }
+                
+                return true;
+              });
+
+              return {
+                dateStr,
+                slotCount: validSlots.length,
+              };
+            } catch (err) {
+              // Ignore errors for individual date checks
+              console.debug('Error checking date:', date, err);
+              return {
+                dateStr: formatDateToYYYYMMDD(date),
+                slotCount: 0,
+              };
+            }
+          })
+        );
+
+        // Update maps
+        results.forEach((result) => {
+          if (result) {
+            newCheckedDates.add(result.dateStr);
+            newDatesWithSlots.set(result.dateStr, result.slotCount);
+          }
+        });
+
+        // Update state after each batch
+        setDatesWithSlots(new Map(newDatesWithSlots));
+        setCheckedDates(new Set(newCheckedDates));
+      }
+    } catch (error) {
+      console.error('Error loading slot counts:', error);
+    } finally {
+      setLoadingSlotCounts(false);
+    }
+  }, [selectedStudentId, datesWithSlots, checkedDates, formatDateToYYYYMMDD]);
+
+  // Load slot counts when month changes
+  useEffect(() => {
+    if (selectedStudentId && getAvailableDates.length > 0) {
+      // Only load dates that haven't been checked yet
+      const uncheckedDates = getAvailableDates.filter((date) => {
+        const dateStr = formatDateToYYYYMMDD(date);
+        return !checkedDates.has(dateStr);
+      });
+
+      if (uncheckedDates.length > 0) {
+        loadSlotCountsForMonth(uncheckedDates);
+      }
+    }
+  }, [selectedStudentId, getAvailableDates, checkedDates, loadSlotCountsForMonth, formatDateToYYYYMMDD]);
+
   // Check if date has slots
   const dateHasSlots = useCallback((date: Date) => {
-    const day = date.getDay();
-    const normalizedDay = day === 0 ? 0 : day;
-    const daySlots = groupedSlots[normalizedDay as WeekdayKey] || [];
-    return daySlots.length > 0;
-  }, [groupedSlots]);
+    const dateStr = formatDateToYYYYMMDD(date);
+    const count = datesWithSlots.get(dateStr);
+    return count !== undefined && count > 0;
+  }, [datesWithSlots, formatDateToYYYYMMDD]);
+
+  // Get slot count for date
+  const getSlotCountForDate = useCallback((date: Date): number => {
+    const dateStr = formatDateToYYYYMMDD(date);
+    return datesWithSlots.get(dateStr) || 0;
+  }, [datesWithSlots, formatDateToYYYYMMDD]);
 
   // Handle date change
   const handleDateChange = (event: any, date?: Date) => {
     setShowDatePicker(false);
     if (date) {
-      setSelectedDate(date);
+      // Normalize date về 00:00:00 để đảm bảo consistency
+      const normalizedDate = new Date(date);
+      normalizedDate.setHours(0, 0, 0, 0);
+      setSelectedDate(normalizedDate);
+      
       const now = new Date();
       const currentMonday = new Date(now);
       const daysFromMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
       currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
       currentMonday.setHours(0, 0, 0, 0);
       
-      const selectedMonday = new Date(date);
-      const selectedDaysFromMonday = date.getDay() === 0 ? 6 : date.getDay() - 1;
+      const selectedMonday = new Date(normalizedDate);
+      const selectedDaysFromMonday = normalizedDate.getDay() === 0 ? 6 : normalizedDate.getDay() - 1;
       selectedMonday.setDate(selectedMonday.getDate() - selectedDaysFromMonday);
       selectedMonday.setHours(0, 0, 0, 0);
       
@@ -532,15 +706,19 @@ const SelectSlotScreen: React.FC = () => {
   };
 
   const handleDateSelect = (date: Date) => {
-    setSelectedDate(date);
+    // Normalize date về 00:00:00 để đảm bảo consistency
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(0, 0, 0, 0);
+    setSelectedDate(normalizedDate);
+    
     const now = new Date();
     const currentMonday = new Date(now);
     const daysFromMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
     currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
     currentMonday.setHours(0, 0, 0, 0);
     
-    const selectedMonday = new Date(date);
-    const selectedDaysFromMonday = date.getDay() === 0 ? 6 : date.getDay() - 1;
+    const selectedMonday = new Date(normalizedDate);
+    const selectedDaysFromMonday = normalizedDate.getDay() === 0 ? 6 : normalizedDate.getDay() - 1;
     selectedMonday.setDate(selectedMonday.getDate() - selectedDaysFromMonday);
     selectedMonday.setHours(0, 0, 0, 0);
     
@@ -1209,7 +1387,7 @@ const SelectSlotScreen: React.FC = () => {
                   {hasSlots && (
                     <View style={styles.dayItemBadge}>
                       <Text style={styles.dayItemBadgeText}>
-                        {groupedSlots[date.getDay() === 0 ? 0 : date.getDay() as WeekdayKey]?.length || 0}
+                        {getSlotCountForDate(date)}
                       </Text>
                     </View>
                   )}
