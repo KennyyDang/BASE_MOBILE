@@ -324,6 +324,8 @@ export type RootStackParamList = {
     studentId?: string;
     initialDate?: string;
   };
+  BulkBook: { studentId?: string; branchSlotId?: string } | undefined;
+  Services: { studentId?: string; hideStudentSelector?: boolean } | undefined;
   StudentGuardians: {
     studentId: string;
     studentName: string;
@@ -342,7 +344,6 @@ export type MainTabParamList = {
   Schedule: undefined;
   BookedClasses: { initialDate?: string; studentId?: string } | undefined;
   Profile: undefined;
-  Services: undefined;
 };
 
 export type StaffTabParamList = {

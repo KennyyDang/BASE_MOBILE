@@ -206,6 +206,17 @@ export interface BookMultipleSlotsResponse {
   }>;
 }
 
+export interface BookBulkStudentSlotRequest {
+  studentId: string;
+  packageSubscriptionId: string;
+  branchSlotId: string;
+  roomId?: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  weekDates: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>;
+  parentNote?: string; // max 1000 chars (server-side)
+}
+
 export interface StudentSlotStaffResponse {
   staffId: string;
   staffName: string;

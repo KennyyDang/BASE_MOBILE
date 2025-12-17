@@ -1,5 +1,5 @@
 import axiosInstance from '../config/axios.config';
-import { BookStudentSlotRequest, BookStudentSlotResponse, BookMultipleSlotsRequest, BookMultipleSlotsResponse, StudentSlotResponse, PaginatedResponse } from '../types/api';
+import { BookStudentSlotRequest, BookStudentSlotResponse, BookMultipleSlotsRequest, BookMultipleSlotsResponse, BookBulkStudentSlotRequest, StudentSlotResponse, PaginatedResponse } from '../types/api';
 
 class StudentSlotService {
   /**
@@ -132,6 +132,23 @@ class StudentSlotService {
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to book multiple slots';
+    }
+  }
+
+  /**
+   * Bulk book slots for a student in a date range and selected weekdays
+   * Endpoint: POST /api/StudentSlot/bulk-book
+   */
+  async bulkBookSlots(payload: BookBulkStudentSlotRequest): Promise<StudentSlotResponse[]> {
+    try {
+      const response = await axiosInstance.post<StudentSlotResponse[]>('/api/StudentSlot/bulk-book', payload);
+      // Some backends may wrap the result in { data: [...] }
+      const data: any = response.data as any;
+      if (Array.isArray(data)) return data;
+      if (data?.data && Array.isArray(data.data)) return data.data;
+      return [];
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to bulk book slots';
     }
   }
 

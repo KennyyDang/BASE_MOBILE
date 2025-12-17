@@ -67,9 +67,11 @@ import BookedClassesScreen from '../screens/main/BookedClassesScreen';
 import OrderHistoryScreen from '../screens/main/OrderHistoryScreen';
 import OrderDetailScreen from '../screens/main/OrderDetailScreen';
 import PurchaseServiceScreen from '../screens/main/PurchaseServiceScreen';
+import ServicesScreen from '../screens/main/ServicesScreen';
 import RegisterChildScreen from '../screens/main/RegisterChildScreen';
 import ClassDetailScreen from '../screens/main/ClassDetailScreen';
 import SelectSlotScreen from '../screens/main/SelectSlotScreen';
+import BulkBookScreen from '../screens/main/BulkBookScreen';
 import StudentGuardiansScreen from '../screens/staff/StudentGuardiansScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 import BadgeIcon from '../components/BadgeIcon';
@@ -735,11 +737,27 @@ const AppNavigator = () => {
               }}
             />
             <Stack.Screen
+              name="Services"
+              component={ServicesScreen}
+              options={{
+                title: 'Dịch vụ bổ sung',
+                headerTitle: 'Dịch vụ bổ sung',
+              }}
+            />
+            <Stack.Screen
               name="SelectSlot"
               component={SelectSlotScreen}
               options={{
                 title: 'Chọn slot',
                 headerTitle: 'Chọn slot',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="BulkBook"
+              component={BulkBookScreen}
+              options={{
+                title: 'Đặt lịch hàng loạt',
                 headerShown: false,
               }}
             />

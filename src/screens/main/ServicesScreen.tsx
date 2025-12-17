@@ -16,7 +16,7 @@ import {
   Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from '../../types';
 import serviceService from '../../services/serviceService';
@@ -45,10 +45,12 @@ const FONTS = {
   },
 };
 
-type ServicesNavigationProp = BottomTabNavigationProp<MainTabParamList, 'Services'>;
+// Screen có thể được mở từ Stack, nhưng vẫn dùng navigation any để không phụ thuộc Tab param.
+type ServicesNavigationProp = BottomTabNavigationProp<any, any>;
 
 const ServicesScreen: React.FC = () => {
   const navigation = useNavigation<ServicesNavigationProp>();
+  const route = useRoute<any>();
   const { students, loading: studentsLoading } = useMyChildren();
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [addOns, setAddOns] = useState<AddOnService[]>([]);
@@ -145,10 +147,17 @@ const ServicesScreen: React.FC = () => {
     if (students.length > 0) {
       // Nếu chưa chọn học sinh nào hoặc học sinh đã chọn không còn trong danh sách
       if (!selectedStudentId || !students.find(s => s.id === selectedStudentId)) {
-        setSelectedStudentId(students[0].id);
+        const routeStudentId = route?.params?.studentId as string | undefined;
+        if (routeStudentId && students.find(s => s.id === routeStudentId)) {
+          setSelectedStudentId(routeStudentId);
+        } else {
+          setSelectedStudentId(students[0].id);
+        }
       }
     }
-  }, [students, selectedStudentId]);
+  }, [students, selectedStudentId, route?.params?.studentId]);
+
+  const hideStudentSelector = !!route?.params?.hideStudentSelector;
 
   useEffect(() => {
     if (selectedStudentId) {
@@ -312,8 +321,8 @@ const ServicesScreen: React.FC = () => {
           </Text>
         </View>
 
-        {/* Student Selector */}
-        {students.length > 0 && (
+        {/* Student Selector (ẩn khi đi từ flow book lịch) */}
+        {!hideStudentSelector && students.length > 0 && (
           <View style={styles.studentSelectorContainer}>
             <Text style={styles.studentSelectorLabel}>
               Chọn học sinh ({students.length}):
