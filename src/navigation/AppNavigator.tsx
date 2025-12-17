@@ -67,6 +67,7 @@ import BookedClassesScreen from '../screens/main/BookedClassesScreen';
 import OrderHistoryScreen from '../screens/main/OrderHistoryScreen';
 import OrderDetailScreen from '../screens/main/OrderDetailScreen';
 import PurchaseServiceScreen from '../screens/main/PurchaseServiceScreen';
+import ServicesScreen from '../screens/main/ServicesScreen';
 import RegisterChildScreen from '../screens/main/RegisterChildScreen';
 import ClassDetailScreen from '../screens/main/ClassDetailScreen';
 import SelectSlotScreen from '../screens/main/SelectSlotScreen';
@@ -732,6 +733,14 @@ const AppNavigator = () => {
               options={{
                 title: 'Mua dịch vụ bổ sung',
                 headerTitle: 'Mua dịch vụ bổ sung',
+              }}
+            />
+            <Stack.Screen
+              name="Services"
+              component={ServicesScreen}
+              options={{
+                title: 'Dịch vụ bổ sung',
+                headerTitle: 'Dịch vụ bổ sung',
               }}
             />
             <Stack.Screen

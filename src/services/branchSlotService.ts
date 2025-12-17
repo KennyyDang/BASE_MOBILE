@@ -45,28 +45,58 @@ class BranchSlotService {
    * @param studentId Student ID (UUID)
    * @param pageIndex Page number (1-based)
    * @param pageSize Number of items per page
-   * @param date Optional date filter (Date object or YYYY-MM-DD string)
+   * @param dateOrFilters Optional date filter (Date object or YYYY-MM-DD string) OR filters object
    * @returns Paginated response with available branch slots (includes rooms with staff)
    */
   async getAvailableSlotsForStudent(
     studentId: string,
     pageIndex: number = 1,
     pageSize: number = 20,
-    date?: Date | string | null
+    dateOrFilters?:
+      | Date
+      | string
+      | null
+      | {
+          date?: Date | string | null;
+          startDate?: Date | string | null;
+          endDate?: Date | string | null;
+          timeframeId?: string | null;
+          slotTypeId?: string | null;
+          weekDate?: number | null;
+        }
   ): Promise<PaginatedResponse<BranchSlotResponse>> {
     try {
       const params: any = {
         pageIndex: pageIndex.toString(),
         pageSize: pageSize.toString(),
       };
-      
-      // Add date parameter if provided (format as YYYY-MM-DD)
+
+      const filters =
+        typeof dateOrFilters === 'object' && dateOrFilters !== null && !(dateOrFilters instanceof Date)
+          ? dateOrFilters
+          : null;
+      const date = filters ? filters.date : (dateOrFilters as Date | string | null | undefined);
+
+      // Existing priority param (date)
       if (date) {
         const dateStr = extractDateString(date);
-        if (dateStr) {
-          params.date = dateStr;
-        }
+        if (dateStr) params.date = dateStr;
       }
+
+      // New range params (optional)
+      if (filters?.startDate) {
+        const startStr = extractDateString(filters.startDate);
+        if (startStr) params.startDate = startStr;
+      }
+      if (filters?.endDate) {
+        const endStr = extractDateString(filters.endDate);
+        if (endStr) params.endDate = endStr;
+      }
+
+      // Other optional filters (existing/unchanged)
+      if (filters?.timeframeId) params.timeframeId = filters.timeframeId;
+      if (filters?.slotTypeId) params.slotTypeId = filters.slotTypeId;
+      if (typeof filters?.weekDate === 'number') params.weekDate = String(filters.weekDate);
       
       const response = await axiosInstance.get<PaginatedResponse<BranchSlotResponse>>(
         `/api/BranchSlot/available-for-student/${studentId}`,

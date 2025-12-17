@@ -130,6 +130,24 @@ const formatDateDisplay = (date: Date): string => {
   return `${day}/${month}/${year}`;
 };
 
+const formatDateYMD = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const isSameSlotSignature = (a: BranchSlotResponse, b: BranchSlotResponse): boolean => {
+  const aTimeframeId = a.timeframe?.id || null;
+  const bTimeframeId = b.timeframe?.id || null;
+  const aSlotTypeId = a.slotType?.id || null;
+  const bSlotTypeId = b.slotType?.id || null;
+  const aBranchId = a.branch?.id || null;
+  const bBranchId = b.branch?.id || null;
+
+  return aTimeframeId === bTimeframeId && aSlotTypeId === bSlotTypeId && aBranchId === bBranchId;
+};
+
 const formatDateShort = (date: Date): string => {
   const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
   const day = date.getDay();
@@ -206,15 +224,19 @@ const SelectSlotScreen: React.FC = () => {
   const [selectedTimeframe, setSelectedTimeframe] = useState<string | null>(null);
   const [showStudentPicker, setShowStudentPicker] = useState(false);
   const dateScrollViewRef = useRef<ScrollView>(null);
-  
-  // Multiple booking states
-  const [selectedSlotsForMultiple, setSelectedSlotsForMultiple] = useState<Record<string, {
-    slot: BranchSlotResponse;
-    roomId: string;
-    date: string;
-    parentNote?: string;
-  }>>({});
-  const [bookingMultiple, setBookingMultiple] = useState(false);
+
+  // Bulk booking (new flow)
+  const [bulkModalVisible, setBulkModalVisible] = useState(false);
+  const [bulkTargetSlot, setBulkTargetSlot] = useState<BranchSlotResponse | null>(null);
+  const [bulkRoomId, setBulkRoomId] = useState<string | null>(null);
+  const [bulkUseSelectedRoom, setBulkUseSelectedRoom] = useState<boolean>(false);
+  const [bulkStartDate, setBulkStartDate] = useState<Date>(new Date());
+  const [bulkEndDate, setBulkEndDate] = useState<Date>(new Date());
+  const [bulkWeekDates, setBulkWeekDates] = useState<Set<WeekdayKey>>(new Set());
+  const [bulkParentNote, setBulkParentNote] = useState<string>('');
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [showBulkStartPicker, setShowBulkStartPicker] = useState(false);
+  const [showBulkEndPicker, setShowBulkEndPicker] = useState(false);
   
   // Cache số lượng slot cho từng ngày (date string -> count)
   const [datesWithSlots, setDatesWithSlots] = useState<Map<string, number>>(new Map());
@@ -359,38 +381,8 @@ const SelectSlotScreen: React.FC = () => {
           }
         );
 
-        // Filter slots by date (similar to web's logic)
-        // Check if slot.date matches selectedDate, or if slot.weekDate matches selectedDate's weekday
-        const selectedDateOnly = new Date(selectedDate);
-        selectedDateOnly.setHours(0, 0, 0, 0);
-        const selectedDayOfWeek = selectedDateOnly.getDay(); // 0 = Sunday, 1 = Monday, etc.
-
-        const validSlots = allItems.filter((slot) => {
-          // If slot has specific date, check if it matches
-          if (slot.date) {
-            try {
-              const slotDate = new Date(slot.date);
-              slotDate.setHours(0, 0, 0, 0);
-              
-              const slotDateOnly = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate());
-              const checkDateOnly = new Date(selectedDateOnly.getFullYear(), selectedDateOnly.getMonth(), selectedDateOnly.getDate());
-              
-              return slotDateOnly.getTime() === checkDateOnly.getTime();
-            } catch {
-              // If date parsing fails, fall through to weekDate check
-            }
-          }
-          
-          // If slot doesn't have specific date, check if weekDate matches
-          if (slot.weekDate !== undefined && slot.weekDate !== null) {
-            const slotWeekDay = slot.weekDate;
-            // Normalize: web uses 0-6 where 0=Sunday, mobile uses same
-            return selectedDayOfWeek === slotWeekDay;
-          }
-          
-          // If no date restriction, include the slot
-          return true;
-        });
+        // API đã filter theo date rồi => dùng trực tiếp để tránh filter thừa làm sai số lượng
+        const validSlots = allItems;
 
         setSlots(validSlots);
         setPagination({
@@ -399,6 +391,19 @@ const SelectSlotScreen: React.FC = () => {
           totalCount: validSlots.length,
           pageSize: validSlots.length,
           hasNextPage: false,
+        });
+
+        // Update badge count ngay khi nhận data (để thanh lịch tự hiện số, không cần bấm từng ngày)
+        const dateStr = formatDateToYYYYMMDD(selectedDate);
+        setDatesWithSlots((prev) => {
+          const updated = new Map(prev);
+          updated.set(dateStr, validSlots.length);
+          return updated;
+        });
+        setCheckedDates((prev) => {
+          const updated = new Set(prev);
+          updated.add(dateStr);
+          return updated;
         });
       } catch (error: any) {
         const message =
@@ -424,21 +429,8 @@ const SelectSlotScreen: React.FC = () => {
   useEffect(() => {
     if (selectedStudentId && selectedDate) {
       fetchSlots({ page: 1 });
-      
-      // Update slot count for selected date after fetching
-      const dateStr = formatDateToYYYYMMDD(selectedDate);
-      setDatesWithSlots((prev) => {
-        const updated = new Map(prev);
-        updated.set(dateStr, slots.length);
-        return updated;
-      });
-      setCheckedDates((prev) => {
-        const updated = new Set(prev);
-        updated.add(dateStr);
-        return updated;
-      });
     }
-  }, [selectedStudentId, selectedDate, fetchSlots, formatDateToYYYYMMDD]);
+  }, [selectedStudentId, selectedDate, fetchSlots]);
 
   // Update slot count when slots change
   useEffect(() => {
@@ -590,36 +582,10 @@ const SelectSlotScreen: React.FC = () => {
                 }
               );
 
-              // Filter slots by date (same logic as fetchSlots)
-              const dateOnly = new Date(date);
-              dateOnly.setHours(0, 0, 0, 0);
-              const dayOfWeek = dateOnly.getDay();
-
-              const validSlots = allItems.filter((slot) => {
-                if (slot.date) {
-                  try {
-                    const slotDate = new Date(slot.date);
-                    slotDate.setHours(0, 0, 0, 0);
-                    
-                    const slotDateOnly = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate());
-                    const checkDateOnly = new Date(dateOnly.getFullYear(), dateOnly.getMonth(), dateOnly.getDate());
-                    
-                    return slotDateOnly.getTime() === checkDateOnly.getTime();
-                  } catch {
-                    // Fall through to weekDate check
-                  }
-                }
-                
-                if (slot.weekDate !== undefined && slot.weekDate !== null) {
-                  return dayOfWeek === slot.weekDate;
-                }
-                
-                return true;
-              });
-
               return {
                 dateStr,
-                slotCount: validSlots.length,
+                // API đã filter theo date => dùng trực tiếp length
+                slotCount: Array.isArray(allItems) ? allItems.length : 0,
               };
             } catch (err) {
               // Ignore errors for individual date checks
@@ -797,246 +763,238 @@ const SelectSlotScreen: React.FC = () => {
     });
   }, []);
 
-  // Toggle slot selection for multiple booking
-  const handleToggleSlotSelection = useCallback((slot: BranchSlotResponse, checkDate?: Date) => {
-    const slotDate = checkDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
-    const bookedSlot = isSlotBooked(slot, slotDate);
-    const cancelledSlot = getCancelledSlot(slot, slotDate);
-    
-    // Không cho chọn slot đã đặt
-    if (bookedSlot && !cancelledSlot) {
-      Alert.alert('Thông báo', 'Slot này đã được đặt rồi.');
-      return;
-    }
-
-    const entry = slotRoomsState[slot.id];
-    const roomsFromSlot = slot.rooms || [];
-    
-    if (!entry || roomsFromSlot.length === 0) {
-      Alert.alert('Thông báo', 'Vui lòng mở danh sách phòng và chọn phòng trước khi chọn slot.');
-      return;
-    }
-
-    if (!entry.selectedRoomId) {
-      Alert.alert('Thông báo', 'Vui lòng chọn phòng trước khi chọn slot.');
-      return;
-    }
-
-    const slotKey = `${slot.id}_${computeSlotDateISO(slot, weekOffset)}`;
-    
-    setSelectedSlotsForMultiple((prev) => {
-      if (prev[slotKey]) {
-        // Bỏ chọn
-        const newState = { ...prev };
-        delete newState[slotKey];
-        return newState;
-      } else {
-        // Chọn
-        return {
-          ...prev,
-          [slotKey]: {
-            slot,
-            roomId: entry.selectedRoomId!,
-            date: computeSlotDateISO(slot, weekOffset),
-            parentNote: entry.parentNote?.trim() || undefined,
-          },
-        };
+  const openBulkBooking = useCallback(
+    (slot: BranchSlotResponse) => {
+      if (!selectedStudentId) {
+        Alert.alert('Thông báo', 'Vui lòng chọn con trước khi đặt lịch.');
+        return;
       }
-    });
-  }, [slotRoomsState, weekOffset, isSlotBooked, getCancelledSlot]);
 
-  // Select/Deselect all available slots
-  const handleSelectAllSlots = useCallback(() => {
-    const availableSlots: Record<string, {
-      slot: BranchSlotResponse;
-      roomId: string;
-      date: string;
-      parentNote?: string;
-    }> = {};
-
-    // Lấy tất cả slot có thể chọn được
-    getSlotsForSelectedDate.forEach((slot) => {
-      const slotDate = selectedDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
-      const bookedSlot = isSlotBooked(slot, slotDate);
-      const cancelledSlot = getCancelledSlot(slot, slotDate);
-      
-      // Chỉ chọn slot chưa đặt hoặc đã hủy
-      if (bookedSlot && !cancelledSlot) {
+      const packageSubscriptionId = resolvePackageSubscriptionId(slot);
+      if (!packageSubscriptionId) {
+        Alert.alert(
+          'Thiếu thông tin gói học',
+          'Không tìm được gói đã đăng ký phù hợp với slot này. Vui lòng kiểm tra lại gói của con hoặc liên hệ trung tâm.'
+        );
         return;
       }
 
       const entry = slotRoomsState[slot.id];
-      const roomsFromSlot = slot.rooms || [];
-      
-      // Chỉ chọn slot đã chọn phòng
-      if (!entry || roomsFromSlot.length === 0 || !entry.selectedRoomId) {
-        return;
-      }
+      setBulkTargetSlot(slot);
+      setBulkRoomId(entry?.selectedRoomId || null);
+      // Mặc định: không khóa phòng để backend auto-assign theo từng ngày (tránh chỉ đặt được 1 buổi)
+      setBulkUseSelectedRoom(false);
+      setBulkStartDate(new Date());
+      setBulkEndDate(new Date());
+      setBulkWeekDates(new Set<WeekdayKey>([normalizeWeekDate(slot.weekDate)]));
+      setBulkParentNote('');
+      setBulkModalVisible(true);
+    },
+    [resolvePackageSubscriptionId, selectedStudentId, slotRoomsState]
+  );
 
-      const slotKey = `${slot.id}_${computeSlotDateISO(slot, weekOffset)}`;
-      
-      // Kiểm tra package subscription
-      const packageSubscriptionId = resolvePackageSubscriptionId(slot);
-      if (!packageSubscriptionId) {
-        return;
-      }
-
-      availableSlots[slotKey] = {
-        slot,
-        roomId: entry.selectedRoomId,
-        date: computeSlotDateISO(slot, weekOffset),
-        parentNote: entry.parentNote?.trim() || undefined,
-      };
+  const toggleBulkWeekDate = useCallback((day: WeekdayKey) => {
+    setBulkWeekDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
     });
+  }, []);
 
-    if (Object.keys(availableSlots).length === 0) {
-      Alert.alert('Thông báo', 'Không có slot nào có thể chọn. Vui lòng chọn phòng cho các slot trước.');
+  const submitBulkBooking = useCallback(async () => {
+    if (!selectedStudentId || !bulkTargetSlot) return;
+
+    const packageSubscriptionId = resolvePackageSubscriptionId(bulkTargetSlot);
+    if (!packageSubscriptionId) {
+      Alert.alert('Thiếu thông tin gói học', 'Không tìm được gói đã đăng ký phù hợp.');
       return;
     }
 
-    setSelectedSlotsForMultiple((prev) => {
-      // Kiểm tra xem tất cả slot có thể chọn đã được chọn chưa
-      const allSelected = Object.keys(availableSlots).every(key => prev[key]);
-      
-      if (allSelected) {
-        // Bỏ chọn tất cả slot hiện tại
-        const newState = { ...prev };
-        Object.keys(availableSlots).forEach(key => {
-          delete newState[key];
-        });
-        return newState;
-      } else {
-        // Chọn tất cả slot có thể chọn
-        return {
-          ...prev,
-          ...availableSlots,
-        };
-      }
-    });
-  }, [getSlotsForSelectedDate, selectedDate, weekOffset, slotRoomsState, isSlotBooked, getCancelledSlot, resolvePackageSubscriptionId]);
+    const start = new Date(bulkStartDate);
+    const end = new Date(bulkEndDate);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
 
-  // Book multiple slots
-  const handleBookMultipleSlots = useCallback(async () => {
-    if (!selectedStudentId) {
-      Alert.alert('Thông báo', 'Vui lòng chọn con trước khi đặt lịch.');
+    if (start.getTime() > end.getTime()) {
+      Alert.alert('Thông báo', 'Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.');
       return;
     }
 
-    const selectedSlotsArray = Object.values(selectedSlotsForMultiple);
-    if (selectedSlotsArray.length === 0) {
-      Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một slot để đặt lịch.');
+    if (bulkWeekDates.size === 0) {
+      Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một thứ trong tuần.');
       return;
     }
 
-    // Validate tất cả slots có packageSubscriptionId
-    const slotsWithPackage = selectedSlotsArray.map((item) => {
-      const packageSubscriptionId = resolvePackageSubscriptionId(item.slot);
-      if (!packageSubscriptionId) {
-        return null;
-      }
-      return {
-        ...item,
+    const note = bulkParentNote.trim();
+    if (note.length > 1000) {
+      Alert.alert('Thông báo', 'Ghi chú tối đa 1000 ký tự.');
+      return;
+    }
+
+    setBulkSubmitting(true);
+    try {
+      const weekDatesArr = Array.from(bulkWeekDates.values()).sort((a, b) => a - b);
+      const basePayload = {
+        studentId: selectedStudentId,
         packageSubscriptionId,
+        roomId: bulkUseSelectedRoom ? (bulkRoomId || undefined) : undefined,
+        startDate: formatDateYMD(start),
+        endDate: formatDateYMD(end),
+        parentNote: note || undefined,
       };
-    });
 
-    const invalidSlots = slotsWithPackage.filter(s => s === null);
-    if (invalidSlots.length > 0) {
-      Alert.alert(
-        'Thiếu thông tin gói học',
-        'Một số slot không có gói đã đăng ký phù hợp. Vui lòng kiểm tra lại gói của con hoặc liên hệ trung tâm.'
-      );
-      return;
-    }
+      // Workaround: nếu backend đang (sai) gắn branchSlotId theo 1 thứ cố định,
+      // ta tự map branchSlotId cho từng weekDate dựa trên timeframe/slotType/chi nhánh,
+      // rồi gọi bulk-book theo từng thứ để đảm bảo đặt đủ lịch.
+      const buildDateForWeekday = (weekday: WeekdayKey): Date => {
+        // dùng tuần chứa startDate
+        const d = new Date(start);
+        d.setHours(0, 0, 0, 0);
+        const day = d.getDay() as WeekdayKey;
+        const diff = (weekday - day + 7) % 7;
+        d.setDate(d.getDate() + diff);
+        return d;
+      };
 
-    // Kiểm tra tất cả slots có cùng packageSubscriptionId
-    const packageIds = new Set(slotsWithPackage.map(s => s!.packageSubscriptionId));
-    if (packageIds.size > 1) {
-      Alert.alert(
-        'Thông báo',
-        'Tất cả các slot phải sử dụng cùng một gói học. Vui lòng chọn lại các slot phù hợp.'
-      );
-      return;
-    }
+      const weekdayToBranchSlotId = new Map<WeekdayKey, string>();
+      const missingWeekdays: WeekdayKey[] = [];
+      for (const wd of weekDatesArr) {
+        // thử lấy 1 ngày đại diện của weekday trong range
+        const probe = buildDateForWeekday(wd as WeekdayKey);
+        // nếu probe vượt end thì lùi 7 ngày (vì start có thể ở cuối tuần)
+        if (probe.getTime() > end.getTime()) {
+          probe.setDate(probe.getDate() - 7);
+        }
 
-    const packageSubscriptionId = slotsWithPackage[0]!.packageSubscriptionId;
-    const slotsForRequest = slotsWithPackage.map((item) => ({
-      branchSlotId: item!.slot.id,
-      roomId: item!.roomId,
-      date: item!.date,
-      parentNote: item!.parentNote,
-    }));
+        // nếu vẫn ngoài range thì skip (không có ngày nào của weekday này trong range)
+        if (probe.getTime() < start.getTime() || probe.getTime() > end.getTime()) {
+          continue;
+        }
 
-    const slotDatesDisplay = selectedSlotsArray
-      .map((item) => {
-        const slotDate = new Date(item.date);
-        return `${WEEKDAY_LABELS[normalizeWeekDate(item.slot.weekDate)].title} - ${formatDateDisplay(slotDate)}`;
-      })
-      .join('\n');
+        try {
+          const candidates = await branchSlotService.getAllAvailableSlotsForStudent(selectedStudentId, {
+            date: probe,
+            pageSize: 200,
+          });
 
-    Alert.alert(
-      'Xác nhận đặt nhiều lịch',
-      `Bạn có chắc muốn đặt ${selectedSlotsArray.length} lịch cho con?\n\n${slotDatesDisplay}`,
-      [
-        {
-          text: 'Hủy',
-          style: 'cancel',
+          const matched = candidates.find((s) => isSameSlotSignature(s, bulkTargetSlot));
+          if (matched?.id) {
+            weekdayToBranchSlotId.set(wd as WeekdayKey, matched.id);
+          } else {
+            // Không tìm được slot "cùng khung giờ/loại/chi nhánh" cho đúng weekday này
+            missingWeekdays.push(wd as WeekdayKey);
+          }
+        } catch {
+          missingWeekdays.push(wd as WeekdayKey);
+        }
+      }
+
+      if (missingWeekdays.length > 0) {
+        const labels = missingWeekdays
+          .sort((a, b) => a - b)
+          .map((d) => WEEKDAY_LABELS[d].title)
+          .join(', ');
+        Alert.alert(
+          'Không tìm thấy slot cho một số thứ',
+          `Không tìm thấy slot tương ứng (cùng khung giờ/loại/chi nhánh) cho: ${labels}.\n\nVui lòng chọn lại slot khác hoặc thử khoảng ngày khác.`
+        );
+        return;
+      }
+
+      // Nếu map rỗng (trường hợp kỳ lạ), fallback call 1 lần như spec
+      const plannedCalls =
+        weekdayToBranchSlotId.size > 0
+          ? Array.from(weekdayToBranchSlotId.entries()).map(([wd, branchSlotId]) => ({
+              ...basePayload,
+              branchSlotId,
+              weekDates: [wd],
+            }))
+          : [
+              {
+                ...basePayload,
+                branchSlotId: bulkTargetSlot.id,
+                weekDates: weekDatesArr,
+              },
+            ];
+
+      console.log('[bulk-book] request', {
+        plannedCalls: plannedCalls.map((p) => ({
+          branchSlotId: (p as any).branchSlotId,
+          weekDates: (p as any).weekDates,
+          startDate: (p as any).startDate,
+          endDate: (p as any).endDate,
+          roomId: (p as any).roomId,
+        })),
+        // log thêm info để debug nhanh trên thiết bị
+        _ui: {
+          bulkUseSelectedRoom,
+          bulkRoomId,
+          bulkStartDate: formatDateYMD(start),
+          bulkEndDate: formatDateYMD(end),
+          bulkWeekDates: weekDatesArr,
+          slotWeekDate: bulkTargetSlot.weekDate,
         },
-        {
-          text: 'Đặt lịch',
-          onPress: async () => {
-            setBookingMultiple(true);
-            try {
-              const payload = {
-                studentId: selectedStudentId,
-                packageSubscriptionId,
-                slots: slotsForRequest,
-              };
+      });
 
-              const response = await studentSlotService.bookMultipleSlots(payload);
-              
-              // Xử lý kết quả
-              if (response.failedSlots && response.failedSlots.length > 0) {
-                const failedCount = response.failedSlots.length;
-                const successCount = selectedSlotsArray.length - failedCount;
-                const failedMessages = response.failedSlots
-                  .map((f) => `- ${formatDateDisplay(new Date(f.date))}: ${f.error}`)
-                  .join('\n');
-                
+      const results = await Promise.all(plannedCalls.map((p) => studentSlotService.bulkBookSlots(p as any)));
+      const result = results.flat();
+      console.log('[bulk-book] response count', result?.length, 'items', result);
+      Alert.alert(
+        'Thành công',
+        `Đã đặt thành công ${result.length} lịch.\n\nBa/Mẹ có muốn mua thêm đồ ăn cho bé không?`,
+        [
+          { text: 'Không', style: 'cancel' },
+          {
+            text: 'Có',
+            onPress: () => {
+              try {
+                navigation.navigate('Services' as any, {
+                  studentId: selectedStudentId,
+                  hideStudentSelector: true,
+                } as any);
+              } catch (navErr: any) {
                 Alert.alert(
-                  'Đặt lịch một phần',
-                  `Đã đặt thành công ${successCount} lịch.\n\nCó ${failedCount} lịch không đặt được:\n${failedMessages}`,
-                  [{ text: 'OK' }]
+                  'Lỗi',
+                  navErr?.message || 'Không thể chuyển sang trang Dịch vụ bổ sung. Vui lòng vào tab "Dịch vụ".'
                 );
-              } else {
-                Alert.alert('Thành công', response?.message || `Đã đặt thành công ${selectedSlotsArray.length} lịch cho con.`);
               }
-
-              // Clear selected slots
-              setSelectedSlotsForMultiple({});
-              
-              // Refresh data
-              await Promise.all([
-                fetchSubscriptions(selectedStudentId),
-                fetchSlots({ page: 1, silent: true }),
-                fetchBookedSlots(selectedStudentId),
-              ]);
-            } catch (error: any) {
-              let message =
-                error?.response?.data?.message ||
-                error?.response?.data?.error ||
-                error?.message ||
-                'Không thể đặt nhiều slot cho con. Vui lòng thử lại sau.';
-              
-              Alert.alert('Lỗi', message);
-            } finally {
-              setBookingMultiple(false);
-            }
+            },
           },
-        },
-      ]
-    );
-  }, [selectedStudentId, selectedSlotsForMultiple, resolvePackageSubscriptionId, fetchSubscriptions, fetchSlots, fetchBookedSlots, weekOffset]);
+        ]
+      );
+
+      setBulkModalVisible(false);
+
+      await Promise.all([
+        fetchSubscriptions(selectedStudentId),
+        fetchSlots({ page: 1, silent: true }),
+        fetchBookedSlots(selectedStudentId),
+      ]);
+    } catch (error: any) {
+      const message =
+        error?.message ||
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        'Không thể đặt lịch hàng loạt. Vui lòng thử lại.';
+      Alert.alert('Lỗi', message);
+    } finally {
+      setBulkSubmitting(false);
+    }
+  }, [
+    selectedStudentId,
+    bulkTargetSlot,
+    bulkRoomId,
+    bulkStartDate,
+    bulkEndDate,
+    bulkWeekDates,
+    bulkParentNote,
+    resolvePackageSubscriptionId,
+    fetchSubscriptions,
+    fetchSlots,
+    fetchBookedSlots,
+    bulkUseSelectedRoom,
+  ]);
 
   const handleBookSlot = useCallback(
     async (slot: BranchSlotResponse) => {
@@ -1408,41 +1366,6 @@ const SelectSlotScreen: React.FC = () => {
         <View style={styles.slotsContainer}>
           <View style={styles.slotsHeader}>
             <Text style={styles.slotsTitle}>Chọn slot</Text>
-            {getSlotsForSelectedDate.length > 0 && (() => {
-              // Tính số slot có thể chọn được
-              const selectableSlots = getSlotsForSelectedDate.filter((slot) => {
-                const entry = slotRoomsState[slot.id];
-                const slotDate = selectedDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
-                const bookedSlot = isSlotBooked(slot, slotDate);
-                const cancelledSlot = getCancelledSlot(slot, slotDate);
-                return entry?.selectedRoomId && (!bookedSlot || cancelledSlot) && resolvePackageSubscriptionId(slot);
-              });
-              
-              // Tính số slot đã chọn trong số các slot có thể chọn
-              const selectedCount = selectableSlots.filter((slot) => {
-                const slotKey = `${slot.id}_${computeSlotDateISO(slot, weekOffset)}`;
-                return selectedSlotsForMultiple[slotKey];
-              }).length;
-              
-              const allSelected = selectedCount === selectableSlots.length && selectableSlots.length > 0;
-              
-              return selectableSlots.length > 0 ? (
-                <TouchableOpacity
-                  style={styles.selectAllButton}
-                  onPress={handleSelectAllSlots}
-                  activeOpacity={0.7}
-                >
-                  <MaterialIcons
-                    name={allSelected ? 'check-box' : 'check-box-outline-blank'}
-                    size={20}
-                    color={COLORS.PRIMARY}
-                  />
-                  <Text style={styles.selectAllButtonText}>
-                    {allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
-                  </Text>
-                </TouchableOpacity>
-              ) : null;
-            })()}
           </View>
           
           {slotsLoading ? (
@@ -1474,10 +1397,6 @@ const SelectSlotScreen: React.FC = () => {
                 const isExpanded = roomState?.expanded ?? false;
                 const selectedRoomId = roomState?.selectedRoomId;
                 
-                const slotKey = `${slot.id}_${computeSlotDateISO(slot, weekOffset)}`;
-                const isSelectedForMultiple = !!selectedSlotsForMultiple[slotKey];
-                const canSelectForMultiple = (!bookedSlot || cancelledSlot) && roomState?.selectedRoomId;
-                
                 return (
                   <View key={slot.id} style={styles.slotCard}>
                     {/* Booked Notice */}
@@ -1486,30 +1405,6 @@ const SelectSlotScreen: React.FC = () => {
                         <MaterialIcons name="info" size={18} color={COLORS.SUCCESS} />
                         <Text style={styles.slotBookedNoticeText}>Bạn đã đặt ca này rồi</Text>
                       </View>
-                    )}
-                    
-                    {/* Multiple Selection Checkbox */}
-                    {canSelectForMultiple && (
-                      <TouchableOpacity
-                        style={[
-                          styles.slotCheckboxContainer,
-                          isSelectedForMultiple && styles.slotCheckboxContainerSelected
-                        ]}
-                        onPress={() => handleToggleSlotSelection(slot, selectedDate)}
-                        activeOpacity={0.7}
-                      >
-                        <MaterialIcons
-                          name={isSelectedForMultiple ? 'check-box' : 'check-box-outline-blank'}
-                          size={24}
-                          color={isSelectedForMultiple ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
-                        />
-                        <Text style={[
-                          styles.slotCheckboxText,
-                          isSelectedForMultiple && styles.slotCheckboxTextSelected
-                        ]}>
-                          {isSelectedForMultiple ? 'Đã chọn để đặt nhiều' : 'Chọn để đặt nhiều'}
-                        </Text>
-                      </TouchableOpacity>
                     )}
                     
                     {/* Time Section */}
@@ -1748,6 +1643,18 @@ const SelectSlotScreen: React.FC = () => {
                                 )}
                               </TouchableOpacity>
                             )}
+
+                            {(!bookedSlot || cancelledSlot) && (
+                              <TouchableOpacity
+                                style={[styles.bulkBookButton, bulkSubmitting && styles.bulkBookButtonDisabled]}
+                                onPress={() => openBulkBooking(slot)}
+                                disabled={bulkSubmitting}
+                                activeOpacity={0.85}
+                              >
+                                <MaterialIcons name="event-repeat" size={18} color={COLORS.SURFACE} />
+                                <Text style={styles.bulkBookButtonText}>Đặt lịch hàng loạt</Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
                           );
                         })()}
@@ -1760,29 +1667,6 @@ const SelectSlotScreen: React.FC = () => {
           )}
         </View>
       </ScrollView>
-
-      {/* Floating Action Button for Multiple Booking */}
-      {Object.keys(selectedSlotsForMultiple).length > 0 && (
-        <View style={styles.fabContainer}>
-          <TouchableOpacity
-            style={[styles.fabButton, bookingMultiple && styles.fabButtonDisabled]}
-            onPress={handleBookMultipleSlots}
-            disabled={bookingMultiple}
-            activeOpacity={0.8}
-          >
-            {bookingMultiple ? (
-              <ActivityIndicator size="small" color={COLORS.SURFACE} />
-            ) : (
-              <>
-                <MaterialIcons name="check-circle" size={24} color={COLORS.SURFACE} />
-                <Text style={styles.fabButtonText}>
-                  Đặt {Object.keys(selectedSlotsForMultiple).length} lịch
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
 
       {/* Student Picker Modal */}
       <Modal
@@ -1864,6 +1748,184 @@ const SelectSlotScreen: React.FC = () => {
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={handleDateChange}
           minimumDate={new Date()}
+        />
+      )}
+
+      {/* Bulk Booking Modal */}
+      <Modal
+        visible={bulkModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => !bulkSubmitting && setBulkModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.bulkModalContainer}>
+            <View style={styles.bulkModalHeader}>
+              <Text style={styles.bulkModalTitle}>Đặt lịch hàng loạt</Text>
+              <TouchableOpacity
+                onPress={() => !bulkSubmitting && setBulkModalVisible(false)}
+                style={styles.modalCloseButton}
+              >
+                <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.bulkModalContent} contentContainerStyle={{ paddingBottom: 16 }}>
+              {bulkTargetSlot ? (
+                <View style={styles.bulkInfoCard}>
+                  <Text style={styles.bulkInfoText}>
+                    Slot: {WEEKDAY_LABELS[normalizeWeekDate(bulkTargetSlot.weekDate)].title} • {formatTimeRange(bulkTargetSlot.timeframe)}
+                  </Text>
+                  <Text style={styles.bulkInfoSubText}>
+                    Phòng: {bulkUseSelectedRoom && bulkRoomId ? 'Dùng phòng đã chọn' : 'Tự xếp phòng'}
+                  </Text>
+                </View>
+              ) : null}
+
+              <Text style={styles.bulkLabel}>Phòng</Text>
+              <View style={styles.bulkRoomModeRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.bulkRoomModeButton,
+                    !bulkUseSelectedRoom && styles.bulkRoomModeButtonActive,
+                  ]}
+                  onPress={() => setBulkUseSelectedRoom(false)}
+                  disabled={bulkSubmitting}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.bulkRoomModeButtonText,
+                      !bulkUseSelectedRoom && styles.bulkRoomModeButtonTextActive,
+                    ]}
+                  >
+                    Tự xếp phòng
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.bulkRoomModeButton,
+                    bulkUseSelectedRoom && styles.bulkRoomModeButtonActive,
+                    (!bulkRoomId || bulkRoomId.length === 0) && styles.bulkRoomModeButtonDisabled,
+                  ]}
+                  onPress={() => {
+                    if (!bulkRoomId) {
+                      Alert.alert('Thông báo', 'Vui lòng chọn phòng trong slot trước nếu muốn khóa phòng.');
+                      return;
+                    }
+                    setBulkUseSelectedRoom(true);
+                  }}
+                  disabled={bulkSubmitting || !bulkRoomId}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={[
+                      styles.bulkRoomModeButtonText,
+                      bulkUseSelectedRoom && styles.bulkRoomModeButtonTextActive,
+                    ]}
+                  >
+                    Dùng phòng đã chọn
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.bulkLabel}>Khoảng ngày</Text>
+              <View style={styles.bulkRow}>
+                <TouchableOpacity
+                  style={styles.bulkDateButton}
+                  onPress={() => setShowBulkStartPicker(true)}
+                  disabled={bulkSubmitting}
+                >
+                  <Text style={styles.bulkDateButtonText}>Từ: {formatDateDisplay(bulkStartDate)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.bulkDateButton}
+                  onPress={() => setShowBulkEndPicker(true)}
+                  disabled={bulkSubmitting}
+                >
+                  <Text style={styles.bulkDateButtonText}>Đến: {formatDateDisplay(bulkEndDate)}</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.bulkLabel}>Chọn thứ</Text>
+              <View style={styles.bulkWeekdaysWrap}>
+                {WEEKDAY_ORDER.map((d) => {
+                  const selected = bulkWeekDates.has(d);
+                  return (
+                    <TouchableOpacity
+                      key={d}
+                      style={[styles.weekdayChip, selected && styles.weekdayChipSelected]}
+                      onPress={() => {
+                        toggleBulkWeekDate(d);
+                      }}
+                      disabled={bulkSubmitting}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.weekdayChipText, selected && styles.weekdayChipTextSelected]}>
+                        {WEEKDAY_LABELS[d].subtitle}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.bulkSelectedSummary}>
+                Đã chọn: {Array.from(bulkWeekDates.values())
+                  .sort((a, b) => a - b)
+                  .map((d) => WEEKDAY_LABELS[d].title)
+                  .join(', ') || 'Chưa chọn'}
+              </Text>
+
+              <Text style={styles.bulkLabel}>Ghi chú (tuỳ chọn)</Text>
+              <TextInput
+                style={styles.bulkNoteInput}
+                value={bulkParentNote}
+                onChangeText={setBulkParentNote}
+                placeholder="Nhập ghi chú cho tất cả lịch..."
+                placeholderTextColor={COLORS.TEXT_SECONDARY}
+                multiline
+                editable={!bulkSubmitting}
+                maxLength={1000}
+              />
+
+              <TouchableOpacity
+                style={[styles.bulkSubmitButton, bulkSubmitting && styles.bulkSubmitButtonDisabled]}
+                onPress={submitBulkBooking}
+                disabled={bulkSubmitting}
+                activeOpacity={0.85}
+              >
+                {bulkSubmitting ? (
+                  <ActivityIndicator color={COLORS.SURFACE} />
+                ) : (
+                  <Text style={styles.bulkSubmitButtonText}>Đặt lịch</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {showBulkStartPicker && (
+        <DateTimePicker
+          value={bulkStartDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(_, date) => {
+            setShowBulkStartPicker(false);
+            if (date) setBulkStartDate(date);
+          }}
+        />
+      )}
+
+      {showBulkEndPicker && (
+        <DateTimePicker
+          value={bulkEndDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={(_, date) => {
+            setShowBulkEndPicker(false);
+            if (date) setBulkEndDate(date);
+          }}
         />
       )}
     </SafeAreaView>
@@ -2348,6 +2410,185 @@ const styles = StyleSheet.create({
   studentPickerItemBranch: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  bulkModalContainer: {
+    backgroundColor: COLORS.SURFACE,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '85%',
+  },
+  bulkModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  bulkModalTitle: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  modalCloseButton: {
+    padding: SPACING.XS,
+  },
+  bulkModalContent: {
+    padding: SPACING.MD,
+  },
+  bulkInfoCard: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    marginBottom: SPACING.MD,
+  },
+  bulkInfoText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  bulkInfoSubText: {
+    marginTop: SPACING.XS,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  bulkLabel: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.SM,
+    marginTop: SPACING.SM,
+  },
+  bulkRow: {
+    flexDirection: 'row',
+    gap: SPACING.SM,
+  },
+  bulkRoomModeRow: {
+    flexDirection: 'row',
+    gap: SPACING.SM,
+  },
+  bulkRoomModeButton: {
+    flex: 1,
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 10,
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkRoomModeButtonActive: {
+    borderColor: COLORS.PRIMARY,
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+  },
+  bulkRoomModeButtonDisabled: {
+    opacity: 0.5,
+  },
+  bulkRoomModeButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '700',
+  },
+  bulkRoomModeButtonTextActive: {
+    color: COLORS.PRIMARY,
+  },
+  bulkDateButton: {
+    flex: 1,
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 10,
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  bulkDateButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    fontWeight: '600',
+  },
+  bulkWeekdaysWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.SM,
+    marginTop: SPACING.XS,
+  },
+  bulkSelectedSummary: {
+    marginTop: SPACING.SM,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    lineHeight: 18,
+  },
+  weekdayChip: {
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    backgroundColor: COLORS.BACKGROUND,
+  },
+  weekdayChipSelected: {
+    borderColor: COLORS.PRIMARY,
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+  },
+  weekdayChipText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    fontWeight: '600',
+  },
+  weekdayChipTextSelected: {
+    color: COLORS.PRIMARY,
+  },
+  bulkNoteInput: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 10,
+    padding: SPACING.MD,
+    color: COLORS.TEXT_PRIMARY,
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
+  bulkSubmitButton: {
+    marginTop: SPACING.LG,
+    backgroundColor: COLORS.PRIMARY,
+    borderRadius: 12,
+    paddingVertical: SPACING.MD,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkSubmitButtonDisabled: {
+    opacity: 0.7,
+  },
+  bulkSubmitButtonText: {
+    color: COLORS.SURFACE,
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '700',
+  },
+  bulkBookButton: {
+    marginTop: SPACING.MD,
+    flexDirection: 'row',
+    gap: SPACING.SM,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: SPACING.SM,
+    borderRadius: 10,
+  },
+  bulkBookButtonDisabled: {
+    opacity: 0.7,
+  },
+  bulkBookButtonText: {
+    color: COLORS.SURFACE,
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '700',
   },
   slotCheckboxContainer: {
     flexDirection: 'row',
