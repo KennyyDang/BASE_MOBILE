@@ -71,6 +71,7 @@ import ServicesScreen from '../screens/main/ServicesScreen';
 import RegisterChildScreen from '../screens/main/RegisterChildScreen';
 import ClassDetailScreen from '../screens/main/ClassDetailScreen';
 import SelectSlotScreen from '../screens/main/SelectSlotScreen';
+import BulkBookScreen from '../screens/main/BulkBookScreen';
 import StudentGuardiansScreen from '../screens/staff/StudentGuardiansScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 import BadgeIcon from '../components/BadgeIcon';
@@ -749,6 +750,14 @@ const AppNavigator = () => {
               options={{
                 title: 'Chọn slot',
                 headerTitle: 'Chọn slot',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="BulkBook"
+              component={BulkBookScreen}
+              options={{
+                title: 'Đặt lịch hàng loạt',
                 headerShown: false,
               }}
             />

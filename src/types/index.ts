@@ -324,6 +324,7 @@ export type RootStackParamList = {
     studentId?: string;
     initialDate?: string;
   };
+  BulkBook: { studentId?: string; branchSlotId?: string } | undefined;
   Services: { studentId?: string; hideStudentSelector?: boolean } | undefined;
   StudentGuardians: {
     studentId: string;
