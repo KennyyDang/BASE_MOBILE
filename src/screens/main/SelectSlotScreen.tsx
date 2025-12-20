@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useMyChildren } from '../../hooks/useChildrenApi';
@@ -196,7 +196,7 @@ type SelectSlotScreenNavigationProp = NativeStackNavigationProp<RootStackParamLi
 const SelectSlotScreen: React.FC = () => {
   const navigation = useNavigation<SelectSlotScreenNavigationProp>();
   const route = useRoute<SelectSlotScreenRouteProp>();
-  const { studentId, initialDate } = route.params || {};
+  const { studentId, initialDate, refreshData } = route.params || {};
 
   const {
     students,
@@ -224,9 +224,10 @@ const SelectSlotScreen: React.FC = () => {
   const [selectedTimeframe, setSelectedTimeframe] = useState<string | null>(null);
   const [showStudentPicker, setShowStudentPicker] = useState(false);
   const dateScrollViewRef = useRef<ScrollView>(null);
-
-  // Bulk booking moved to separate screen (BulkBook)
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  
+  // State để lưu booked slots cho ngày được chọn
+  const [bookedSlotsForSelectedDate, setBookedSlotsForSelectedDate] = useState<StudentSlotResponse[]>([]);
+  const [bookedSlotsForDateLoading, setBookedSlotsForDateLoading] = useState(false);
   
   // Cache số lượng slot cho từng ngày (date string -> count)
   const [datesWithSlots, setDatesWithSlots] = useState<Map<string, number>>(new Map());
@@ -416,38 +417,109 @@ const SelectSlotScreen: React.FC = () => {
     [selectedStudentId, selectedDate]
   );
 
+  // Fetch booked slots cho ngày được chọn
+  const fetchBookedSlotsForSelectedDate = useCallback(
+    async (studentId: string, date: Date) => {
+      setBookedSlotsForDateLoading(true);
+      try {
+        // Format date to YYYY-MM-DD
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+        
+        // Fetch booked slots cho ngày này với status "Booked"
+        const response = await studentSlotService.getStudentSlots({
+          studentId,
+          pageIndex: 1,
+          pageSize: 100,
+          date: dateStr,
+          status: 'Booked', // Lọc theo status Booked
+        });
+        
+        const items = response.items || [];
+        console.log(`Loaded ${items.length} booked slots for date ${dateStr}`);
+        setBookedSlotsForSelectedDate(items);
+      } catch (error: any) {
+        console.error('Error fetching booked slots for date:', error);
+        setBookedSlotsForSelectedDate([]);
+      } finally {
+        setBookedSlotsForDateLoading(false);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     if (selectedStudentId && selectedDate) {
       fetchSlots({ page: 1 });
+      // Fetch booked slots cho ngày được chọn
+      fetchBookedSlotsForSelectedDate(selectedStudentId, selectedDate);
     }
-  }, [selectedStudentId, selectedDate, fetchSlots]);
+  }, [selectedStudentId, selectedDate, fetchSlots, fetchBookedSlotsForSelectedDate]);
 
-  // Update slot count when slots change
+  // Format date to YYYY-MM-DD string
+  const formatDateToYYYYMMDD = useCallback((date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  // Update slot count when slots change - tính cả available và booked slots
   useEffect(() => {
-    if (selectedDate && slots.length >= 0) {
+    if (selectedDate) {
       const dateStr = formatDateToYYYYMMDD(selectedDate);
+      
+      // Đếm available slots
+      const availableCount = slots.length;
+      
+      // Đếm booked slots cho ngày này
+      const bookedCount = bookedSlotsForSelectedDate.filter((booked) => {
+        const status = (booked.status || '').toLowerCase();
+        return status === 'booked';
+      }).length;
+      
+      // Tổng số slots = available + booked
+      const totalCount = availableCount + bookedCount;
+      
       setDatesWithSlots((prev) => {
         const updated = new Map(prev);
-        updated.set(dateStr, slots.length);
+        updated.set(dateStr, totalCount);
         return updated;
       });
     }
-  }, [slots, selectedDate, formatDateToYYYYMMDD]);
+  }, [slots, bookedSlotsForSelectedDate, selectedDate, formatDateToYYYYMMDD]);
 
   useEffect(() => {
     if (slots.length > 0) {
       setSlotRoomsState((prev) => {
         const updated: Record<string, SlotRoomsStateEntry> = {};
+        let hasChanges = false;
+        
         slots.forEach((slot) => {
           const existing = prev[slot.id];
           const roomsFromSlot = slot.rooms || [];
-          updated[slot.id] = {
-            ...(existing || createDefaultSlotRoomsState()),
-            rooms: roomsFromSlot.length > 0 ? roomsFromSlot : (existing?.rooms || []),
-            selectedRoomId: existing?.selectedRoomId || roomsFromSlot[0]?.roomId || roomsFromSlot[0]?.id || null,
-          };
+          
+          // Chỉ update nếu thực sự có thay đổi
+          if (!existing) {
+            updated[slot.id] = {
+              rooms: roomsFromSlot.length > 0 ? roomsFromSlot : [],
+              pagination: null,
+              loading: false,
+              error: null,
+              expanded: false,
+              selectedRoomId: roomsFromSlot[0]?.roomId || roomsFromSlot[0]?.id || null,
+              parentNote: '',
+              bookingLoading: false,
+            };
+            hasChanges = true;
+          } else {
+            updated[slot.id] = existing;
+          }
         });
-        return updated;
+        
+        return hasChanges ? updated : prev;
       });
     }
   }, [slots]);
@@ -456,19 +528,37 @@ const SelectSlotScreen: React.FC = () => {
     async (studentId: string) => {
       setBookedSlotsLoading(true);
       try {
-        const response = await studentSlotService.getStudentSlots({
-          studentId,
-          pageIndex: 1,
-          pageSize: 100,
-          upcomingOnly: false,
-        });
-        const allSlots = response.items || [];
-        const activeSlots = allSlots.filter((slot) => {
-          const status = (slot.status || '').toLowerCase();
-          return status !== 'cancelled';
-        });
-        setBookedSlots(activeSlots);
+        let allSlots: StudentSlotResponse[] = [];
+        let pageIndex = 1;
+        let hasNextPage = true;
+        let totalPages = 1;
+
+        // Loop load tất cả pages để lấy hết tất cả booked slots
+        while (pageIndex <= totalPages && hasNextPage) {
+          const response = await studentSlotService.getStudentSlots({
+            studentId,
+            pageIndex,
+            pageSize: 500, // Tăng pageSize để load nhiều item hơn mỗi lần
+            upcomingOnly: false,
+          });
+          
+          const items = response.items || [];
+          allSlots = [...allSlots, ...items];
+          
+          // Update pagination info từ response
+          totalPages = response.totalPages || 1;
+          hasNextPage = response.hasNextPage === true; // Chỉ true nếu explicitly là true
+          pageIndex++;
+
+          // Log để debug
+          console.log(`Loaded page ${pageIndex - 1}: ${items.length} items, hasNext: ${hasNextPage}, total: ${allSlots.length}`);
+        }
+
+        // Keep all slots including cancelled ones for proper checking
+        console.log(`Total booked slots loaded: ${allSlots.length}`);
+        setBookedSlots(allSlots);
       } catch (error: any) {
+        console.error('Error fetching booked slots:', error);
         setBookedSlots([]);
       } finally {
         setBookedSlotsLoading(false);
@@ -483,23 +573,33 @@ const SelectSlotScreen: React.FC = () => {
     }
   }, [selectedStudentId, fetchBookedSlots]);
 
-  // Get slots for selected date - API đã filter theo date rồi, chỉ cần lấy tất cả slots trả về
-  const getSlotsForSelectedDate = useMemo(() => {
-    if (!selectedDate || !slots.length) return [];
-    
-    // API đã filter theo date rồi, nên tất cả slots trả về đều thuộc ngày selectedDate
-    let daySlots = slots;
-    
-    if (selectedTimeframe) {
-      daySlots = daySlots.filter((slot) => {
-        if (!slot.timeframe) return false;
-        const slotKey = slot.timeframe.id || `${slot.timeframe.startTime}-${slot.timeframe.endTime}`;
-        return slotKey === selectedTimeframe;
-      });
-    }
-    
-    return daySlots;
-  }, [selectedDate, slots, selectedTimeframe]);
+  // Force refresh dữ liệu khi cần thiết (sau khi đặt lịch hàng loạt)
+  // Loại bỏ - chỉ fetch booked slots thôi, không cần force refresh toàn bộ
+
+  // Refresh booked slots mỗi khi quay lại SelectSlotScreen (ví dụ sau khi đặt lịch hàng loạt)
+  // Detect khi quay lại từ BulkBookScreen để refresh data
+  useFocusEffect(
+    useCallback(() => {
+      // Kiểm tra xem có quay lại từ BulkBookScreen không
+      const routes = navigation.getState()?.routes;
+      const previousRoute = routes?.[routes.length - 2]; // Route trước đó
+
+      if (selectedStudentId && previousRoute?.name === 'BulkBook') {
+        // Refresh all data sau khi đặt lịch hàng loạt thành công
+        console.log('Refreshing data after bulk booking...');
+        fetchBookedSlots(selectedStudentId);
+        if (selectedDate) {
+          fetchBookedSlotsForSelectedDate(selectedStudentId, selectedDate);
+        }
+        fetchSubscriptions(selectedStudentId);
+        fetchSlots({ page: 1, silent: true });
+      }
+
+      return () => {
+        // Optional cleanup
+      };
+    }, [selectedStudentId, selectedDate, navigation, fetchBookedSlots, fetchBookedSlotsForSelectedDate, fetchSubscriptions, fetchSlots])
+  );
 
   // Get available dates for date selector: tất cả các ngày trong tháng của selectedDate
   const getAvailableDates = useMemo(() => {
@@ -525,12 +625,19 @@ const SelectSlotScreen: React.FC = () => {
     return dates;
   }, [selectedDate]);
 
-  // Format date to YYYY-MM-DD string
-  const formatDateToYYYYMMDD = useCallback((date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+  // Lấy only nearby dates (14 ngày kế tiếp) để optimize API calls
+  const getNearbyDatesForPreload = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const nearby: Date[] = [];
+    
+    // Chỉ preload 14 ngày tiếp theo thay vì cả tháng
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      nearby.push(d);
+    }
+    return nearby;
   }, []);
 
   // Load slot counts for dates in current month
@@ -607,11 +714,11 @@ const SelectSlotScreen: React.FC = () => {
     }
   }, [selectedStudentId, datesWithSlots, checkedDates, formatDateToYYYYMMDD]);
 
-  // Load slot counts when month changes
+  // Load slot counts when component mounts (chỉ load nearby dates để tối ưu)
   useEffect(() => {
-    if (selectedStudentId && getAvailableDates.length > 0) {
+    if (selectedStudentId && getNearbyDatesForPreload.length > 0) {
       // Only load dates that haven't been checked yet
-      const uncheckedDates = getAvailableDates.filter((date) => {
+      const uncheckedDates = getNearbyDatesForPreload.filter((date) => {
         const dateStr = formatDateToYYYYMMDD(date);
         return !checkedDates.has(dateStr);
       });
@@ -620,7 +727,7 @@ const SelectSlotScreen: React.FC = () => {
         loadSlotCountsForMonth(uncheckedDates);
       }
     }
-  }, [selectedStudentId, getAvailableDates, checkedDates, loadSlotCountsForMonth, formatDateToYYYYMMDD]);
+  }, [selectedStudentId, getNearbyDatesForPreload, checkedDates, loadSlotCountsForMonth, formatDateToYYYYMMDD]);
 
   // Check if date has slots
   const dateHasSlots = useCallback((date: Date) => {
@@ -683,62 +790,137 @@ const SelectSlotScreen: React.FC = () => {
     setWeekOffset(diffWeeks);
   };
 
-  // Check if slot is booked
+  // Check if slot is booked - improved version
   const isSlotBooked = useCallback(
     (slot: BranchSlotResponse, checkDate?: Date): StudentSlotResponse | null => {
-      if (!selectedStudentId || !slot.id) return null;
-      
-      // Sử dụng checkDate nếu có (thường là selectedDate), nếu không thì tính từ weekOffset
-      const slotDate = checkDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
-      // Normalize ngày về UTC để so sánh chính xác
+      // Kiểm tra nếu slot đã được đánh dấu là booked từ merge
+      if ((slot as any).isBookedSlot && (slot as any).studentSlotId) {
+        // Tìm StudentSlotResponse tương ứng từ bookedSlotsForSelectedDate
+        const bookedSlot = bookedSlotsForSelectedDate.find(
+          (b) => b.id === (slot as any).studentSlotId
+        );
+        if (bookedSlot) {
+          return bookedSlot;
+        }
+      }
+
+      if (!selectedStudentId || !slot.id || bookedSlots.length === 0) return null;
+
+      const slotDate = checkDate || selectedDate;
+      if (!slotDate) return null;
+
       const slotDateNormalized = new Date(slotDate);
       slotDateNormalized.setHours(0, 0, 0, 0);
       const slotDateStr = slotDateNormalized.toISOString().split('T')[0];
-      
-      return (
-        bookedSlots.find((booked) => {
-          if (booked.branchSlotId !== slot.id) return false;
-          if (!booked.date) return false;
-          
-          // Normalize booked date về UTC để so sánh
-          const bookedDateObj = new Date(booked.date);
-          bookedDateObj.setHours(0, 0, 0, 0);
-          const bookedDateStr = bookedDateObj.toISOString().split('T')[0];
-          
-          return bookedDateStr === slotDateStr;
-        }) || null
-      );
+
+      // Find matching booked slot
+      return bookedSlots.find((booked) => {
+        if (!booked.branchSlotId || !booked.date) return false;
+
+        const bookedDateObj = new Date(booked.date);
+        bookedDateObj.setHours(0, 0, 0, 0);
+        const bookedDateStr = bookedDateObj.toISOString().split('T')[0];
+
+        const status = (booked.status || '').toLowerCase();
+
+        return booked.branchSlotId === slot.id &&
+               bookedDateStr === slotDateStr &&
+               (status === 'booked' || status === 'confirmed' || status === 'active');
+      }) || null;
     },
-    [bookedSlots, selectedStudentId, weekOffset]
+    [selectedStudentId, bookedSlots, selectedDate, bookedSlotsForSelectedDate]
   );
 
   const getCancelledSlot = useCallback(
     (slot: BranchSlotResponse, checkDate?: Date): StudentSlotResponse | null => {
-      if (!selectedStudentId || !slot.id) return null;
-      // Sử dụng checkDate nếu có (thường là selectedDate), nếu không thì tính từ weekOffset
-      const slotDate = checkDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
-      // Normalize ngày về UTC để so sánh chính xác
+      if (!selectedStudentId || !slot.id || bookedSlots.length === 0) return null;
+
+      const slotDate = checkDate || selectedDate;
+      if (!slotDate) return null;
+
       const slotDateNormalized = new Date(slotDate);
       slotDateNormalized.setHours(0, 0, 0, 0);
       const slotDateStr = slotDateNormalized.toISOString().split('T')[0];
-      
-      return (
-        bookedSlots.find((booked) => {
-          if (booked.branchSlotId !== slot.id) return false;
-          if (!booked.date) return false;
-          
-          // Normalize booked date về UTC để so sánh
-          const bookedDateObj = new Date(booked.date);
-          bookedDateObj.setHours(0, 0, 0, 0);
-          const bookedDateStr = bookedDateObj.toISOString().split('T')[0];
-          const status = (booked.status || '').toLowerCase();
-          
-          return bookedDateStr === slotDateStr && status === 'cancelled';
-        }) || null
-      );
+
+      // Find matching cancelled slot
+      return bookedSlots.find((booked) => {
+        if (!booked.branchSlotId || !booked.date) return false;
+
+        const bookedDateObj = new Date(booked.date);
+        bookedDateObj.setHours(0, 0, 0, 0);
+        const bookedDateStr = bookedDateObj.toISOString().split('T')[0];
+
+        const status = (booked.status || '').toLowerCase();
+
+        return booked.branchSlotId === slot.id &&
+               bookedDateStr === slotDateStr &&
+               status === 'cancelled';
+      }) || null;
     },
-    [bookedSlots, selectedStudentId, weekOffset]
+    [selectedStudentId, bookedSlots, selectedDate]
   );
+
+  // Get slots for selected date - merge available slots và booked slots
+  const getSlotsForSelectedDate = useMemo(() => {
+    if (!selectedDate) return [];
+
+    // Bắt đầu với available slots
+    let allSlots: BranchSlotResponse[] = [...slots];
+
+    // Thêm booked slots vào danh sách (chuyển đổi từ StudentSlotResponse sang BranchSlotResponse format)
+    const bookedSlotItems = bookedSlotsForSelectedDate
+      .filter((booked) => {
+        // Chỉ hiển thị slots có status "Booked"
+        const status = (booked.status || '').toLowerCase();
+        return status === 'booked';
+      })
+      .map((booked): BranchSlotResponse => {
+        // Tạo BranchSlotResponse từ StudentSlotResponse
+        return {
+          id: booked.branchSlotId || '',
+          weekDate: new Date(booked.date || '').getDay(),
+          timeframe: booked.timeframe,
+          // slotType và branch không có trong StudentSlotResponse, để undefined
+          slotType: undefined,
+          branch: undefined,
+          rooms: booked.room ? [{
+            id: booked.roomId || '',
+            roomId: booked.roomId || '',
+            roomName: booked.room?.roomName || 'Phòng',
+            currentBookings: 0,
+            maxCapacity: 0,
+          }] : [],
+          // Đánh dấu đây là booked slot
+          isBookedSlot: true,
+          studentSlotId: booked.id,
+        } as any;
+      });
+
+    // Merge: loại bỏ các available slots mà đã có trong booked slots
+    const bookedBranchSlotIds = new Set(bookedSlotItems.map(b => b.id));
+    allSlots = allSlots.filter((slot) => !bookedBranchSlotIds.has(slot.id));
+    
+    // Thêm booked slots vào
+    allSlots = [...allSlots, ...bookedSlotItems];
+
+    // Lọc theo timeframe nếu có
+    if (selectedTimeframe) {
+      allSlots = allSlots.filter((slot) => {
+        if (!slot.timeframe) return false;
+        const slotKey = slot.timeframe.id || `${slot.timeframe.startTime}-${slot.timeframe.endTime}`;
+        return slotKey === selectedTimeframe;
+      });
+    }
+
+    // Sort theo thời gian
+    allSlots.sort((a, b) => {
+      const aTime = a.timeframe?.startTime || '';
+      const bTime = b.timeframe?.startTime || '';
+      return aTime.localeCompare(bTime);
+    });
+
+    return allSlots;
+  }, [selectedDate, slots, bookedSlotsForSelectedDate, selectedTimeframe]);
 
   const handleToggleRooms = useCallback((slotId: string) => {
     setSlotRoomsState((prev) => {
@@ -763,9 +945,8 @@ const SelectSlotScreen: React.FC = () => {
       }
 
       // Kiểm tra slot đã được đặt chưa - sử dụng selectedDate để đảm bảo khớp với ngày đang xem
-      const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
-      const bookedSlot = isSlotBooked(slot, slotDate);
-      const cancelledSlot = getCancelledSlot(slot, slotDate);
+      const bookedSlot = isSlotBooked(slot, selectedDate);
+      const cancelledSlot = getCancelledSlot(slot, selectedDate);
       
       if (bookedSlot && !cancelledSlot) {
         Alert.alert('Thông báo', 'Bạn đã đặt ca này rồi. Vui lòng chọn ca khác.');
@@ -794,7 +975,7 @@ const SelectSlotScreen: React.FC = () => {
         return;
       }
 
-      const slotDateDisplay = formatDateDisplay(slotDate);
+      const slotDateDisplay = formatDateDisplay(selectedDate);
       const selectedRoom = roomsFromSlot.find((room) => (room.roomId || room.id) === entry.selectedRoomId);
 
       Alert.alert(
@@ -848,10 +1029,14 @@ const SelectSlotScreen: React.FC = () => {
                   };
                 });
 
-                // Làm mới dữ liệu sau khi đặt lịch
-                fetchSubscriptions(selectedStudentId);
-                fetchSlots({ page: 1, silent: true });
+                // Làm mới dữ liệu sau khi đặt lịch - chỉ fetch booked slots, không cần fetch lại subscriptions
                 fetchBookedSlots(selectedStudentId);
+                // Fetch booked slots cho ngày hiện tại để cập nhật UI
+                if (selectedDate) {
+                  fetchBookedSlotsForSelectedDate(selectedStudentId, selectedDate);
+                }
+                // Không cần fetchSlots vì booked slots sẽ cập nhật UI đủ rồi
+                // fetchSlots({ page: 1, silent: true });
 
                 // Thử lấy ra studentSlotId từ response để chuyển sang màn mua dịch vụ bổ sung
                 try {
@@ -988,14 +1173,20 @@ const SelectSlotScreen: React.FC = () => {
   const handleRefresh = useCallback(async () => {
     setSlotsRefreshing(true);
     if (selectedStudentId) {
+      // Load booked slots trước để có data khi filter slots
+      await fetchBookedSlots(selectedStudentId);
+      // Fetch booked slots cho ngày hiện tại
+      if (selectedDate) {
+        await fetchBookedSlotsForSelectedDate(selectedStudentId, selectedDate);
+      }
+      // Sau đó load slots và subscriptions
       await Promise.all([
         fetchSlots({ page: 1, silent: true }),
         fetchSubscriptions(selectedStudentId),
-        fetchBookedSlots(selectedStudentId),
       ]);
     }
     setSlotsRefreshing(false);
-  }, [selectedStudentId, fetchSlots, fetchSubscriptions, fetchBookedSlots]);
+  }, [selectedStudentId, selectedDate, fetchSlots, fetchSubscriptions, fetchBookedSlots, fetchBookedSlotsForSelectedDate]);
 
   // Get week range for display
   const getWeekRange = useCallback((): { startDate: Date; endDate: Date; displayText: string } => {
@@ -1148,7 +1339,7 @@ const SelectSlotScreen: React.FC = () => {
               {getSlotsForSelectedDate.map((slot) => {
                 // Sử dụng selectedDate để kiểm tra slot đã đặt, đảm bảo khớp với ngày đang xem
                 const bookedSlot = isSlotBooked(slot, selectedDate);
-                const cancelledSlot = getCancelledSlot(slot);
+                const cancelledSlot = getCancelledSlot(slot, selectedDate);
                 const slotDate = selectedDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
                 const slotDateDisplay = formatDateDisplay(slotDate);
                 const roomState = slotRoomsState[slot.id];
@@ -1403,26 +1594,8 @@ const SelectSlotScreen: React.FC = () => {
                               </TouchableOpacity>
                             )}
 
-                            {(!bookedSlot || cancelledSlot) && (
-                              <TouchableOpacity
-                                style={[styles.bulkBookButton, bulkSubmitting && styles.bulkBookButtonDisabled]}
-                                onPress={() => {
-                                  try {
-                                    navigation.navigate('BulkBook' as any, {
-                                      studentId: selectedStudentId || undefined,
-                                      branchSlotId: slot.id,
-                                    } as any);
-                                  } catch (e: any) {
-                                    Alert.alert('Lỗi', e?.message || 'Không thể mở màn đặt lịch hàng loạt.');
-                                  }
-                                }}
-                                disabled={bulkSubmitting}
-                                activeOpacity={0.85}
-                              >
-                                <MaterialIcons name="event-repeat" size={18} color={COLORS.SURFACE} />
-                                <Text style={styles.bulkBookButtonText}>Đặt lịch hàng loạt</Text>
-                              </TouchableOpacity>
-                            )}
+                            {/* Bulk booking - có thể access qua deep link hoặc menu */}
+                            {/* Để test: navigation.navigate('BulkBook', { studentId: selectedStudentId, branchSlotId: slot.id, packageSubscriptionId: selectedSubscriptionId, roomId: roomState?.selectedRoomId }) */}
                           </View>
                           );
                         })()}
@@ -1519,7 +1692,29 @@ const SelectSlotScreen: React.FC = () => {
         />
       )}
 
-      {/* Bulk booking moved to `BulkBookScreen` */}
+      {/* Bulk booking FAB */}
+      <View style={styles.fabContainer}>
+        <TouchableOpacity
+          style={styles.fabButton}
+          onPress={() => {
+            if (!selectedStudentId) {
+              Alert.alert('Thông báo', 'Vui lòng chọn con trước khi đặt lịch hàng loạt.');
+              return;
+            }
+
+            navigation.navigate('BulkBook', {
+              studentId: selectedStudentId,
+              branchSlotId: slots.length > 0 ? slots[0].id : undefined,
+              packageSubscriptionId: selectedSubscriptionId || undefined,
+              roomId: undefined, // Để user chọn trong BulkBookScreen
+            });
+          }}
+          activeOpacity={0.8}
+        >
+          <MaterialIcons name="event" size={24} color={COLORS.SURFACE} />
+          <Text style={styles.fabButtonText}>Đặt lịch hàng loạt</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };

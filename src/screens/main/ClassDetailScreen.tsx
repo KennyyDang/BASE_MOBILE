@@ -545,11 +545,13 @@ const ClassDetailScreen: React.FC = () => {
                     staffInfo.role || 
                     '';
                   
+                  // Kiểm tra role có hợp lệ và không giống tên nhân viên
                   const isValidRole = staffRole && 
                     staffRole.trim() !== '' && 
                     staffRole.toLowerCase() !== 'string' &&
                     staffRole !== 'null' &&
-                    staffRole !== 'undefined';
+                    staffRole !== 'undefined' &&
+                    staffRole !== staffName; // Tránh duplicate
 
                   return (
                     <View style={styles.infoRow}>
