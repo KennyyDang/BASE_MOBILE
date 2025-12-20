@@ -61,7 +61,7 @@ type BulkBookNavProp = NativeStackNavigationProp<RootStackParamList, 'BulkBook'>
 const BulkBookScreen: React.FC = () => {
   const navigation = useNavigation<BulkBookNavProp>();
   const route = useRoute<BulkBookRouteProp>();
-  const { studentId, branchSlotId } = route.params || {};
+  const { studentId, branchSlotId, packageSubscriptionId: initialPackageSubscriptionId, roomId: initialRoomId } = route.params || {};
 
   const [startDate, setStartDate] = useState<Date>(() => {
     const d = new Date();
@@ -101,16 +101,26 @@ const BulkBookScreen: React.FC = () => {
     if (!studentId) return;
     setSlotsLoading(true);
     try {
+      // Load slots cho ngày hiện tại để hiển thị danh sách
       const allItems = await branchSlotService.getAllAvailableSlotsForStudent(studentId, {
-        date: startDate,
+        date: new Date(), // Sử dụng ngày hiện tại thay vì startDate
         pageSize: 200,
       });
       setSlots(allItems);
-      // auto set room from first slot selection
-      const initialSlot = branchSlotId ? allItems.find((s) => s.id === branchSlotId) : allItems[0];
-      if (initialSlot?.id) {
-        setSelectedSlotId(initialSlot.id);
-        const roomId = initialSlot.rooms?.[0]?.roomId || initialSlot.rooms?.[0]?.id || null;
+
+      // Nếu có branchSlotId từ params, tìm và set làm selected
+      if (branchSlotId) {
+        const targetSlot = allItems.find((s) => s.id === branchSlotId);
+        if (targetSlot) {
+          setSelectedSlotId(targetSlot.id);
+          const roomId = initialRoomId || targetSlot.rooms?.[0]?.roomId || targetSlot.rooms?.[0]?.id || null;
+          setSelectedRoomId(roomId);
+        }
+      } else if (allItems.length > 0) {
+        // Nếu không có branchSlotId, chọn slot đầu tiên
+        const firstSlot = allItems[0];
+        setSelectedSlotId(firstSlot.id);
+        const roomId = initialRoomId || firstSlot.rooms?.[0]?.roomId || firstSlot.rooms?.[0]?.id || null;
         setSelectedRoomId(roomId);
       }
     } catch (e: any) {
@@ -119,7 +129,7 @@ const BulkBookScreen: React.FC = () => {
     } finally {
       setSlotsLoading(false);
     }
-  }, [studentId, startDate, branchSlotId]);
+  }, [studentId, branchSlotId, initialRoomId]);
 
   useEffect(() => {
     loadSlots();
@@ -148,17 +158,11 @@ const BulkBookScreen: React.FC = () => {
       return;
     }
 
-    // packageSubscriptionId: hiện chưa có API lấy "active subscription" trực tiếp ở đây,
-    // nên dùng logic giống SelectSlotScreen: ưu tiên từ slot payload nếu có.
-    const slot = selectedSlot;
-    const packageSubscriptionId =
-      (slot as any)?.packageSubscriptionId ||
-      (slot as any)?.studentPackageSubscriptionId ||
-      (slot as any)?.packageSubscription?.id ||
-      null;
+    // packageSubscriptionId: ưu tiên lấy từ params được truyền từ SelectSlotScreen
+    const packageSubscriptionId = initialPackageSubscriptionId;
 
     if (!packageSubscriptionId) {
-      Alert.alert('Thiếu thông tin gói học', 'Không tìm được packageSubscriptionId từ slot. Vui lòng vào màn chọn slot và chọn gói trước.');
+      Alert.alert('Thiếu thông tin gói học', 'Không tìm được thông tin gói học. Vui lòng quay lại màn chọn slot và thử lại.');
       return;
     }
 
@@ -175,18 +179,27 @@ const BulkBookScreen: React.FC = () => {
         parentNote: trimmed || undefined,
       };
 
-      console.log('[bulk-book][screen] request', payload);
       const result = await studentSlotService.bulkBookSlots(payload as any);
-      console.log('[bulk-book][screen] response', result?.length, result);
 
-      Alert.alert('Thành công', `Đã đặt thành công ${result.length} lịch.`);
+      const bookedCount = Array.isArray(result) ? result.length : 1;
+      Alert.alert('Thành công', `Đã đặt thành công ${bookedCount} lịch.`);
+
+      // Refresh dữ liệu trước khi quay lại
+      try {
+        // Reload slots để cập nhật trạng thái (phòng đã được đặt sẽ chuyển sang "đã đặt")
+        await loadSlots();
+      } catch (e) {
+        // Bỏ qua lỗi, vẫn quay lại
+        console.debug('Error reloading slots after booking:', e);
+      }
+
       navigation.goBack();
     } catch (e: any) {
       Alert.alert('Lỗi', e?.message || 'Không thể đặt lịch hàng loạt.');
     } finally {
       setSubmitting(false);
     }
-  }, [studentId, selectedSlotId, startDate, endDate, weekDates, note, selectedSlot, useSelectedRoom, selectedRoomId, navigation]);
+  }, [studentId, selectedSlotId, startDate, endDate, weekDates, note, selectedSlot, useSelectedRoom, selectedRoomId, navigation, initialPackageSubscriptionId]);
 
   return (
     <SafeAreaView style={styles.container}>
