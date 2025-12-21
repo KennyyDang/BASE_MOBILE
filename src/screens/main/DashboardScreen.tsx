@@ -13,8 +13,8 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { CommonActions } from '@react-navigation/native';
 import { useCurrentUserWallet, useStudentWallets } from '../../hooks/useWalletApi';
 import { useMyChildren } from '../../hooks/useChildrenApi';
 import studentSlotService from '../../services/studentSlotService';
@@ -44,7 +44,7 @@ const FONTS = {
   },
 };
 
-type DashboardNavigationProp = StackNavigationProp<RootStackParamList>;
+type DashboardNavigationProp = NavigationProp<RootStackParamList>;
 
 const DashboardScreen: React.FC = () => {
   const { logout } = useAuth();
@@ -434,12 +434,16 @@ const DashboardScreen: React.FC = () => {
       case 'bookedClasses':
         (navigation as any).navigate('Main', { screen: 'BookedClasses' });
         break;
-      case 'help':
-        Alert.alert(
-          'Hỗ trợ',
-          'Liên hệ hỗ trợ:\n\n📧 Email: support@brightway.edu.vn\n📞 Hotline: 1900-xxxx\n\nHoặc đến trực tiếp trung tâm để được hỗ trợ.',
-          [{ text: 'Đóng', style: 'default' }]
-        );
+      case 'bulkBook':
+        try {
+          // Try to navigate using root navigator first
+          const rootNavigation = navigation.getParent('RootStack' as any) || navigation;
+          (rootNavigation as any).navigate('BulkBook');
+        } catch (error) {
+          console.warn('Navigation error:', error);
+          // Fallback to direct navigation with proper typing
+          (navigation as any).navigate('BulkBook');
+        }
         break;
       default:
         break;
@@ -587,28 +591,20 @@ const DashboardScreen: React.FC = () => {
               <Text style={styles.quickActionText}>Thông báo</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.quickActionCard}
-              onPress={() => handleQuickAction('subscriptions')}
+              onPress={() => handleQuickAction('bulkBook')}
             >
-              <MaterialIcons name="card-membership" size={32} color={COLORS.ACCENT} />
-              <Text style={styles.quickActionText}>Gói đăng ký</Text>
+              <MaterialIcons name="event-note" size={32} color={COLORS.WARNING} />
+              <Text style={styles.quickActionText}>Đặt lịch hàng loạt</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+
+            <TouchableOpacity
               style={styles.quickActionCard}
               onPress={() => handleQuickAction('bookedClasses')}
             >
               <MaterialIcons name="event-available" size={32} color={COLORS.SUCCESS} />
               <Text style={styles.quickActionText}>Lớp đã đặt</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.quickActionCard}
-              onPress={() => handleQuickAction('help')}
-            >
-              <MaterialIcons name="help" size={32} color={COLORS.TEXT_SECONDARY} />
-              <Text style={styles.quickActionText}>Hỗ trợ</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -174,18 +174,10 @@ const MySubscriptionsScreen: React.FC = () => {
   }, [allSubscriptions]);
 
   const canRefund = useCallback((subscription: StudentPackageSubscription): boolean => {
-    // Chỉ cho refund nếu chưa dùng slot nào (usedSlot === 0)
-    if (subscription.usedSlot !== 0) {
-      return false;
-    }
-    
-    // Nếu gói này đã bị nâng cấp lên gói mới hơn (gói cũ), không cho hoàn tiền
-    if (wasUpgradedToNewerPackage(subscription)) {
-      return false;
-    }
-    
-    return true;
-  }, [wasUpgradedToNewerPackage]);
+    // Bỏ hết ràng buộc FE, để BE quyết định logic refund
+    // Chỉ kiểm tra cơ bản: có subscription ID không
+    return !!subscription.id;
+  }, []);
 
   // Calculate total slots from subscription
   const getTotalSlots = useCallback((subscription: StudentPackageSubscription): number | null => {
@@ -211,34 +203,16 @@ const MySubscriptionsScreen: React.FC = () => {
     return null;
   }, []);
 
-  // Check if subscription can be renewed (used >= 50% of total slots)
+  // Check if subscription can be renewed - removed FE validation, let BE handle it
   const canRenew = useCallback((subscription: StudentPackageSubscription): boolean => {
-    // Chỉ cho gia hạn nếu status là ACTIVE
+    // Chỉ kiểm tra status là ACTIVE, không kiểm tra % slot đã dùng (để BE quyết định)
     const status = subscription.status?.toUpperCase();
-    if (status !== 'ACTIVE') {
-      return false;
-    }
-
-    const totalSlots = getTotalSlots(subscription);
-    if (totalSlots === null || totalSlots === 0) {
-      return false; // Không thể tính được total slots
-    }
-
-    const usedSlot = subscription.usedSlot || 0;
-    // Phải dùng được ít nhất 1 nửa slot (usedSlot >= totalSlots / 2)
-    return usedSlot >= totalSlots / 2;
-  }, [getTotalSlots]);
+    return status === 'ACTIVE';
+  }, []);
 
   const handleRenew = useCallback((subscription: StudentPackageSubscription) => {
-    if (!canRenew(subscription)) {
-      Alert.alert(
-        'Không thể gia hạn',
-        'Bạn cần sử dụng ít nhất 50% số slot trong gói hiện tại để có thể gia hạn.',
-        [{ text: 'Đóng', style: 'default' }]
-      );
-      return;
-    }
-
+    // Bỏ check canRenew để cho phép gọi API, BE sẽ validate và trả lỗi nếu không được phép gia hạn
+    
     Alert.alert(
       'Xác nhận gia hạn',
       `Bạn có chắc chắn muốn gia hạn gói "${subscription.packageName}" cho ${subscription.studentName}?`,
@@ -283,14 +257,7 @@ const MySubscriptionsScreen: React.FC = () => {
   }, [canRenew, fetchAllSubscriptions]);
 
   const handleRefund = useCallback((subscription: StudentPackageSubscription) => {
-    if (!canRefund(subscription)) {
-      Alert.alert(
-        'Không thể hoàn tiền',
-        'Gói này đã được sử dụng slot nên không thể hoàn tiền.',
-        [{ text: 'Đóng', style: 'default' }]
-      );
-      return;
-    }
+    // Bỏ check canRefund ở đây, để BE validate và trả lỗi phù hợp
 
     Alert.alert(
       'Xác nhận hoàn tiền',
