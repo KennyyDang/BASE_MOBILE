@@ -488,26 +488,32 @@ const ClassDetailScreen: React.FC = () => {
                 <View style={styles.infoIconContainer}>
                   <MaterialIcons name="calendar-today" size={18} color={COLORS.PRIMARY} />
                 </View>
-                <Text style={styles.infoLabel}>Ngày học</Text>
-                <Text style={styles.infoValue}>{formatDate(slot?.date)}</Text>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Ngày học</Text>
+                  <Text style={styles.infoValue}>{formatDate(slot?.date)}</Text>
+                </View>
               </View>
 
               <View style={styles.infoRow}>
                 <View style={styles.infoIconContainer}>
                   <MaterialIcons name="access-time" size={18} color={COLORS.PRIMARY} />
                 </View>
-                <Text style={styles.infoLabel}>Giờ học</Text>
-                <Text style={styles.infoValue}>{formatTimeRange(slot?.timeframe)}</Text>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Giờ học</Text>
+                  <Text style={styles.infoValue}>{formatTimeRange(slot?.timeframe)}</Text>
+                </View>
               </View>
 
               <View style={styles.infoRow}>
                 <View style={styles.infoIconContainer}>
                   <MaterialIcons name="meeting-room" size={18} color={COLORS.PRIMARY} />
                 </View>
-                <Text style={styles.infoLabel}>Phòng</Text>
-                <Text style={styles.infoValue}>
-                  {slot?.room?.roomName || roomDetails?.roomName || 'Chưa có'}
-                </Text>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Phòng</Text>
+                  <Text style={styles.infoValue}>
+                    {slot?.room?.roomName || roomDetails?.roomName || 'Chưa có'}
+                  </Text>
+                </View>
               </View>
 
               {/* Facility (Cơ sở) */}
@@ -516,8 +522,10 @@ const ClassDetailScreen: React.FC = () => {
                   <View style={styles.infoIconContainer}>
                     <MaterialIcons name="business" size={18} color={COLORS.PRIMARY} />
                   </View>
-                  <Text style={styles.infoLabel}>Cơ sở</Text>
-                  <Text style={styles.infoValue}>{roomDetails.facilityName}</Text>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Cơ sở</Text>
+                    <Text style={styles.infoValue}>{roomDetails.facilityName}</Text>
+                  </View>
                 </View>
               )}
 
@@ -525,7 +533,7 @@ const ClassDetailScreen: React.FC = () => {
               {(() => {
                 // Ưu tiên: slot.staffs > slot.room.staff > roomDetails.staff
                 let staffInfo = null;
-                
+
                 if (slot?.staffs && slot.staffs.length > 0) {
                   staffInfo = slot.staffs[0];
                 } else if (slot?.room?.staff) {
@@ -535,19 +543,17 @@ const ClassDetailScreen: React.FC = () => {
                 }
 
                 if (staffInfo) {
-                  const staffName = 
-                    staffInfo.staffName || 
-                    staffInfo.fullName || 
+                  const staffName =
+                    staffInfo.staffName ||
                     'Chưa có';
-                  
-                  const staffRole = 
-                    staffInfo.staffRole || 
-                    staffInfo.role || 
+
+                  const staffRole =
+                    staffInfo.staffRole ||
                     '';
-                  
+
                   // Kiểm tra role có hợp lệ và không giống tên nhân viên
-                  const isValidRole = staffRole && 
-                    staffRole.trim() !== '' && 
+                  const isValidRole = staffRole &&
+                    staffRole.trim() !== '' &&
                     staffRole.toLowerCase() !== 'string' &&
                     staffRole !== 'null' &&
                     staffRole !== 'undefined' &&
@@ -558,11 +564,13 @@ const ClassDetailScreen: React.FC = () => {
                       <View style={styles.infoIconContainer}>
                         <MaterialIcons name="person" size={18} color={COLORS.PRIMARY} />
                       </View>
-                      <Text style={styles.infoLabel}>Nhân viên quản lý ca</Text>
-                      <Text style={styles.infoValue}>
-                        {staffName}
-                        {isValidRole ? ` (${staffRole})` : ''}
-                      </Text>
+                      <View style={styles.infoContent}>
+                        <Text style={styles.infoLabel}>Nhân viên quản lý ca</Text>
+                        <Text style={styles.infoValue}>
+                          {staffName}
+                          {isValidRole ? ` (${staffRole})` : ''}
+                        </Text>
+                      </View>
                     </View>
                   );
                 }
@@ -573,8 +581,10 @@ const ClassDetailScreen: React.FC = () => {
                 <View style={styles.infoIconContainer}>
                   <MaterialIcons name="location-on" size={18} color={COLORS.PRIMARY} />
                 </View>
-                <Text style={styles.infoLabel}>Chi nhánh</Text>
-                <Text style={styles.infoValue}>{slot?.branchSlot?.branchName || 'Chưa có'}</Text>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabel}>Chi nhánh</Text>
+                  <Text style={styles.infoValue}>{slot?.branchSlot?.branchName || 'Chưa có'}</Text>
+                </View>
               </View>
 
               {/* Slot Type */}
@@ -583,10 +593,12 @@ const ClassDetailScreen: React.FC = () => {
                   <View style={styles.infoIconContainer}>
                     <MaterialIcons name="category" size={18} color={COLORS.PRIMARY} />
                   </View>
-                  <Text style={styles.infoLabel}>Loại hoạt động</Text>
-                  <Text style={styles.infoValue} numberOfLines={2}>
-                    {slot.branchSlot.slotType.name}
-                  </Text>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Loại hoạt động</Text>
+                    <Text style={styles.infoValue} numberOfLines={2}>
+                      {slot.branchSlot.slotType.name}
+                    </Text>
+                  </View>
                 </View>
               )}
 
@@ -596,8 +608,8 @@ const ClassDetailScreen: React.FC = () => {
                   <View style={styles.infoIconContainer}>
                     <MaterialIcons name="info" size={18} color={COLORS.PRIMARY} />
                   </View>
-                  <Text style={styles.infoLabel}>Trạng thái</Text>
-                  <View style={styles.statusContainer}>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Trạng thái</Text>
                     <View
                       style={[
                         styles.statusBadge,
@@ -669,6 +681,14 @@ const ClassDetailScreen: React.FC = () => {
                         <Text style={styles.serviceQuantity}>
                           Số lượng: {service.totalQuantity}
                         </Text>
+                        <View style={styles.servicePriceRow}>
+                          <Text style={styles.servicePrice}>
+                            Đơn giá: {service.unitPrice.toLocaleString()} VND
+                          </Text>
+                          <Text style={styles.serviceTotal}>
+                            Tổng: {service.totalPrice.toLocaleString()} VND
+                          </Text>
+                        </View>
                       </View>
                     </View>
                   );
@@ -829,6 +849,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.MD,
     borderRadius: 16,
   },
+  cardContent: {
+    padding: SPACING.MD,
+  },
   cardHeader: {
     marginBottom: SPACING.MD,
   },
@@ -837,9 +860,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.TEXT_PRIMARY,
   },
+  infoSection: {
+    gap: SPACING.SM,
+  },
   infoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: SPACING.SM,
   },
   infoIconContainer: {
@@ -850,18 +876,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.MD,
+    flexShrink: 0,
+  },
+  infoContent: {
+    flex: 1,
+    flexDirection: 'column',
   },
   infoLabel: {
     fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
-    flex: 1,
+    marginBottom: SPACING.XS / 2,
   },
   infoValue: {
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
-    flex: 2,
-    textAlign: 'right',
+    lineHeight: 20,
   },
   divider: {
     marginVertical: SPACING.SM,
@@ -901,30 +931,41 @@ const styles = StyleSheet.create({
   activityItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.SM,
-    paddingHorizontal: SPACING.SM,
-    borderRadius: 8,
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.MD,
+    borderRadius: 12,
     backgroundColor: COLORS.BACKGROUND,
-    marginBottom: SPACING.XS,
-    minHeight: 48,
+    marginBottom: SPACING.SM,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   activityItemPressed: {
     backgroundColor: COLORS.PRIMARY_50,
-    opacity: 0.8,
+    borderColor: COLORS.PRIMARY + '30',
+    shadowOpacity: 0.1,
+    elevation: 2,
   },
   activityContent: {
     flex: 1,
-    marginLeft: SPACING.SM,
+    marginLeft: SPACING.MD,
+    marginRight: SPACING.SM,
   },
   activityText: {
-    fontSize: FONTS.SIZES.SM,
+    fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.XS / 2,
+    marginBottom: SPACING.XS,
+    lineHeight: 20,
   },
   activityNote: {
-    fontSize: FONTS.SIZES.XS,
+    fontSize: FONTS.SIZES.SM,
     color: COLORS.TEXT_SECONDARY,
+    lineHeight: 18,
   },
   purchaseButton: {
     flexDirection: 'row',
@@ -933,20 +974,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.PRIMARY,
     paddingVertical: SPACING.MD,
     paddingHorizontal: SPACING.LG,
-    borderRadius: 10,
+    borderRadius: 12,
     gap: SPACING.SM,
-    minHeight: 48,
+    minHeight: 50,
+    elevation: 2,
+    shadowColor: COLORS.PRIMARY,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   purchaseButtonText: {
-    flex: 1,
     fontSize: FONTS.SIZES.MD,
     fontWeight: '600',
     color: COLORS.SURFACE,
     textAlign: 'center',
-  },
-  statusContainer: {
-    flex: 2,
-    alignItems: 'flex-end',
   },
   statusBadge: {
     flexDirection: 'row',
@@ -955,6 +996,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.XS,
     borderRadius: 12,
     gap: SPACING.XS,
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.BACKGROUND,
   },
   statusIcon: {
     marginRight: 0,
@@ -970,12 +1013,19 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.ERROR,
     paddingVertical: SPACING.MD,
     paddingHorizontal: SPACING.LG,
-    borderRadius: 10,
+    borderRadius: 12,
     gap: SPACING.SM,
-    minHeight: 48,
+    minHeight: 50,
+    elevation: 2,
+    shadowColor: COLORS.ERROR,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   cancelButtonDisabled: {
     opacity: 0.6,
+    elevation: 0,
+    shadowOpacity: 0,
   },
   cancelButtonText: {
     fontSize: FONTS.SIZES.MD,
@@ -1052,8 +1102,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   actionButtonsContainer: {
-    gap: SPACING.SM,
-    marginTop: SPACING.XS,
+    gap: SPACING.MD,
+    marginTop: SPACING.MD,
   },
 });
 

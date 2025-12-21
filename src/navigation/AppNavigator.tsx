@@ -86,12 +86,14 @@ const StaffTab = createBottomTabNavigator<StaffTabParamList>();
 // Component for notification header button with badge
 const NotificationHeaderButton = () => {
   const navigation = useNavigation<any>();
-  const { unreadCount } = useUnreadNotificationCount();
+  const { user } = useAuth();
+  const isParent = Boolean(user?.role && user.role.toUpperCase().includes('PARENT'));
+  const { unreadCount } = useUnreadNotificationCount(true, isParent);
 
   return (
     <BadgeIcon
       iconName="notifications"
-      badgeCount={unreadCount}
+      badgeCount={isParent ? unreadCount : 0}
       onPress={() => navigation.navigate('Notifications')}
       size={24}
       color={COLORS.SURFACE}
@@ -369,6 +371,9 @@ const AppNavigator = () => {
   const { isAuthenticated, user } = useAuth();
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
 
+  // Calculate user role
+  const isParent = Boolean(user?.role && user.role.toUpperCase().includes('PARENT'));
+
   // Register navigation ref for auth handler
   useEffect(() => {
     // Update navigation ref when it becomes available
@@ -404,7 +409,8 @@ const AppNavigator = () => {
         linking={linking}
         onReady={onNavigationReady}
       >
-        {isAuthenticated && <NotificationWatcher enabled />}
+        {/* Only enable notification polling for Parent role */}
+        {isAuthenticated && isParent && <NotificationWatcher enabled />}
         <Stack.Navigator
           screenOptions={{
             headerStyle: {

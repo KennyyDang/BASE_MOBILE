@@ -117,17 +117,15 @@ const ActivityDetailScreen: React.FC = () => {
     try {
       // Fetch slot details để lấy services trực tiếp từ API
       const slotData = await studentSlotService.getStudentSlotById(
-        activity.studentSlotId,
-        activity.studentId || undefined
+        activity.studentSlotId
       );
       setSlot(slotData);
     } catch (err: any) {
-      console.warn('Failed to fetch slot with services:', err);
       setSlot(null);
     } finally {
       setServicesLoading(false);
     }
-  }, [activity?.studentSlotId, activity?.studentId]);
+  }, [activity?.studentSlotId]);
 
   useEffect(() => {
     fetchActivity();
@@ -173,7 +171,6 @@ const ActivityDetailScreen: React.FC = () => {
       setActivity(updatedActivity);
     } catch (err: any) {
       // Silent fail - không hiển thị lỗi cho user
-      console.warn('Failed to mark activity as viewed:', err);
     } finally {
       setMarkingViewed(false);
     }

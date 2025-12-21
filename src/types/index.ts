@@ -276,7 +276,11 @@ export type RootStackParamList = {
   ActivityDetail: {
     activityId: string;
   };
-  TransactionHistory: undefined;
+  TransactionHistory: {
+    walletId?: string;
+    walletType?: string;
+    studentName?: string;
+  } | undefined;
   TransactionDetail: {
     transactionId: string;
     transaction?: any; // Optional: pass transaction object to avoid API call
@@ -363,7 +367,11 @@ export type WalletStackParamList = {
   WalletHome: undefined;
   MainWallet: undefined;
   AllowanceWallet: undefined;
-  TransactionHistory: undefined;
+  TransactionHistory: {
+    walletId?: string;
+    walletType?: string;
+    studentName?: string;
+  } | undefined;
   TopUp: undefined;
 };
 

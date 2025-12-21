@@ -225,6 +225,28 @@ const BookedClassesScreen: React.FC = () => {
     []
   );
 
+  // Fetch subscriptions for student
+  const fetchStudentSubscriptions = useCallback(async (studentId: string) => {
+    setSubscriptionsLoading(prev => {
+      if (prev[studentId]) return prev; // Đang load rồi thì skip
+      return { ...prev, [studentId]: true };
+    });
+
+    try {
+      const data = await packageService.getStudentSubscriptions(studentId);
+      const activeData = data.filter((sub) => {
+        if (!sub.status) return false;
+        const status = sub.status.trim().toUpperCase();
+        return status === 'ACTIVE';
+      });
+      setStudentSubscriptions(prev => ({ ...prev, [studentId]: activeData }));
+    } catch (err: any) {
+      setStudentSubscriptions(prev => ({ ...prev, [studentId]: [] }));
+    } finally {
+      setSubscriptionsLoading(prev => ({ ...prev, [studentId]: false }));
+    }
+  }, []);
+
   // Đồng bộ selectedStudentId theo index khi swipe
   useEffect(() => {
     if (students.length > 0 && currentStudentIndex >= 0 && currentStudentIndex < students.length) {
@@ -272,29 +294,6 @@ const BookedClassesScreen: React.FC = () => {
       });
     }
   }, [students.length]);
-
-  // Fetch subscriptions for student
-  const fetchStudentSubscriptions = useCallback(async (studentId: string) => {
-    setSubscriptionsLoading(prev => {
-      if (prev[studentId]) return prev; // Đang load rồi thì skip
-      return { ...prev, [studentId]: true };
-    });
-    
-    try {
-      const data = await packageService.getStudentSubscriptions(studentId);
-      const activeData = data.filter((sub) => {
-        if (!sub.status) return false;
-        const status = sub.status.trim().toUpperCase();
-        return status === 'ACTIVE';
-      });
-      setStudentSubscriptions(prev => ({ ...prev, [studentId]: activeData }));
-    } catch (err: any) {
-      console.warn('Failed to fetch subscriptions:', err);
-      setStudentSubscriptions(prev => ({ ...prev, [studentId]: [] }));
-    } finally {
-      setSubscriptionsLoading(prev => ({ ...prev, [studentId]: false }));
-    }
-  }, []);
 
   useEffect(() => {
     if (selectedStudentId) {

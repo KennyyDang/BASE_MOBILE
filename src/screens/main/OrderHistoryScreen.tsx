@@ -150,9 +150,7 @@ const OrderHistoryScreen: React.FC = () => {
   };
 
   const handleCloseDetail = () => {
-    setDetailModalVisible(false);
-    setSelectedOrder(null);
-    setSelectedSlotInfo(null);
+    // Modal functionality removed
   };
 
   const formatTime = useCallback((timeString: string | null | undefined) => {

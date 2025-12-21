@@ -60,32 +60,7 @@ const LoginScreen: React.FC = () => {
   });
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'PARENT' | 'STAFF' | 'MANAGER'>('PARENT');
 
-  const getRoleDisplayName = (role: string): string => {
-    const roleUpper = role.toUpperCase();
-    if (roleUpper.includes('PARENT') || roleUpper === 'USER') return 'Phụ huynh';
-    if (roleUpper.includes('STAFF')) return 'Nhân viên';
-    if (roleUpper.includes('MANAGER') || roleUpper === 'ADMIN') return 'Quản lý';
-    return role;
-  };
-
-  const validateRole = (actualRole: string, expectedRole: string): boolean => {
-    const actual = actualRole.toUpperCase();
-    const expected = expectedRole.toUpperCase();
-    
-    // Map role names for comparison
-    const roleMapping: Record<string, string[]> = {
-      'PARENT': ['PARENT', 'USER'],
-      'STAFF': ['STAFF'],
-      'MANAGER': ['MANAGER', 'ADMIN'],
-    };
-    
-    const expectedRoles = roleMapping[expected] || [expected];
-    return expectedRoles.some(role => 
-      actual.includes(role) || actual === role
-    );
-  };
 
   const handleLogin = async () => {
     // Validate input trước khi gửi
@@ -133,37 +108,7 @@ const LoginScreen: React.FC = () => {
         deviceName = Platform.OS;
       }
 
-      // Call authService.login directly to get user info before setting state
-      const loginResponse = await authService.login({
-        email: formData.email,
-        password: formData.password,
-        firebaseToken,
-        deviceName,
-      });
-      
-      // Validate role immediately from login response, before setting authenticated state
-      const actualRole = (loginResponse.user.role || '').toUpperCase();
-      const expectedRole = selectedRole.toUpperCase();
-      
-      if (!validateRole(actualRole, expectedRole)) {
-        // Role doesn't match - clear tokens that were saved by authService.login
-        await AsyncStorage.multiRemove([
-          STORAGE_KEYS.ACCESS_TOKEN,
-          STORAGE_KEYS.REFRESH_TOKEN,
-          STORAGE_KEYS.USER,
-        ]);
-        
-        Alert.alert(
-          'Vai trò không khớp',
-          `Tài khoản này có vai trò "${getRoleDisplayName(actualRole)}" nhưng bạn đã chọn "${getRoleDisplayName(expectedRole)}".\n\nVui lòng chọn lại vai trò đúng và đăng nhập lại.`,
-          [{ text: 'OK' }]
-        );
-        setLoading(false);
-        return; // Don't proceed with login - user stays on login screen
-      }
-      
-      // Role matches - proceed with normal login flow via context
-      // The tokens are already saved by authService.login, so we just need to set user state
+      // Proceed with normal login flow via context
       await login({
         email: formData.email,
         password: formData.password,
@@ -326,137 +271,6 @@ const LoginScreen: React.FC = () => {
           {/* Login Form */}
           <Card style={styles.card} elevation={4}>
             <Card.Content style={styles.cardContent}>
-              {/* Role Selector */}
-              <View style={styles.roleContainer}>
-                <Text variant="bodyMedium" style={styles.roleLabel}>
-                  Chọn vai trò đăng nhập
-                </Text>
-                <View style={styles.roleCardsContainer}>
-                  {/* Phụ huynh */}
-                  <TouchableOpacity
-                    testID="role-card-parent"
-                    style={[
-                      styles.roleCard,
-                      selectedRole === 'PARENT' && styles.roleCardActive,
-                    ]}
-                    onPress={() => setSelectedRole('PARENT')}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.roleIconContainer,
-                        selectedRole === 'PARENT' && styles.roleIconContainerActive,
-                      ]}
-                    >
-                      <MaterialIcons
-                        name="family-restroom"
-                        size={28}
-                        color={selectedRole === 'PARENT' ? COLORS.SURFACE : COLORS.PRIMARY}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.roleCardTitle,
-                        selectedRole === 'PARENT' && styles.roleCardTitleActive,
-                      ]}
-                    >
-                      Phụ huynh
-                    </Text>
-                    <Text style={styles.roleCardDescription}>
-                      Quản lý con và lịch học
-                    </Text>
-                    {selectedRole === 'PARENT' && (
-                      <View style={styles.roleCheckmark}>
-                        <MaterialIcons name="check-circle" size={20} color={COLORS.SURFACE} />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-
-                  {/* Nhân viên */}
-                  <TouchableOpacity
-                    testID="role-card-staff"
-                    style={[
-                      styles.roleCard,
-                      selectedRole === 'STAFF' && styles.roleCardActive,
-                    ]}
-                    onPress={() => setSelectedRole('STAFF')}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.roleIconContainer,
-                        selectedRole === 'STAFF' && styles.roleIconContainerActive,
-                      ]}
-                    >
-                      <MaterialIcons
-                        name="work"
-                        size={28}
-                        color={selectedRole === 'STAFF' ? COLORS.SURFACE : COLORS.PRIMARY}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.roleCardTitle,
-                        selectedRole === 'STAFF' && styles.roleCardTitleActive,
-                      ]}
-                    >
-                      Nhân viên
-                    </Text>
-                    <Text style={styles.roleCardDescription}>
-                      Xem lịch và điểm danh
-                    </Text>
-                    {selectedRole === 'STAFF' && (
-                      <View style={styles.roleCheckmark}>
-                        <MaterialIcons name="check-circle" size={20} color={COLORS.SURFACE} />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-
-                  {/* Quản lý */}
-                  <TouchableOpacity
-                    testID="role-card-manager"
-                    style={[
-                      styles.roleCard,
-                      selectedRole === 'MANAGER' && styles.roleCardActive,
-                    ]}
-                    onPress={() => setSelectedRole('MANAGER')}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.roleIconContainer,
-                        selectedRole === 'MANAGER' && styles.roleIconContainerActive,
-                      ]}
-                    >
-                      <MaterialIcons
-                        name="admin-panel-settings"
-                        size={28}
-                        color={selectedRole === 'MANAGER' ? COLORS.SURFACE : COLORS.PRIMARY}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.roleCardTitle,
-                        selectedRole === 'MANAGER' && styles.roleCardTitleActive,
-                      ]}
-                    >
-                      Quản lý
-                    </Text>
-                    <Text style={styles.roleCardDescription}>
-                      Quản lý hệ thống
-                    </Text>
-                    {selectedRole === 'MANAGER' && (
-                      <View style={styles.roleCheckmark}>
-                        <MaterialIcons name="check-circle" size={20} color={COLORS.SURFACE} />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
-                <Text variant="labelSmall" style={styles.roleHint}>
-                  Lưu ý: Quyền truy cập sẽ dựa trên role thật trong tài khoản của bạn.
-                </Text>
-              </View>
-
               <TextInput
                 testID="login-email-input"
                 label="Email"
@@ -559,84 +373,6 @@ const styles = StyleSheet.create({
   cardContent: {
     padding: SPACING.LG,
   },
-  roleContainer: {
-    marginBottom: SPACING.LG,
-  },
-  roleLabel: {
-    marginBottom: SPACING.MD,
-    color: COLORS.TEXT_PRIMARY,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  roleCardsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.SM,
-    marginBottom: SPACING.SM,
-    justifyContent: 'space-between',
-  },
-  roleCard: {
-    flex: 1,
-    minWidth: '30%',
-    backgroundColor: COLORS.SURFACE,
-    borderRadius: 12,
-    padding: SPACING.MD,
-    borderWidth: 2,
-    borderColor: COLORS.BORDER,
-    alignItems: 'center',
-    position: 'relative',
-    shadowColor: COLORS.SHADOW,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  roleCardActive: {
-    borderColor: COLORS.PRIMARY,
-    backgroundColor: COLORS.PRIMARY,
-    shadowColor: COLORS.PRIMARY,
-    shadowOpacity: 0.3,
-    elevation: 4,
-  },
-  roleIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.PRIMARY + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.SM,
-  },
-  roleIconContainerActive: {
-    backgroundColor: COLORS.SURFACE + '40',
-  },
-  roleCardTitle: {
-    fontSize: FONTS.SIZES.SM,
-    fontWeight: '600',
-    color: COLORS.TEXT_PRIMARY,
-    marginBottom: SPACING.XS,
-    textAlign: 'center',
-  },
-  roleCardTitleActive: {
-    color: COLORS.SURFACE,
-  },
-  roleCardDescription: {
-    fontSize: FONTS.SIZES.XS,
-    color: COLORS.TEXT_SECONDARY,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  roleCheckmark: {
-    position: 'absolute',
-    top: SPACING.XS,
-    right: SPACING.XS,
-  },
-  roleHint: {
-    color: COLORS.TEXT_SECONDARY,
-    textAlign: 'center',
-    marginTop: SPACING.SM,
-    fontSize: 11,
-  },
   input: {
     marginBottom: SPACING.MD,
   },
@@ -663,3 +399,4 @@ const styles = StyleSheet.create({
 });
 
 export default LoginScreen;
+

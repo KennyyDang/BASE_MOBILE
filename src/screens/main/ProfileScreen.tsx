@@ -223,7 +223,7 @@ const ProfileScreen: React.FC = () => {
     try {
       // Fetch activities for all children
       const allActivities: StaffActivityResponse[] = [];
-      
+
       for (const student of students) {
         // Kiểm tra lại authentication trước mỗi vòng lặp
         if (!isAuthenticated || !user) {
@@ -237,7 +237,7 @@ const ProfileScreen: React.FC = () => {
             pageIndex: 1,
             pageSize: 100,
           });
-          
+
           // Fetch activities for each slot
           for (const slot of slotsResponse.items) {
             // Kiểm tra lại authentication trước mỗi API call
@@ -252,7 +252,7 @@ const ProfileScreen: React.FC = () => {
                 pageIndex: 1,
                 pageSize: 50,
               });
-              
+
               // Map to StaffActivityResponse format
               const mappedActivities: StaffActivityResponse[] = activitiesResponse.items.map((activity: any) => ({
                 id: activity.id,
@@ -270,27 +270,31 @@ const ProfileScreen: React.FC = () => {
                 viewedTime: activity.viewedTime,
                 createdTime: activity.createdTime || activity.createdDate,
               }));
-              
+
               allActivities.push(...mappedActivities);
             } catch (err: any) {
-              // Bỏ qua lỗi 401 (Unauthorized) khi đã logout - không log warning
+              // Check for 401 errors - stop entire fetch process as user is not authorized
               const statusCode = err?.response?.status || err?.response?.statusCode;
               if (statusCode === 401) {
-                // Đã logout, dừng fetch và không log warning
+                // User is not authorized, stop entire fetch process
+                setActivities(allActivities);
+                setLoadingActivities(false);
                 return;
               }
-              // Chỉ log warning cho các lỗi khác
+              // Only log warning for other errors (not 401)
               console.warn(`Failed to fetch activities for slot ${slot.id}:`, err);
             }
           }
         } catch (err: any) {
-          // Bỏ qua lỗi 401 (Unauthorized) khi đã logout - không log warning
+          // Check for 401 errors - stop entire fetch process as user is not authorized
           const statusCode = err?.response?.status || err?.response?.statusCode;
           if (statusCode === 401) {
-            // Đã logout, dừng fetch và không log warning
+            // User is not authorized, stop entire fetch process
+            setActivities(allActivities);
+            setLoadingActivities(false);
             return;
           }
-          // Chỉ log warning cho các lỗi khác
+          // Only log warning for other errors (not 401)
           console.warn(`Failed to fetch slots for student ${student.id}:`, err);
         }
       }

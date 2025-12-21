@@ -438,7 +438,6 @@ const SelectSlotScreen: React.FC = () => {
         });
         
         const items = response.items || [];
-        console.log(`Loaded ${items.length} booked slots for date ${dateStr}`);
         setBookedSlotsForSelectedDate(items);
       } catch (error: any) {
         console.error('Error fetching booked slots for date:', error);
@@ -544,18 +543,14 @@ const SelectSlotScreen: React.FC = () => {
           
           const items = response.items || [];
           allSlots = [...allSlots, ...items];
-          
+
           // Update pagination info từ response
           totalPages = response.totalPages || 1;
           hasNextPage = response.hasNextPage === true; // Chỉ true nếu explicitly là true
           pageIndex++;
-
-          // Log để debug
-          console.log(`Loaded page ${pageIndex - 1}: ${items.length} items, hasNext: ${hasNextPage}, total: ${allSlots.length}`);
         }
 
         // Keep all slots including cancelled ones for proper checking
-        console.log(`Total booked slots loaded: ${allSlots.length}`);
         setBookedSlots(allSlots);
       } catch (error: any) {
         console.error('Error fetching booked slots:', error);
@@ -586,7 +581,6 @@ const SelectSlotScreen: React.FC = () => {
 
       if (selectedStudentId && previousRoute?.name === 'BulkBook') {
         // Refresh all data sau khi đặt lịch hàng loạt thành công
-        console.log('Refreshing data after bulk booking...');
         fetchBookedSlots(selectedStudentId);
         if (selectedDate) {
           fetchBookedSlotsForSelectedDate(selectedStudentId, selectedDate);
@@ -880,9 +874,17 @@ const SelectSlotScreen: React.FC = () => {
           id: booked.branchSlotId || '',
           weekDate: new Date(booked.date || '').getDay(),
           timeframe: booked.timeframe,
-          // slotType và branch không có trong StudentSlotResponse, để undefined
-          slotType: undefined,
-          branch: undefined,
+          // Lấy slotType từ branchSlot nếu có
+          slotType: booked.branchSlot?.slotType ? {
+            id: booked.branchSlot.slotType.id,
+            name: booked.branchSlot.slotType.name,
+            description: booked.branchSlot.slotType.description || null,
+          } : undefined,
+          // Lấy branch từ branchSlot hoặc room nếu có
+          branch: booked.branchSlot ? {
+            id: booked.room?.branchId || '',
+            branchName: booked.branchSlot.branchName || booked.room?.branchName || '',
+          } as any : undefined,
           rooms: booked.room ? [{
             id: booked.roomId || '',
             roomId: booked.roomId || '',
@@ -1529,7 +1531,6 @@ const SelectSlotScreen: React.FC = () => {
                                           <MaterialIcons name="person" size={14} color={COLORS.TEXT_SECONDARY} />
                                           <Text style={styles.roomItemMetaText}>
                                             {staffName}
-                                            {staffRole ? ` (${staffRole})` : ''}
                                           </Text>
                                         </View>
                                       )}
