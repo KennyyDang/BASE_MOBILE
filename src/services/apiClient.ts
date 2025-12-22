@@ -25,7 +25,7 @@ class ApiClient {
 
   constructor() {
     // Get base URL from environment variable
-    this.baseURL = API_BASE_URL || 'https://api.brighway.edu.vn';
+    this.baseURL = API_BASE_URL || 'https://basebrightway2.azurewebsites.net/api';
     this.client = axios.create({
       baseURL: this.baseURL,
       timeout: 10000,

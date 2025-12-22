@@ -46,7 +46,7 @@ const getBaseURL = () => {
   }
   
   // Default fallback
-  return 'http://192.168.2.7:5160';
+  return 'https://basebrightway2.azurewebsites.net/api';
 };
 
 // Create axios instance with base configuration

@@ -864,8 +864,11 @@ const ScheduleScreen: React.FC = () => {
         );
         setBookedSlots(activeSlots);
       } catch (error: any) {
-        // Không hiển thị lỗi, chỉ log để debug
-        console.warn('Failed to fetch booked slots:', error?.message || error);
+        // Don't spam console with 401 authentication errors
+        const statusCode = error?.response?.status || error?.response?.statusCode;
+        if (statusCode !== 401) {
+          console.warn('Failed to fetch booked slots:', error?.message || error);
+        }
         setBookedSlots([]);
       } finally {
         setBookedSlotsLoading(false);
@@ -1941,12 +1944,12 @@ const ScheduleScreen: React.FC = () => {
       const daysFromMonday = now.getDay() === 0 ? 6 : now.getDay() - 1;
       currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
       currentMonday.setHours(0, 0, 0, 0);
-      
+
       const selectedMonday = new Date(date);
       const selectedDaysFromMonday = date.getDay() === 0 ? 6 : date.getDay() - 1;
       selectedMonday.setDate(selectedMonday.getDate() - selectedDaysFromMonday);
       selectedMonday.setHours(0, 0, 0, 0);
-      
+
       const diffMs = selectedMonday.getTime() - currentMonday.getTime();
       const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
       setWeekOffset(diffWeeks);

@@ -175,12 +175,13 @@ const ProfileScreen: React.FC = () => {
       const profiles = await parentProfileService.getFamilyProfiles();
       setFamilyProfiles(profiles);
     } catch (err: any) {
-      // If 401, don't set error - authHandler will handle logout
+      // If 401, clear data and let authHandler handle logout
       if (err?.response?.status === 401) {
-        // Token invalid, authHandler will handle logout
+        // Token invalid, clear data and authHandler will handle logout
+        setFamilyProfiles([]);
         return;
       }
-      // Don't show error for family profiles, just log it
+      // Don't show error for other failures, just log and clear data
       console.warn('Failed to fetch family profiles:', err?.message || err);
       setFamilyProfiles([]);
     } finally {
@@ -282,7 +283,10 @@ const ProfileScreen: React.FC = () => {
                 return;
               }
               // Only log warning for other errors (not 401)
-              console.warn(`Failed to fetch activities for slot ${slot.id}:`, err);
+              // Don't spam console with 401 warnings
+              if (statusCode !== 401) {
+                console.warn(`Failed to fetch activities for slot ${slot.id}:`, err);
+              }
             }
           }
         } catch (err: any) {
@@ -295,7 +299,10 @@ const ProfileScreen: React.FC = () => {
             return;
           }
           // Only log warning for other errors (not 401)
-          console.warn(`Failed to fetch slots for student ${student.id}:`, err);
+          // Don't spam console with 401 warnings
+          if (statusCode !== 401) {
+            console.warn(`Failed to fetch slots for student ${student.id}:`, err);
+          }
         }
       }
       
@@ -994,6 +1001,10 @@ const ProfileScreen: React.FC = () => {
 
   const handleMySubscriptions = () => {
     navigation.navigate('MySubscriptions');
+  };
+
+  const handleBranchTransferRequests = () => {
+    navigation.navigate('BranchTransferRequests');
   };
 
   const handleOrderHistory = () => {
@@ -1919,6 +1930,12 @@ const ProfileScreen: React.FC = () => {
           <TouchableOpacity style={styles.menuItem} onPress={handleMySubscriptions}>
             <MaterialIcons name="card-membership" size={24} color={COLORS.PRIMARY} />
             <Text style={styles.menuText}>Gói đăng ký của tôi</Text>
+            <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={handleBranchTransferRequests}>
+            <MaterialIcons name="swap-horiz" size={24} color={COLORS.PRIMARY} />
+            <Text style={styles.menuText}>Chuyển chi nhánh</Text>
             <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
           </TouchableOpacity>
 

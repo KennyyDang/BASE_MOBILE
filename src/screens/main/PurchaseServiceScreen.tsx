@@ -113,7 +113,11 @@ const PurchaseServiceScreen: React.FC = () => {
         setSelectedSlot(slot);
       }
     } catch (err: any) {
-      console.warn('Failed to fetch slot details:', err);
+      // Don't spam console with 401 authentication errors
+      const statusCode = err?.response?.status || err?.response?.statusCode;
+      if (statusCode !== 401) {
+        console.warn('Failed to fetch slot details:', err);
+      }
     } finally {
       setLoadingSlot(false);
     }

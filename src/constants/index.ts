@@ -218,4 +218,8 @@ export const API_ENDPOINTS = {
   
   // Register Child
   STUDENT_REGISTER_CHILD: '/api/Student/register-child',
+
+  // Branch Transfer
+  BRANCH_TRANSFER_REQUEST: '/Student/branch-transfer/request',
+  BRANCH_TRANSFER_REQUESTS: '/Student/branch-transfer/requests',
 };

@@ -566,3 +566,67 @@ export interface ActivityResponse {
 
 export interface MyChildrenActivitiesResponse extends PaginatedResponse<ActivityResponse> {}
 
+// Branch Transfer Types
+export interface BranchTransferRequest {
+  id: string;
+  studentId: string;
+  studentName?: string;
+  student?: any;
+  currentBranchId?: string;
+  currentBranchName?: string;
+  currentBranch?: any;
+  targetBranchId: string;
+  targetBranchName?: string;
+  targetBranch?: any;
+  requestedByUserId?: string;
+  requestedByName?: string;
+  reviewedByUserId?: string;
+  reviewedByName?: string;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
+  statusDisplay?: string;
+  requestReason?: string;
+  rejectionReason?: string;
+  managerNotes?: string;
+  reviewedAt?: string;
+  createdTime?: string;
+  createdAt?: string;
+  approvedTime?: string;
+  rejectedTime?: string;
+  cancelledTime?: string;
+  activeSubscriptionsCount?: number;
+  futureSlotsCount?: number;
+  pendingOrdersCount?: number;
+  estimatedRefundAmount?: number;
+  autoCancelSubscriptions?: boolean;
+  autoCancelSlots?: boolean;
+  autoCancelOrders?: boolean;
+  changeSchool: boolean;
+  targetSchoolId?: string;
+  targetSchoolName?: string;
+  changeLevel: boolean;
+  targetStudentLevelId?: string;
+  targetStudentLevelName?: string;
+  documentId?: string;
+  documentImageUrl?: string;
+  documentType?: string;
+}
+
+export interface CreateTransferRequestData {
+  studentId: string;
+  targetBranchId: string;
+  changeSchool: boolean;
+  targetSchoolId?: string;
+  changeLevel: boolean;
+  targetStudentLevelId?: string;
+  documentFile?: any; // File object for mobile
+  requestReason?: string;
+}
+
+export interface ApproveTransferRequestData {
+  note?: string;
+}
+
+export interface RejectTransferRequestData {
+  rejectionReason: string;
+}
+
