@@ -335,6 +335,11 @@ export type RootStackParamList = {
     packageSubscriptionId?: string;
     roomId?: string;
   } | undefined;
+  BranchTransferRequests: undefined;
+  BranchTransferRequest: undefined;
+  BranchTransferRequestDetail: {
+    requestId: string;
+  };
   Services: { studentId?: string; hideStudentSelector?: boolean } | undefined;
   StudentGuardians: {
     studentId: string;

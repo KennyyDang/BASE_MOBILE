@@ -20,6 +20,11 @@ class ImageService {
     mimeType: string = 'image/jpeg'
   ): Promise<UploadImageResponse> {
     try {
+      console.log('📤 [ImageService] Starting image upload...');
+      console.log('📸 [ImageService] File URI:', fileUri);
+      console.log('🏷️ [ImageService] File name:', fileName);
+      console.log('📄 [ImageService] MIME type:', mimeType);
+
       if (!fileUri) {
         throw new Error('Không tìm thấy ảnh để upload.');
       }
@@ -39,11 +44,16 @@ class ImageService {
       
       // Append file to FormData
       // @ts-ignore - FormData type issue with React Native
-      formData.append('file', {
+      const fileData = {
         uri: Platform.OS === 'android' ? fixedUri : fileUri,
         type: mimeType,
         name: defaultFileName,
-      } as any);
+      } as any;
+
+      console.log('📦 [ImageService] File data:', fileData);
+      formData.append('file', fileData);
+
+      console.log('🔗 [ImageService] POST to: /api/Image/upload');
 
       // Don't set Content-Type header manually - axios will set it with boundary automatically
       const response = await axiosInstance.post(
@@ -53,6 +63,8 @@ class ImageService {
           timeout: 60000, // 60 seconds timeout for file upload
         }
       );
+
+      console.log('✅ [ImageService] Image upload successful:', response.status);
       
       // Handle different response formats
       const responseData = response.data;

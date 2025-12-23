@@ -118,8 +118,12 @@ const ActivitiesScreen: React.FC = () => {
               studentId = studentSlot.studentId;
               slotDate = studentSlot.date;
             }
-          } catch (error) {
-            console.warn('Failed to fetch slot info:', activity.studentSlotId);
+          } catch (error: any) {
+            // Don't spam console with 401 authentication errors
+            const statusCode = error?.response?.status || error?.response?.statusCode;
+            if (statusCode !== 401) {
+              console.warn('Failed to fetch slot info:', activity.studentSlotId);
+            }
           }
           
           grouped[activity.studentSlotId] = {

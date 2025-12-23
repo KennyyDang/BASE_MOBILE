@@ -183,20 +183,7 @@ const StudentPackagesScreen: React.FC = () => {
           <Text style={styles.subtitle}>
             Phụ huynh đang chọn gói cho {studentName}
           </Text>
-          <View style={styles.metaRow}>
-            {studentLevelName ? (
-              <View style={styles.metaChip}>
-                <MaterialIcons name="star" size={16} color={COLORS.PRIMARY} />
-                <Text style={styles.metaChipText}>{studentLevelName}</Text>
-              </View>
-            ) : null}
-            {branchName ? (
-              <View style={styles.metaChip}>
-                <MaterialIcons name="location-on" size={16} color={COLORS.PRIMARY} />
-                <Text style={styles.metaChipText}>{branchName}</Text>
-              </View>
-            ) : null}
-          </View>
+          {/* Removed branch/level chips for cleaner header */}
         </View>
 
         {loading ? (

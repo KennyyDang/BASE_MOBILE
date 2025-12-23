@@ -1,200 +1,476 @@
-# BASE Mobile App
+# 📱 BASE MOBILE - Ứng dụng Quản lý Trung tâm Đào tạo
 
-**BASE** - Brighway After-School Management System
+[![React Native](https://img.shields.io/badge/React%20Native-0.72.6-blue.svg)](https://reactnative.dev/)
+[![Expo](https://img.shields.io/badge/Expo-~49.0.15-black.svg)](https://expo.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-4.9.4-blue.svg)](https://www.typescriptlang.org/)
 
-![Expo](https://img.shields.io/badge/Expo-000020?style=for-the-badge&logo=expo&logoColor=white)
-![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
-![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+Ứng dụng di động toàn diện cho việc quản lý trung tâm đào tạo, nhà trẻ với các tính năng quản lý học sinh, đặt lịch, thanh toán, và báo cáo thông minh.
 
-## 📱 Giới thiệu
+## 🎯 Tổng quan
 
-BASE Mobile là ứng dụng quản lý trung tâm đào tạo Brighway, được xây dựng bằng React Native và Expo. Ứng dụng giúp phụ huynh quản lý lịch học, ví tiền, và thông tin cá nhân của con em.
+BASE MOBILE là giải pháp mobile hoàn chỉnh cho các trung tâm đào tạo với:
 
-## ✨ Tính năng chính
+- **👨‍👩‍👧‍👦 Quản lý học sinh**: Đăng ký, cập nhật thông tin, theo dõi tiến độ
+- **📅 Đặt lịch thông minh**: Real-time booking với conflict detection
+- **💳 Thanh toán điện tử**: Ví điện tử, thanh toán tự động, hóa đơn điện tử
+- **📊 Báo cáo thống kê**: Analytics chi tiết cho quản lý
+- **🔄 Chuyển chi nhánh**: Workflow tự động với phê duyệt
+- **📱 Push Notifications**: Thông báo real-time cho phụ huynh và nhân viên
+- **👥 Multi-role**: Parent, Staff, Manager với quyền hạn riêng biệt
 
-- 🔐 **Hệ thống đăng nhập** - Xác thực người dùng an toàn
-- 🏠 **Dashboard** - Tổng quan thông tin và thao tác nhanh
-- 📅 **Quản lý lịch học** - Xem và đăng ký lớp học
-- 💰 **Ví tiền** - Quản lý tài chính và giao dịch
-- 👤 **Hồ sơ cá nhân** - Thông tin phụ huynh và con em
-- 🎨 **Giao diện đẹp** - Theme màu xanh lá chuyên nghiệp
+## 🛠️ Tech Stack
 
-## 🚀 Cài đặt và chạy
+### Frontend
+- **React Native 0.72.6** - Cross-platform mobile development
+- **Expo ~49.0.15** - Development platform & build tools
+- **TypeScript 4.9.4** - Type safety & better DX
+- **React Navigation** - Navigation & routing
 
-### Yêu cầu hệ thống
-- **Node.js**: Version 20.18.0 (sử dụng file `.nvmrc`)
-- **npm**: Version mới nhất
-- **Expo CLI**: `npm install -g @expo/cli`
-- **Expo Go app**: Cài đặt từ App Store/Play Store
+### UI/UX
+- **Custom Components** - Consistent design system
+- **Material Icons** - Icon library
+- **Responsive Design** - Adaptive layouts for all screen sizes
+- **Dark/Light Theme** - Theme support (configurable)
 
-### Cấu hình ENV (Google Vision OCR cho luồng Staff)
-Tạo file `.env` ở thư mục gốc với nội dung:
+### State Management
+- **React Hooks** - Local state management
+- **Context API** - Global state (Auth, Theme)
+- **AsyncStorage** - Persistent storage
 
-```
-GOOGLE_VISION_API_KEY=your_google_cloud_vision_api_key_here
-API_BASE_URL=http://192.168.2.7:5160
-```
+### Networking
+- **Axios** - HTTP client with interceptors
+- **Environment Config** - Dynamic API endpoints
+- **Auto Token Refresh** - JWT token management
+- **Error Handling** - Comprehensive error boundaries
 
-Sau đó cài dependencies OCR/Camera:
+### Integrations
+- **Push Notifications** - Firebase/Expo notifications
+- **Image Processing** - Watermark, compression
+- **OCR Service** - Document scanning
+- **Payment Gateway** - PayOS integration
+- **File Upload** - Multipart form data
 
-```
-npm install expo-image-picker react-native-dotenv --legacy-peer-deps
-```
+## 🚀 Cài đặt & Chạy
 
-Lưu ý: Bật Google Cloud Vision API trong GCP và tạo API Key.
-
-### 🛠️ Setup cho Developer mới
-
-#### Bước 1: Clone repository
+### Prerequisites
 ```bash
+Node.js >= 20.18.0
+npm >= 8.0.0
+Expo CLI
+```
+
+### Setup
+```bash
+# Clone repository
 git clone <repository-url>
 cd BASE_MOBILE
+
+# Install dependencies
+npm install
+
+# Start development server
+npm start
+# or
+npx expo start
 ```
 
-#### Bước 2: Cài đặt Node.js đúng version
-```bash
-# Nếu có nvm (Node Version Manager)
-nvm use
-
-# Hoặc cài đặt Node.js 20.18.0 trực tiếp
-# Download từ: https://nodejs.org/
+### Environment Configuration
+Tạo file `.env` trong root directory:
+```env
+API_BASE_URL=https://your-api-domain.com/api
+NODE_ENV=development
 ```
 
-#### Bước 3: Cài đặt dependencies
-```bash
-# Xóa cache cũ (nếu có)
-rm -rf node_modules package-lock.json
+## 📱 Tính năng Chi tiết
 
-# Cài đặt dependencies
+### 👨‍👩‍👧‍👦 Parent Features
+
+#### 1. Authentication & Profile
+- ✅ Đăng nhập/Đăng ký với email/phone
+- ✅ Quản lý hồ sơ cá nhân
+- ✅ Đổi mật khẩu bảo mật
+- ✅ Multi-device login management
+
+#### 2. Student Management
+- ✅ Đăng ký học sinh mới
+- ✅ Cập nhật thông tin học sinh
+- ✅ Upload ảnh hồ sơ
+- ✅ Quản lý nhiều học sinh trong gia đình
+
+#### 3. Booking System
+- ✅ Xem lịch trống theo thời gian thực
+- ✅ Đặt lịch học theo slot
+- ✅ Conflict detection tự động
+- ✅ Hủy/Đổi lịch với policy
+
+#### 4. Payment & Wallet
+- ✅ Nạp tiền vào ví điện tử
+- ✅ Thanh toán tự động khi đặt lịch
+- ✅ Lịch sử giao dịch chi tiết
+- ✅ Xuất hóa đơn điện tử
+
+#### 5. Progress Tracking
+- ✅ Xem lịch học đã đặt
+- ✅ Check-in/out tự động
+- ✅ Xem hoạt động hàng ngày
+- ✅ Nhận thông báo từ giáo viên
+
+#### 6. Branch Transfer
+- ✅ Yêu cầu chuyển chi nhánh
+- ✅ Upload giấy tờ hỗ trợ
+- ✅ Theo dõi trạng thái phê duyệt
+- ✅ Workflow tự động
+
+### 👨‍🏫 Staff Features
+
+#### 1. Daily Operations
+- ✅ Check-in học sinh
+- ✅ Ghi nhận hoạt động học tập
+- ✅ Upload hình ảnh hoạt động
+- ✅ Gửi thông báo cho phụ huynh
+
+#### 2. Schedule Management
+- ✅ Xem lịch làm việc
+- ✅ Quản lý slot học
+- ✅ Xem báo cáo attendance
+- ✅ Điều chỉnh lịch khi cần
+
+### 👔 Manager Features
+
+#### 1. Analytics & Reports
+- ✅ Báo cáo doanh thu theo tháng/quý
+- ✅ Thống kê tỷ lệ tham gia
+- ✅ Báo cáo hiệu suất nhân viên
+- ✅ Xuất báo cáo Excel/PDF
+
+#### 2. User Management
+- ✅ Quản lý tài khoản nhân viên
+- ✅ Phân quyền theo role
+- ✅ Reset password
+- ✅ Activity logs
+
+#### 3. System Configuration
+- ✅ Cài đặt chi nhánh
+- ✅ Quản lý gói dịch vụ
+- ✅ Cấu hình thanh toán
+- ✅ Maintenance mode
+
+## 🔧 API Integration
+
+### Authentication
+```typescript
+// Login
+POST /api/Auth/mobile-login
+{
+  "phoneNumber": "string",
+  "password": "string",
+  "deviceToken": "string"
+}
+
+// Auto refresh token
+POST /api/Auth/refresh
+{
+  "refreshToken": "string"
+}
+```
+
+### Student Management
+```typescript
+// Get my children
+GET /api/Student/my-children
+
+// Register new child
+POST /api/Student/register-child
+{
+  "name": "string",
+  "dateOfBirth": "2023-01-01",
+  "gender": "Male/Female",
+  "branchId": "uuid"
+}
+```
+
+### Booking System
+```typescript
+// Get available slots
+GET /api/Slot/available?date=2024-01-01&branchId=uuid
+
+// Create booking
+POST /api/Booking/create
+{
+  "studentId": "uuid",
+  "slotId": "uuid",
+  "notes": "string"
+}
+```
+
+### Payment Integration
+```typescript
+// Create payment
+POST /api/Deposit/create
+{
+  "amount": 100000,
+  "description": "Nạp tiền vào ví"
+}
+
+// PayOS webhook
+POST /api/Deposit/webhook/payos
+```
+
+### Branch Transfer
+```typescript
+// Create transfer request
+POST /Student/branch-transfer/request
+{
+  "studentId": "uuid",
+  "targetBranchId": "uuid",
+  "changeSchool": true,
+  "targetSchoolId": "uuid",
+  "documentFile": "multipart/form-data"
+}
+
+// Get transfer requests with pagination
+GET /Student/branch-transfer/requests?pageIndex=1&pageSize=20
+
+// Cancel request
+DELETE /Student/branch-transfer/requests/{id}
+```
+
+## 📁 Cấu trúc Project
+
+```
+BASE_MOBILE/
+├── android/                 # Android native code
+├── ios/                     # iOS native code
+├── src/
+│   ├── components/          # Reusable UI components
+│   │   ├── CustomPicker.tsx
+│   │   └── WatermarkImageProcessor.tsx
+│   ├── constants/           # App constants & configs
+│   │   ├── index.ts         # API endpoints, colors, etc.
+│   ├── contexts/            # React contexts
+│   │   └── AuthContext.tsx
+│   ├── hooks/               # Custom React hooks
+│   │   ├── useChildrenApi.ts
+│   │   └── useMyChildren.ts
+│   ├── navigation/          # Navigation configuration
+│   │   └── AppNavigator.tsx
+│   ├── screens/             # Screen components
+│   │   ├── auth/            # Authentication screens
+│   │   ├── main/            # Main app screens (Parent)
+│   │   ├── staff/           # Staff screens
+│   │   └── manager/         # Manager screens
+│   ├── services/            # API services
+│   │   ├── auth.service.ts
+│   │   ├── childrenService.ts
+│   │   ├── branchTransferService.ts
+│   │   └── notificationService.ts
+│   ├── types/               # TypeScript type definitions
+│   │   ├── api.ts
+│   │   └── index.ts
+│   └── utils/               # Utility functions
+│       ├── authHandler.ts
+│       └── imageWatermarkHelper.tsx
+├── app.config.js           # Expo configuration
+├── babel.config.js         # Babel configuration
+├── tsconfig.json           # TypeScript configuration
+├── package.json            # Dependencies & scripts
+└── README.md               # This file
+```
+
+## 🔧 Development Scripts
+
+```bash
+# Start development server
+npm start
+# or
+npx expo start
+
+# Start with cache reset
+npm start --reset-cache
+
+# Run on specific platform
+npm run android
+npm run ios
+
+# Build for production
+npx expo build:android
+npx expo build:ios
+
+# Run tests
+npm test
+
+# Lint code
+npm run lint
+
+# Type check
+npx tsc --noEmit
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+#### 1. Metro Bundler Issues
+```bash
+# Clear Metro cache
+npx react-native start --reset-cache
+
+# Clear node_modules cache
+rm -rf node_modules/.cache
 npm install
 ```
 
-#### Bước 4: Khởi động ứng dụng
+#### 2. Authentication Problems
+- ✅ Kiểm tra API_BASE_URL trong .env
+- ✅ Verify JWT token format
+- ✅ Check network connectivity
+- ✅ Clear AsyncStorage if needed
+
+#### 3. Build Issues
 ```bash
-# Khởi động development server
-npm start
+# Clear Expo cache
+npx expo install --fix
 
-# Hoặc chạy trên port cụ thể
-npx expo start --port 8083
+# Rebuild native code
+npx expo prebuild --clean
 ```
 
-### 📱 Chạy ứng dụng
+#### 4. Image Upload Issues
+- ✅ Check file size limits (< 10MB)
+- ✅ Verify image formats (JPG, PNG)
+- ✅ Check network stability
+- ✅ Validate multipart form data
 
-#### Trên điện thoại (Expo Go)
-1. Cài đặt **Expo Go** từ App Store/Play Store
-2. Quét QR code hiển thị trong terminal
-3. Ứng dụng sẽ tự động load
+### Debug Tips
 
-#### Trên máy tính
+#### Enable Debug Logging
+```typescript
+// In development, enable detailed logs
+if (__DEV__) {
+  console.log('Debug info:', data);
+}
+```
+
+#### Network Debugging
 ```bash
-# Chạy trên Web
-npm run web
-
-# Chạy trên Android (cần Android Studio)
-npm run android
-
-# Chạy trên iOS (cần macOS + Xcode)
-npm run ios
+# Use Flipper or Charles Proxy to inspect network requests
+# Check API responses and error codes
 ```
 
-### ⚠️ Troubleshooting
+## 📊 Performance Optimization
 
-#### Lỗi dependencies conflicts
+### Code Splitting
+- ✅ Lazy loading screens
+- ✅ Component code splitting
+- ✅ Image optimization with compression
+
+### Caching Strategy
+- ✅ API response caching
+- ✅ Image caching with react-native-fast-image
+- ✅ AsyncStorage for offline data
+
+### Memory Management
+- ✅ Proper cleanup in useEffect
+- ✅ Image memory optimization
+- ✅ List virtualization for large datasets
+
+## 🚀 Deployment
+
+### Build Commands
 ```bash
-# Nếu gặp lỗi ERESOLVE
-npm install --legacy-peer-deps
+# Build APK for Android
+npx expo build:android --type apk
 
-# Hoặc xóa cache và cài lại
-rm -rf node_modules package-lock.json
-npm install --legacy-peer-deps
+# Build AAB for Google Play
+npx expo build:android --type app-bundle
+
+# Build IPA for iOS
+npx expo build:ios --type archive
 ```
 
-#### Lỗi PlatformConstants
+### Environment Setup
 ```bash
-# Đảm bảo đúng Node.js version
-node --version  # Phải là 20.18.0
-
-# Reset Expo cache
-npx expo start --clear
+# Production environment variables
+API_BASE_URL=https://api.production-domain.com/api
+NODE_ENV=production
+SENTRY_DSN=your-sentry-dsn
 ```
 
-#### Port đã được sử dụng
+### App Store Deployment
+1. **Android**: Upload AAB to Google Play Console
+2. **iOS**: Upload IPA to App Store Connect
+3. **OTA Updates**: Configure EAS Update for hotfixes
+
+## 🧪 Testing
+
+### Unit Tests
 ```bash
-# Sử dụng port khác
-npx expo start --port 8084
+npm test
 ```
 
-### 🔧 Cấu hình tự động
-Project đã được cấu hình với:
-- **`.nvmrc`**: Đảm bảo Node.js version đúng
-- **`.npmrc`**: Cấu hình npm để tránh peer dependency conflicts
-- **`package.json`**: Tất cả dependencies đã được test và hoạt động ổn định
-
-### 🧪 Build APK nội bộ bằng EAS
-Đã cấu hình sẵn `eas.json` và workflow build APK.
-
-- Build APK thủ công:
-
+### E2E Tests (Future)
 ```bash
-npx eas build --platform android --profile preview
+# Detox or Maestro for E2E testing
+npx detox test
 ```
 
-- Tự động build khi push:
-  - Push lên nhánh `apk-preview` hoặc `develop` sẽ kích hoạt `.eas/workflows/build-android-preview.yml`
+## 🤝 Contributing
 
-- Tải artifact:
-  - Mở link dashboard EAS hiển thị trong log sau khi build để tải file APK.
+### Code Standards
+- ✅ TypeScript strict mode
+- ✅ ESLint configuration
+- ✅ Prettier code formatting
+- ✅ Conventional commits
 
-Tham khảo tự động hóa: [Automating EAS CLI commands](https://docs.expo.dev/eas/workflows/automating-eas-cli/)
-
-## 📁 Cấu trúc project
-
-```
-src/
-├── components/          # Components tái sử dụng
-├── constants/           # Hằng số và cấu hình
-├── context/            # React Context (Auth, etc.)
-├── hooks/              # Custom hooks
-├── navigation/         # Navigation configuration
-├── screens/            # Màn hình ứng dụng
-│   ├── auth/          # Đăng nhập, đăng ký
-│   └── main/          # Dashboard, Schedule, Wallet, Profile
-├── services/           # API services
-├── types/              # TypeScript type definitions
-└── utils/              # Utility functions
+### Branch Strategy
+```bash
+main      # Production releases
+develop   # Development branch
+feature/* # Feature branches
+hotfix/*  # Bug fixes
 ```
 
-## 🛠️ Công nghệ sử dụng
+## 📈 Roadmap
 
-- **React Native** - Framework mobile
-- **Expo** - Development platform
-- **TypeScript** - Type safety
-- **React Navigation** - Navigation system
-- **Expo Vector Icons** - Icon library
-- **React Context** - State management
+### Phase 1 (Current)
+- ✅ Core authentication & user management
+- ✅ Student registration & management
+- ✅ Booking system with real-time availability
+- ✅ Payment integration
+- ✅ Branch transfer workflow
 
-## 📱 Screenshots
+### Phase 2 (Next)
+- 🔄 Advanced analytics dashboard
+- 🔄 AI-powered scheduling
+- 🔄 Parent-teacher messaging
+- 🔄 Mobile check-in with NFC/QR
+- 🔄 Offline mode support
 
-*Screenshots sẽ được thêm sau*
+### Phase 3 (Future)
+- 🔄 Multi-language support
+- 🔄 Advanced reporting with ML insights
+- 🔄 Integration with learning management systems
+- 🔄 Parent mobile app companion
+- 🔄 Staff scheduling optimization
 
-## 🤝 Đóng góp
+## 📞 Support
 
-1. Fork repository
-2. Tạo feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Mở Pull Request
+### Contact Information
+- **Email**: support@basemobile.com
+- **Phone**: +84 xxx xxx xxx
+- **Website**: https://basemobile.com
+
+### Documentation
+- [API Documentation](./docs/api.md)
+- [User Guide](./docs/user-guide.md)
+- [Developer Guide](./docs/developer-guide.md)
 
 ## 📄 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
-
-## 📞 Liên hệ
-
-**Brighway Education**
-- Website: [brighway.edu.vn](https://brighway.edu.vn)
-- Email: support@brighway.edu.vn
+Copyright © 2024 BASE MOBILE. All rights reserved.
 
 ---
 
-Made with ❤️ by Brighway Team
+**Made with ❤️ by the BASE MOBILE Team**
+
+*Transforming early childhood education through technology* 🎓✨

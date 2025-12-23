@@ -20,6 +20,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '../../contexts/AuthContext';
@@ -33,7 +34,7 @@ import studentLevelService from '../../services/studentLevelService';
 import schoolService from '../../services/schoolService';
 import activityService, { StaffActivityResponse } from '../../services/activityService';
 import studentSlotService from '../../services/studentSlotService';
-import { COLORS } from '../../constants';
+import { COLORS, DOCUMENT_TYPES } from '../../constants';
 
 const SPACING = {
   XS: 4,
@@ -144,6 +145,18 @@ const ProfileScreen: React.FC = () => {
   >({});
   const fetchedStudentsRef = useRef<Set<string>>(new Set());
 
+  // Document upload modal states
+  const [documentModalVisible, setDocumentModalVisible] = useState(false);
+  const [selectedChildForDocument, setSelectedChildForDocument] = useState<StudentResponse | null>(null);
+  const [documentType, setDocumentType] = useState<string>('BirthCertificate');
+  const [documentIssuedBy, setDocumentIssuedBy] = useState('');
+  const [documentIssuedDate, setDocumentIssuedDate] = useState<Date | null>(null);
+  const [documentExpirationDate, setDocumentExpirationDate] = useState<Date | null>(null);
+  const [documentFileUri, setDocumentFileUri] = useState<string | null>(null);
+  const [documentUploading, setDocumentUploading] = useState(false);
+  const [showDocumentIssuedDatePicker, setShowDocumentIssuedDatePicker] = useState(false);
+  const [showDocumentExpirationDatePicker, setShowDocumentExpirationDatePicker] = useState(false);
+
   // Activities states
   const [activities, setActivities] = useState<StaffActivityResponse[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
@@ -175,12 +188,13 @@ const ProfileScreen: React.FC = () => {
       const profiles = await parentProfileService.getFamilyProfiles();
       setFamilyProfiles(profiles);
     } catch (err: any) {
-      // If 401, don't set error - authHandler will handle logout
+      // If 401, clear data and let authHandler handle logout
       if (err?.response?.status === 401) {
-        // Token invalid, authHandler will handle logout
+        // Token invalid, clear data and authHandler will handle logout
+        setFamilyProfiles([]);
         return;
       }
-      // Don't show error for family profiles, just log it
+      // Don't show error for other failures, just log and clear data
       console.warn('Failed to fetch family profiles:', err?.message || err);
       setFamilyProfiles([]);
     } finally {
@@ -282,7 +296,10 @@ const ProfileScreen: React.FC = () => {
                 return;
               }
               // Only log warning for other errors (not 401)
-              console.warn(`Failed to fetch activities for slot ${slot.id}:`, err);
+              // Don't spam console with 401 warnings
+              if (statusCode !== 401) {
+                console.warn(`Failed to fetch activities for slot ${slot.id}:`, err);
+              }
             }
           }
         } catch (err: any) {
@@ -295,7 +312,10 @@ const ProfileScreen: React.FC = () => {
             return;
           }
           // Only log warning for other errors (not 401)
-          console.warn(`Failed to fetch slots for student ${student.id}:`, err);
+          // Don't spam console with 401 warnings
+          if (statusCode !== 401) {
+            console.warn(`Failed to fetch slots for student ${student.id}:`, err);
+          }
         }
       }
       
@@ -455,7 +475,7 @@ const ProfileScreen: React.FC = () => {
     }
   };
 
-  const handlePickDocumentFile = async () => {
+  const handlePickAddDocumentFile = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -623,6 +643,17 @@ const ProfileScreen: React.FC = () => {
     Alert.alert('Điểm danh', `Xem lịch điểm danh của ${child.name}`, [{ text: 'Đóng', style: 'default' }]);
   };
 
+  const handleAddDocument = (child: StudentResponse) => {
+    // Reset form and open modal
+    setSelectedChildForDocument(child);
+    setDocumentType('BirthCertificate');
+    setDocumentIssuedBy('');
+    setDocumentIssuedDate(null);
+    setDocumentExpirationDate(null);
+    setDocumentFileUri(null);
+    setDocumentModalVisible(true);
+  };
+
   const handleClasses = (child: StudentResponse) => {
     navigation.navigate('StudentClasses', {
       studentId: child.id,
@@ -637,6 +668,51 @@ const ProfileScreen: React.FC = () => {
       branchName: child.branchName || '',
       studentLevelName: child.studentLevelName || '',
     });
+  };
+
+  const handlePickDocumentFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setDocumentFileUri(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      Alert.alert('Lỗi', error?.message || 'Không thể chọn tệp. Vui lòng thử lại.');
+    }
+  };
+
+  const handleSubmitDocument = async () => {
+    if (!selectedChildForDocument || !documentFileUri) {
+      Alert.alert('Lỗi', 'Vui lòng chọn tệp để tải lên.');
+      return;
+    }
+
+    setDocumentUploading(true);
+    try {
+      await childrenService.addDocument(selectedChildForDocument.id, {
+        type: documentType,
+        file: documentFileUri,
+        issuedBy: documentIssuedBy || undefined,
+        issuedDate: documentIssuedDate ? documentIssuedDate.toISOString() : undefined,
+        expirationDate: documentExpirationDate ? documentExpirationDate.toISOString() : undefined,
+      });
+
+      Alert.alert('Thành công', 'Hồ sơ đã được bổ sung thành công.');
+      setDocumentModalVisible(false);
+    } catch (error: any) {
+      Alert.alert('Lỗi', error?.message || 'Không thể tải lên hồ sơ. Vui lòng thử lại.');
+    } finally {
+      setDocumentUploading(false);
+    }
+  };
+
+  const handleCloseDocumentModal = () => {
+    setDocumentModalVisible(false);
+    setSelectedChildForDocument(null);
+    setDocumentFileUri(null);
   };
 
   const fetchStudentPackages = useCallback(async (studentId: string, forceRefresh: boolean = false) => {
@@ -994,6 +1070,10 @@ const ProfileScreen: React.FC = () => {
 
   const handleMySubscriptions = () => {
     navigation.navigate('MySubscriptions');
+  };
+
+  const handleBranchTransferRequests = () => {
+    navigation.navigate('BranchTransferRequests');
   };
 
   const handleOrderHistory = () => {
@@ -1691,10 +1771,10 @@ const ProfileScreen: React.FC = () => {
                     
                     <TouchableOpacity 
                       style={[styles.actionButton, styles.secondaryButton]}
-                      onPress={() => handleClasses(child)}
+                      onPress={() => handleAddDocument(child)}
                     >
-                      <MaterialIcons name="school" size={16} color={COLORS.SECONDARY} />
-                      <Text style={[styles.actionButtonText, { color: COLORS.SECONDARY }]}>Lớp học</Text>
+                      <MaterialIcons name="file-upload" size={16} color={COLORS.SECONDARY} />
+                      <Text style={[styles.actionButtonText, { color: COLORS.SECONDARY }]}>Bổ sung hồ sơ</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -1919,6 +1999,12 @@ const ProfileScreen: React.FC = () => {
           <TouchableOpacity style={styles.menuItem} onPress={handleMySubscriptions}>
             <MaterialIcons name="card-membership" size={24} color={COLORS.PRIMARY} />
             <Text style={styles.menuText}>Gói đăng ký của tôi</Text>
+            <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={handleBranchTransferRequests}>
+            <MaterialIcons name="swap-horiz" size={24} color={COLORS.PRIMARY} />
+            <Text style={styles.menuText}>Chuyển chi nhánh</Text>
             <MaterialIcons name="chevron-right" size={24} color={COLORS.TEXT_SECONDARY} />
           </TouchableOpacity>
 
@@ -2789,6 +2875,167 @@ const ProfileScreen: React.FC = () => {
             </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Document Upload Modal */}
+      <Modal visible={documentModalVisible} transparent animationType="slide">
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <KeyboardAvoidingView style={styles.modalOverlay} behavior="padding">
+            <TouchableWithoutFeedback>
+              <View style={styles.documentModalContainer}>
+                <View style={styles.documentModalHeader}>
+                  <Text style={styles.documentModalTitle}>Bổ sung hồ sơ</Text>
+                  <TouchableOpacity
+                    onPress={handleCloseDocumentModal}
+                    disabled={documentUploading}
+                  >
+                    <MaterialIcons name="close" size={24} color={COLORS.TEXT_PRIMARY} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView contentContainerStyle={styles.documentModalContent}>
+                  {selectedChildForDocument && (
+                    <Text style={styles.documentChildName}>{selectedChildForDocument.name}</Text>
+                  )}
+
+                  {/* Document Type */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Loại tài liệu *</Text>
+                    <View style={styles.pickerContainer}>
+                      <View style={styles.picker}>
+                        {DOCUMENT_TYPES.map((type) => (
+                          <TouchableOpacity
+                            key={type.id}
+                            style={[
+                              styles.pickerOption,
+                              documentType === type.id && styles.pickerOptionSelected,
+                            ]}
+                            onPress={() => setDocumentType(type.id)}
+                          >
+                            <View
+                              style={[
+                                styles.pickerRadio,
+                                documentType === type.id && styles.pickerRadioSelected,
+                              ]}
+                            />
+                            <Text
+                              style={[
+                                styles.pickerOptionText,
+                                documentType === type.id && styles.pickerOptionTextSelected,
+                              ]}
+                            >
+                              {type.name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Issued By */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Cấp phát bởi</Text>
+                    <TextInput
+                      style={styles.documentTextInput}
+                      placeholder="VD: Trung tâm quản lý..."
+                      placeholderTextColor={COLORS.TEXT_TERTIARY}
+                      value={documentIssuedBy}
+                      onChangeText={setDocumentIssuedBy}
+                      editable={!documentUploading}
+                    />
+                  </View>
+
+                  {/* Issued Date */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Ngày cấp phát</Text>
+                    <TouchableOpacity
+                      style={styles.dateButton}
+                      onPress={() => setShowDocumentIssuedDatePicker(true)}
+                      disabled={documentUploading}
+                    >
+                      <MaterialIcons name="calendar-today" size={20} color={COLORS.PRIMARY} />
+                      <Text style={styles.dateButtonText}>
+                        {documentIssuedDate ? formatDateForDisplay(documentIssuedDate.toISOString()) : 'Chọn ngày'}
+                      </Text>
+                    </TouchableOpacity>
+                    {showDocumentIssuedDatePicker && (
+                      <DateTimePicker
+                        value={documentIssuedDate || new Date()}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={(event, date) => {
+                          setShowDocumentIssuedDatePicker(false);
+                          if (date) setDocumentIssuedDate(date);
+                        }}
+                      />
+                    )}
+                  </View>
+
+                  {/* Expiration Date */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Ngày hết hạn</Text>
+                    <TouchableOpacity
+                      style={styles.dateButton}
+                      onPress={() => setShowDocumentExpirationDatePicker(true)}
+                      disabled={documentUploading}
+                    >
+                      <MaterialIcons name="calendar-today" size={20} color={COLORS.PRIMARY} />
+                      <Text style={styles.dateButtonText}>
+                        {documentExpirationDate ? formatDateForDisplay(documentExpirationDate.toISOString()) : 'Chọn ngày'}
+                      </Text>
+                    </TouchableOpacity>
+                    {showDocumentExpirationDatePicker && (
+                      <DateTimePicker
+                        value={documentExpirationDate || new Date()}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={(event, date) => {
+                          setShowDocumentExpirationDatePicker(false);
+                          if (date) setDocumentExpirationDate(date);
+                        }}
+                      />
+                    )}
+                  </View>
+
+                  {/* File Upload */}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Tệp *</Text>
+                    <TouchableOpacity
+                      style={[styles.uploadButton, documentFileUri && styles.uploadButtonActive]}
+                      onPress={handlePickDocumentFile}
+                      disabled={documentUploading}
+                    >
+                      <MaterialIcons
+                        name={documentFileUri ? 'check-circle' : 'cloud-upload'}
+                        size={24}
+                        color={documentFileUri ? COLORS.SUCCESS : COLORS.PRIMARY}
+                      />
+                      <Text style={styles.uploadButtonText}>
+                        {documentFileUri ? 'Đã chọn tệp' : 'Chọn tệp'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Submit Button */}
+                  <TouchableOpacity
+                    style={[styles.submitButton, documentUploading && styles.submitButtonDisabled]}
+                    onPress={handleSubmitDocument}
+                    disabled={!documentFileUri || documentUploading}
+                  >
+                    {documentUploading ? (
+                      <ActivityIndicator size="small" color={COLORS.SURFACE} />
+                    ) : (
+                      <>
+                        <MaterialIcons name="upload" size={20} color={COLORS.SURFACE} />
+                        <Text style={styles.submitButtonText}>Tải lên</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   );
@@ -3888,6 +4135,149 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.PRIMARY,
     borderWidth: 2,
     borderColor: COLORS.SURFACE,
+  },
+  documentModalContainer: {
+    backgroundColor: COLORS.SURFACE,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '85%',
+    marginTop: 'auto',
+  },
+  documentModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  documentModalTitle: {
+    fontSize: FONTS.SIZES.LG,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  documentModalContent: {
+    padding: SPACING.MD,
+  },
+  documentChildName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.LG,
+  },
+  formGroup: {
+    marginBottom: SPACING.LG,
+  },
+  formLabel: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.SM,
+  },
+  documentTextInput: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    padding: SPACING.MD,
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+  },
+  pickerContainer: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  picker: {
+    gap: 0,
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  pickerOptionSelected: {
+    backgroundColor: COLORS.PRIMARY_LIGHT + '10',
+  },
+  pickerRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: COLORS.BORDER,
+    marginRight: SPACING.MD,
+  },
+  pickerRadioSelected: {
+    backgroundColor: COLORS.PRIMARY,
+    borderColor: COLORS.PRIMARY,
+  },
+  pickerOptionText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    flex: 1,
+  },
+  pickerOptionTextSelected: {
+    color: COLORS.PRIMARY,
+    fontWeight: '600',
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    borderRadius: 8,
+    padding: SPACING.MD,
+    gap: SPACING.SM,
+  },
+  dateButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.BACKGROUND,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: COLORS.PRIMARY,
+    borderRadius: 8,
+    padding: SPACING.LG,
+    gap: SPACING.SM,
+  },
+  uploadButtonActive: {
+    borderColor: COLORS.SUCCESS,
+    backgroundColor: COLORS.SUCCESS_BG,
+  },
+  uploadButtonText: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.PRIMARY,
+  },
+  submitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    borderRadius: 8,
+    padding: SPACING.MD,
+    gap: SPACING.SM,
+    marginTop: SPACING.LG,
+    marginBottom: SPACING.LG,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.SURFACE,
   },
 });
 

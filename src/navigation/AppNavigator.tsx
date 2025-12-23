@@ -72,6 +72,9 @@ import RegisterChildScreen from '../screens/main/RegisterChildScreen';
 import ClassDetailScreen from '../screens/main/ClassDetailScreen';
 import SelectSlotScreen from '../screens/main/SelectSlotScreen';
 import BulkBookScreen from '../screens/main/BulkBookScreen';
+import BranchTransferRequestScreen from '../screens/main/BranchTransferRequestScreen';
+import BranchTransferRequestsListScreen from '../screens/main/BranchTransferRequestsListScreen';
+import BranchTransferRequestDetailScreen from '../screens/main/BranchTransferRequestDetailScreen';
 import StudentGuardiansScreen from '../screens/staff/StudentGuardiansScreen';
 import NotificationWatcher from '../components/NotificationWatcher';
 import BadgeIcon from '../components/BadgeIcon';
@@ -764,6 +767,30 @@ const AppNavigator = () => {
               component={BulkBookScreen}
               options={{
                 title: 'Đặt lịch hàng loạt',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="BranchTransferRequests"
+              component={BranchTransferRequestsListScreen}
+              options={{
+                title: 'Yêu cầu chuyển chi nhánh',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="BranchTransferRequest"
+              component={BranchTransferRequestScreen}
+              options={{
+                title: 'Tạo yêu cầu chuyển chi nhánh',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="BranchTransferRequestDetail"
+              component={BranchTransferRequestDetailScreen}
+              options={{
+                title: 'Chi tiết yêu cầu',
                 headerShown: false,
               }}
             />

@@ -1,4 +1,4 @@
-// Children Management Service
+ // Children Management Service
 import { Platform } from 'react-native';
 import axiosInstance from '../config/axios.config';
 import { apiClient } from './apiClient';
@@ -381,6 +381,91 @@ class ChildrenService {
         error?.message ||
         'Failed to register child';
       
+      const errorObj: any = new Error(errorMessage);
+      errorObj.response = error?.response;
+      errorObj.data = error?.response?.data;
+      throw errorObj;
+    }
+  }
+
+  /**
+   * Add document to existing student
+   * Endpoint: POST /api/Student/{studentId}/add-document
+   *
+   * @param studentId Student ID (UUID)
+   * @param documentData Object containing document information
+   * @param documentData.type Document type (required)
+   * @param documentData.file Document file URI (required)
+   * @param documentData.issuedBy Optional: Issued by
+   * @param documentData.issuedDate Optional: Issued date (ISO datetime string)
+   * @param documentData.expirationDate Optional: Expiration date (ISO datetime string)
+   * @returns Success response
+   */
+  async addDocument(
+    studentId: string,
+    documentData: {
+      type: string;
+      file: string;
+      issuedBy?: string;
+      issuedDate?: string;
+      expirationDate?: string;
+    }
+  ): Promise<any> {
+    try {
+      const formData = new FormData();
+
+      // Required fields
+      formData.append('Type', documentData.type);
+
+      // Handle file upload
+      let uri = documentData.file;
+      // Fix URI for Android - remove 'file://' prefix if exists
+      if (Platform.OS === 'android' && uri.startsWith('file://')) {
+        uri = uri.replace('file://', '');
+      }
+      const fileExtension = uri.split('.').pop() || 'pdf';
+      const mimeType = fileExtension === 'pdf' ? 'application/pdf' :
+                      fileExtension === 'jpg' || fileExtension === 'jpeg' ? 'image/jpeg' :
+                      fileExtension === 'png' ? 'image/png' : 'application/octet-stream';
+
+      // @ts-ignore - FormData type issue with React Native
+      formData.append('File', {
+        uri: Platform.OS === 'android' ? uri : documentData.file,
+        type: mimeType,
+        name: `document_${Date.now()}.${fileExtension}`,
+      } as any);
+
+      // Optional fields
+      if (documentData.issuedBy) {
+        formData.append('IssuedBy', documentData.issuedBy);
+      }
+      if (documentData.issuedDate) {
+        formData.append('IssuedDate', documentData.issuedDate);
+      }
+      if (documentData.expirationDate) {
+        formData.append('ExpirationDate', documentData.expirationDate);
+      }
+
+      const response = await axiosInstance.post(
+        `/api/Student/${studentId}/add-document`,
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 60000, // 60 seconds for file uploads
+        }
+      );
+
+      return response.data;
+    } catch (error: any) {
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.response?.data?.title ||
+        error?.message ||
+        'Failed to add document';
+
       const errorObj: any = new Error(errorMessage);
       errorObj.response = error?.response;
       errorObj.data = error?.response?.data;

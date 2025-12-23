@@ -24,8 +24,7 @@ import { BranchSlotResponse } from '../../types/api';
 import branchSlotService from '../../services/branchSlotService';
 import studentSlotService from '../../services/studentSlotService';
 import packageService from '../../services/packageService';
-import branchService from '../../services/branchService';
-import { StudentPackageSubscription, StudentResponse, BranchSlotBranchResponse } from '../../types/api';
+import { StudentPackageSubscription, StudentResponse } from '../../types/api';
 import { useMyChildren } from '../../hooks/useChildrenApi';
 
 const SPACING = {
@@ -73,7 +72,6 @@ interface EnrichedStudent {
   userName: string;
   branchId: string;
   subscriptions: StudentPackageSubscription[];
-  branch?: BranchSlotBranchResponse;
 }
 
 type WeekdayKey = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -180,21 +178,9 @@ const BulkBookScreen: React.FC = () => {
           return status === 'ACTIVE';
         });
 
-        // Fetch branch info if branchId exists
-        let branch: BranchSlotBranchResponse | undefined;
-        if (student.branchId) {
-          try {
-            const branches = await branchService.getBranches();
-            branch = branches.find(b => b.id === student.branchId);
-          } catch (err) {
-            console.warn('Failed to load branch info:', err);
-          }
-        }
-
         enriched.push({
           ...student,
           subscriptions: activeSubscriptions,
-          branch,
         });
       } catch (err) {
         console.warn(`Failed to enrich data for student ${student.id}:`, err);
@@ -202,7 +188,6 @@ const BulkBookScreen: React.FC = () => {
         enriched.push({
           ...student,
           subscriptions: [],
-          branch: undefined,
         });
       }
     }
@@ -390,18 +375,31 @@ const BulkBookScreen: React.FC = () => {
 
     setSlotsLoading(true);
     try {
-      // For bulk booking, we load slots for the start date as reference
+
+      // For bulk booking, load all slots in range (paginate)
+      const items: BranchSlotResponse[] = [];
+      let pageIndex = 1;
+      const pageSize = 200;
       // The filtering by weekDates will be done client-side
-      const items = await branchSlotService.getAllAvailableSlotsForStudent(formData.studentId, {
-        date: formData.startDate ? new Date(formData.startDate) : new Date(),
-        pageSize: 200
-      });
+      while (true) {
+        const resp = await branchSlotService.getAvailableSlotsForStudent(
+          formData.studentId,
+          pageIndex,
+          pageSize,
+          { startDate: formData.startDate, endDate: formData.endDate }
+        );
+        if (Array.isArray(resp.items)) items.push(...resp.items);
+        if (!resp.hasNextPage || pageIndex > 50) break;
+        pageIndex += 1;
+      }
+
+      
 
       // Group slots by timeframe and branch
       const slotMap = new Map();
       items
-        .filter(slot => slot.status?.toLowerCase() === 'available' && formData.weekDates.includes(slot.weekDate as WeekdayKey))
-        .forEach(slot => {
+        .filter((slot: BranchSlotResponse) => slot.status?.toLowerCase() === 'available' && formData.weekDates.includes(slot.weekDate as WeekdayKey))
+        .forEach((slot: BranchSlotResponse) => {
           const key = `${slot.branch?.id || 'unknown'}_${slot.timeframe?.id || 'unknown'}`;
           if (!slotMap.has(key)) {
             slotMap.set(key, {
@@ -535,6 +533,23 @@ const BulkBookScreen: React.FC = () => {
     return count;
   }, [formData.startDate, formData.endDate, formData.weekDates]);
 
+  // Calculate total days in date range (for summary display)
+  const totalDaysInRange = useMemo(() => {
+    if (!formData.startDate || !formData.endDate) return 0;
+
+    const start = new Date(formData.startDate);
+    const end = new Date(formData.endDate);
+    
+    // Set to midnight để tính chính xác số ngày (bao gồm cả ngày kết thúc)
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    
+    const diffTime = end.getTime() - start.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 để bao gồm ngày bắt đầu
+    
+    return Math.max(0, diffDays);
+  }, [formData.startDate, formData.endDate]);
+
   // Render current step
   const renderCurrentStep = () => {
     switch (currentStep) {
@@ -622,14 +637,7 @@ const BulkBookScreen: React.FC = () => {
                             </View>
                           )}
 
-                          {student.branch && (
-                            <View style={styles.childDetailRow}>
-                              <MaterialIcons name="location-on" size={16} color={isSelected ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY} />
-                              <Text style={[styles.childDetailText, isSelected && styles.childDetailTextSelected]}>
-                                {student.branch.branchName}
-                              </Text>
-                            </View>
-                          )}
+                          {/* Branch info removed for cleaner UI */}
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -680,7 +688,7 @@ const BulkBookScreen: React.FC = () => {
                   Khoảng thời gian: {formatDateDisplay(new Date(formData.startDate))} → {formatDateDisplay(new Date(formData.endDate))}
                 </Text>
                 <Text style={styles.dateSummarySubtext}>
-                  Tổng cộng: {estimatedSlots} ngày
+                  Tổng cộng: {totalDaysInRange} ngày
                 </Text>
               </View>
             )}
@@ -1058,14 +1066,15 @@ const BulkBookScreen: React.FC = () => {
       {/* Date Pickers */}
       {showStartPicker && (
         <DateTimePicker
-          value={startDatePicker}
+          value={startDatePicker || new Date()}
           mode="date"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={(_, d) => {
-            setShowStartPicker(false);
             if (d) {
+              setStartDatePicker(d);
               updateFormData({ startDate: formatDateYMD(d) });
             }
+            setShowStartPicker(false);
           }}
           minimumDate={new Date()}
         />
@@ -1073,16 +1082,17 @@ const BulkBookScreen: React.FC = () => {
 
       {showEndPicker && (
         <DateTimePicker
-          value={endDatePicker}
+          value={endDatePicker || new Date()}
           mode="date"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={(_, d) => {
-            setShowEndPicker(false);
             if (d) {
+              setEndDatePicker(d);
               updateFormData({ endDate: formatDateYMD(d) });
             }
+            setShowEndPicker(false);
           }}
-          minimumDate={startDatePicker}
+          minimumDate={startDatePicker || new Date()}
         />
       )}
     </SafeAreaView>

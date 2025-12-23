@@ -97,13 +97,14 @@ class BranchSlotService {
       if (filters?.timeframeId) params.timeframeId = filters.timeframeId;
       if (filters?.slotTypeId) params.slotTypeId = filters.slotTypeId;
       if (typeof filters?.weekDate === 'number') params.weekDate = String(filters.weekDate);
-      
-      const response = await axiosInstance.get<PaginatedResponse<BranchSlotResponse>>(
-        `/api/BranchSlot/available-for-student/${studentId}`,
-        {
-          params,
-        }
-      );
+
+      const url = `/api/BranchSlot/available-for-student/${studentId}`;
+
+      const response = await axiosInstance.get<PaginatedResponse<BranchSlotResponse>>(url, {
+        params,
+        timeout: 30000
+      });
+
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to fetch available slots';
@@ -114,17 +115,22 @@ class BranchSlotService {
    * Get all available slots for a student (loads all pages)
    * Similar to web's getAllAvailableSlotsForStudent
    * @param studentId Student ID (UUID)
-   * @param params Optional parameters including date and pageSize
+   * @param params Optional parameters including date, date range, weekDate and pageSize
    * @returns Array of all available branch slots
    */
   async getAllAvailableSlotsForStudent(
     studentId: string,
     params: {
       date?: Date | string | null;
+      startDate?: Date | string | null;
+      endDate?: Date | string | null;
+      weekDate?: number | null;
+      timeframeId?: string | null;
+      slotTypeId?: string | null;
       pageSize?: number;
     } = {}
   ): Promise<BranchSlotResponse[]> {
-    const { date, pageSize = 100 } = params;
+    const { pageSize = 100, ...filters } = params;
     const allItems: BranchSlotResponse[] = [];
     let pageIndex = 1;
     let hasMore = true;
@@ -135,16 +141,16 @@ class BranchSlotService {
           studentId,
           pageIndex,
           pageSize,
-          date
+          filters
         );
-        
+
         if (response.items && Array.isArray(response.items)) {
           allItems.push(...response.items);
         }
-        
+
         hasMore = response.hasNextPage || false;
         pageIndex++;
-        
+
         // Safety limit to prevent infinite loops
         if (pageIndex > 100) {
           break;
@@ -176,15 +182,16 @@ class BranchSlotService {
     pageSize: number = 10
   ): Promise<PaginatedResponse<BranchSlotRoomResponse>> {
     try {
-      const response = await axiosInstance.get<PaginatedResponse<BranchSlotRoomResponse>>(
-        `/api/BranchSlot/${branchSlotId}/rooms`,
-        {
-          params: {
-            pageIndex,
-            pageSize,
-          },
-        }
-      );
+
+      const url = `/api/BranchSlot/${branchSlotId}/rooms`;
+
+      const response = await axiosInstance.get<PaginatedResponse<BranchSlotRoomResponse>>(url, {
+        params: {
+          pageIndex,
+          pageSize,
+        },
+        timeout: 30000
+      });
       
       // Validate response structure
       if (!response || !response.data) {
