@@ -154,6 +154,14 @@ export const NOTIFICATION_TYPES = {
   WALLET_LOW_BALANCE: 'WALLET_LOW_BALANCE',
 };
 
+export const DOCUMENT_TYPES = [
+  { id: 'BirthCertificate', name: 'Giấy khai sinh' },
+  { id: 'IDCard', name: 'Chứng minh thư' },
+  { id: 'Passport', name: 'Hộ chiếu' },
+  { id: 'SchoolCertificate', name: 'Bằng cấp trường học' },
+  { id: 'VaccinationRecord', name: 'Sổ tiêm chủng' },
+];
+
 export const API_ENDPOINTS = {
   // Auth
   LOGIN: '/auth/login',
@@ -218,6 +226,9 @@ export const API_ENDPOINTS = {
   
   // Register Child
   STUDENT_REGISTER_CHILD: '/api/Student/register-child',
+
+  // Student Document
+  STUDENT_ADD_DOCUMENT: '/api/Student/:studentId/document',
 
   // Branch Transfer
   BRANCH_TRANSFER_REQUEST: '/Student/branch-transfer/request',

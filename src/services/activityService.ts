@@ -306,37 +306,52 @@ class ActivityService {
    */
   async checkInStudentWithImage(studentId: string, imageUri: string): Promise<ActivityResponse> {
     try {
+      console.log('📤 [ActivityService] Starting check-in with image upload...');
+      console.log('👤 [ActivityService] Student ID:', studentId);
+      console.log('📸 [ActivityService] Image URI:', imageUri);
+
       // Create FormData for multipart/form-data
       const formData = new FormData();
-      
+
       // Fix URI for Android - remove 'file://' prefix if exists
       let fixedUri = imageUri;
       if (imageUri.startsWith('file://')) {
         fixedUri = imageUri.replace('file://', '');
       }
-      
+
       // Get file extension and mime type
       const fileExtension = imageUri.split('.').pop()?.toLowerCase() || 'jpg';
       const mimeType = fileExtension === 'png' ? 'image/png' : 'image/jpeg';
-      
+
+      console.log('📄 [ActivityService] File extension:', fileExtension, 'MIME type:', mimeType);
+
       // Append image file to FormData
       // @ts-ignore - FormData type issue with React Native
-      formData.append('image', {
+      const imageData = {
         uri: Platform.OS === 'android' ? fixedUri : imageUri,
         type: mimeType,
         name: `checkin_${studentId}_${Date.now()}.${fileExtension}`,
-      } as any);
+      } as any;
+
+      console.log('📦 [ActivityService] Image data:', imageData);
+      // Try different field names that backend might expect
+      formData.append('file', imageData); // Some APIs use 'file'
+      // formData.append('image', imageData); // Original field name
+
+      const endpoint = `/api/Activity/checkin/staff/${studentId}/with-image`;
+      console.log('🔗 [ActivityService] POST to:', endpoint);
 
       const response = await axiosInstance.post<ActivityResponse>(
-        `/api/Activity/checkin/staff/${studentId}/with-image`,
+        endpoint,
         formData,
         {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
           timeout: 60000, // 60 seconds timeout for file upload
         }
       );
+
+      console.log('✅ [ActivityService] Check-in with image successful:', response.status);
+      console.log('📋 [ActivityService] Response data:', response.data);
+
       return response.data;
     } catch (error: any) {
       throw error.response?.data || error.message || 'Failed to check-in student with image';

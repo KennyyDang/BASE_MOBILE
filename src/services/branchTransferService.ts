@@ -1,6 +1,9 @@
 import axiosInstance from '../config/axios.config';
 import type { BranchTransferRequest } from '../types/api';
 
+// NOTE: Use centralized axios instance with baseURL from env
+
+
 // Pagination response interface
 export interface BranchTransferPaginationResponse {
   items: BranchTransferRequest[];
@@ -67,11 +70,12 @@ const createTransferRequest = async (requestData: CreateTransferRequestData): Pr
       formData.append('RequestReason', requestData.requestReason);
     }
 
-    const response = await axiosInstance.post('/Student/branch-transfer/request', formData, {
-      timeout: 60000 // 60 seconds for file upload
+    const url = `/api/Student/branch-transfer/request`;
+
+    const response = await axiosInstance.post(url, formData, {
+      timeout: 60000
     });
 
-    // API returns data directly
     return response.data;
   } catch (error) {
     throw error;
@@ -80,15 +84,17 @@ const createTransferRequest = async (requestData: CreateTransferRequestData): Pr
 
 const getMyTransferRequests = async (params: Record<string, any> = {}): Promise<BranchTransferPaginationResponse> => {
   try {
-    const queryString = buildQueryString(params);
-    const response = await axiosInstance.get(`/Student/branch-transfer/requests${queryString}`);
+    const url = `/api/Student/branch-transfer/requests`;
 
-    // API returns data wrapped in pagination format with items array
+    const response = await axiosInstance.get(url, {
+      params,
+      timeout: 30000
+    });
     const data = response.data as any;
 
     // If API returns direct array, convert to pagination format
     if (Array.isArray(data)) {
-      return {
+      const result = {
         items: data,
         totalCount: data.length,
         pageIndex: 1,
@@ -97,6 +103,7 @@ const getMyTransferRequests = async (params: Record<string, any> = {}): Promise<
         hasNextPage: false,
         hasPreviousPage: false,
       };
+      return result;
     }
 
     // If API returns pagination format
@@ -106,7 +113,7 @@ const getMyTransferRequests = async (params: Record<string, any> = {}): Promise<
       const totalCount = data.totalCount || data.total || data.items.length;
       const totalPages = data.totalPages || Math.ceil(totalCount / pageSize);
 
-      return {
+      const result = {
         items: data.items,
         totalCount,
         pageIndex,
@@ -115,6 +122,7 @@ const getMyTransferRequests = async (params: Record<string, any> = {}): Promise<
         hasNextPage: pageIndex < totalPages,
         hasPreviousPage: pageIndex > 1,
       };
+      return result;
     }
 
     // Fallback
@@ -134,9 +142,12 @@ const getMyTransferRequests = async (params: Record<string, any> = {}): Promise<
 
 const getMyTransferRequestById = async (requestId: string): Promise<BranchTransferRequest> => {
   try {
-    const response = await axiosInstance.get(`/Student/branch-transfer/requests/${requestId}`);
+    const url = `/api/Student/branch-transfer/requests/${requestId}`;
 
-    // API returns data directly (not wrapped in ApiResponse format)
+    const response = await axiosInstance.get(url, {
+      timeout: 30000
+    });
+
     return response.data as any;
   } catch (error) {
     throw error;
@@ -145,9 +156,12 @@ const getMyTransferRequestById = async (requestId: string): Promise<BranchTransf
 
 const cancelTransferRequest = async (requestId: string): Promise<any> => {
   try {
-    const response = await axiosInstance.delete(`/Student/branch-transfer/requests/${requestId}`);
+    const url = `/api/Student/branch-transfer/requests/${requestId}`;
 
-    // API returns data directly
+    const response = await axiosInstance.delete(url, {
+      timeout: 30000
+    });
+
     return response.data;
   } catch (error) {
     throw error;

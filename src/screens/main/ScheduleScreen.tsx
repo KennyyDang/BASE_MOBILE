@@ -1137,25 +1137,7 @@ const ScheduleScreen: React.FC = () => {
           {/* Divider */}
           <View style={styles.studentDivider} />
 
-          {/* Thông tin chi nhánh và trường */}
-          <View style={styles.studentInfoSection}>
-            <View style={styles.studentMetaRow}>
-              <View style={styles.studentIconContainer}>
-                <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
-              </View>
-              <Text style={styles.studentMetaText}>
-                {student.branchName || 'Chưa gắn chi nhánh'}
-              </Text>
-            </View>
-            <View style={[styles.studentMetaRow, { marginTop: SPACING.XS }]}>
-              <View style={styles.studentIconContainer}>
-                <MaterialIcons name="school" size={18} color={COLORS.PRIMARY} />
-              </View>
-              <Text style={styles.studentMetaText} numberOfLines={2}>
-                {student.schoolName || 'Chưa cập nhật trường học'}
-              </Text>
-            </View>
-          </View>
+          {/* Đã bỏ phần chi nhánh và trường theo yêu cầu */}
           
           {/* Thông tin gói và slot - Section riêng */}
           <View style={styles.studentPackageSection}>
@@ -1211,18 +1193,7 @@ const ScheduleScreen: React.FC = () => {
             </Text>
           </View>
         </View>
-        <View style={[styles.studentMetaRow, styles.withTopSpacing]}>
-          <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
-          <Text style={styles.studentMetaText}>
-            {selectedStudent.branchName || 'Chưa gắn chi nhánh'}
-          </Text>
-        </View>
-        <View style={[styles.studentMetaRow, styles.withTopSpacing]}>
-          <MaterialIcons name="school" size={18} color={COLORS.PRIMARY} />
-          <Text style={styles.studentMetaText}>
-            {selectedStudent.schoolName || 'Chưa cập nhật trường học'}
-          </Text>
-        </View>
+        {/* Đã bỏ phần chi nhánh và trường theo yêu cầu */}
       </View>
     );
   };
@@ -1528,12 +1499,7 @@ const ScheduleScreen: React.FC = () => {
                         )}
           </View>
 
-                      <View style={styles.slotMetaRow}>
-                        <MaterialIcons name="location-on" size={18} color={COLORS.SECONDARY} />
-                        <Text style={styles.slotMetaText}>
-                          {slot.branch?.branchName || 'Chưa có thông tin chi nhánh'}
-                        </Text>
-              </View>
+              
 
                       <View style={styles.slotMetaRow}>
                         <MaterialIcons name="category" size={18} color={COLORS.PRIMARY} />
@@ -1712,14 +1678,7 @@ const ScheduleScreen: React.FC = () => {
                                             </View>
                                           ) : null}
                                         </View>
-                                        {room.branchName || slot.branch?.branchName ? (
-                                          <View style={styles.roomMetaRow}>
-                                            <MaterialIcons name="domain" size={18} color={COLORS.SECONDARY} />
-                                            <Text style={styles.roomMetaText}>
-                                              {room.branchName || slot.branch?.branchName || 'Chi nhánh đang cập nhật'}
-                                            </Text>
-                                          </View>
-                                        ) : null}
+                                        
                                         {room.facilityName ? (
                                           <View style={styles.roomMetaRow}>
                                             <MaterialIcons name="business" size={18} color={COLORS.ACCENT} />
@@ -1914,18 +1873,7 @@ const ScheduleScreen: React.FC = () => {
     return daySlots;
   }, [selectedDate, groupedSlots, selectedTimeframe]);
 
-  // Get branch name from slots
-  const getBranchName = useMemo(() => {
-    if (!slots.length) return 'Chưa có thông tin';
-    const firstSlot = slots[0];
-    return firstSlot.branch?.branchName || 'Chưa có thông tin';
-  }, [slots]);
-
-  // Get school name from selected student
-  const getSchoolName = useMemo(() => {
-    if (!selectedStudent) return 'Chưa có thông tin';
-    return selectedStudent.schoolName || 'Chưa có thông tin';
-  }, [selectedStudent]);
+  // Đã bỏ phần lấy chi nhánh và trường theo yêu cầu
 
   // Get package name from selected subscription
   const getPackageName = useMemo(() => {
@@ -2070,7 +2018,7 @@ const ScheduleScreen: React.FC = () => {
                 <View style={styles.resultsHeaderInfoContent}>
                   <MaterialIcons name="child-care" size={20} color={COLORS.SURFACE} />
                   <Text style={styles.resultsHeaderTitle} numberOfLines={1}>
-                    {selectedStudent?.name || 'Chọn con'} • {getBranchName}
+                    {selectedStudent?.name || 'Chọn con'}
                   </Text>
                   <MaterialIcons name="arrow-drop-down" size={20} color={COLORS.SURFACE} />
                 </View>
@@ -2188,7 +2136,6 @@ const ScheduleScreen: React.FC = () => {
                       <View style={styles.resultsSlotTimeSection}>
                         <View style={styles.resultsSlotTimeLeft}>
                           <Text style={styles.resultsSlotTime}>{formatTime(slot.timeframe?.startTime)}</Text>
-                          <Text style={styles.resultsSlotLocation}>{slot.branch?.branchName || 'Chưa có'}</Text>
                         </View>
                         
                         <View style={styles.resultsSlotDuration}>
@@ -2220,20 +2167,11 @@ const ScheduleScreen: React.FC = () => {
                         
                         <View style={styles.resultsSlotTimeRight}>
                           <Text style={styles.resultsSlotTime}>{formatTime(slot.timeframe?.endTime)}</Text>
-                          <Text style={styles.resultsSlotLocation}>{getSchoolName}</Text>
                         </View>
                       </View>
 
                       {/* Info Section */}
                       <View style={styles.resultsSlotInfoSection}>
-                        <View style={styles.resultsSlotInfoRow}>
-                          <MaterialIcons name="location-on" size={16} color={COLORS.TEXT_SECONDARY} />
-                          <Text style={styles.resultsSlotInfoText}>{slot.branch?.branchName || 'Chưa có'}</Text>
-                        </View>
-                        <View style={styles.resultsSlotInfoRow}>
-                          <MaterialIcons name="school" size={16} color={COLORS.TEXT_SECONDARY} />
-                          <Text style={styles.resultsSlotInfoText}>{getSchoolName}</Text>
-                        </View>
                         <View style={styles.resultsSlotInfoRow}>
                           <MaterialIcons name="card-membership" size={16} color={COLORS.TEXT_SECONDARY} />
                           <Text style={styles.resultsSlotInfoText}>{getPackageName}</Text>
@@ -2607,30 +2545,7 @@ const ScheduleScreen: React.FC = () => {
 
                 {/* Information Fields */}
                 <View style={styles.newInfoSection}>
-                  <Surface style={styles.newInfoCard} elevation={1}>
-                    <View style={styles.newInfoRow}>
-                      <View style={styles.newInfoIconContainer}>
-                        <MaterialIcons name="location-on" size={20} color={COLORS.PRIMARY} />
-                      </View>
-                      <View style={styles.newInfoContent}>
-                        <Text style={styles.newInfoLabel}>Chi nhánh</Text>
-                        <Text style={styles.newInfoValue} numberOfLines={2}>{getBranchName}</Text>
-                      </View>
-                    </View>
-                  </Surface>
-                  
-                  <Surface style={styles.newInfoCard} elevation={1}>
-                    <View style={styles.newInfoRow}>
-                      <View style={styles.newInfoIconContainer}>
-                        <MaterialIcons name="school" size={20} color={COLORS.PRIMARY} />
-                      </View>
-                      <View style={styles.newInfoContent}>
-                        <Text style={styles.newInfoLabel}>Trường</Text>
-                        <Text style={styles.newInfoValue} numberOfLines={2}>{getSchoolName}</Text>
-                      </View>
-                    </View>
-                  </Surface>
-                  
+                  {/* Đã bỏ hiển thị Chi nhánh & Trường theo yêu cầu */}
                 </View>
 
                 {/* Date Selection */}

@@ -132,6 +132,10 @@ export interface BranchSlotResponse {
     remainingSlots?: number | null;
   } | null;
   packageName?: string | null;
+  // Extended properties for UI
+  isBookedSlot?: boolean;
+  studentSlotId?: string;
+  originalBranchSlotId?: string;
   packageSubscriptionName?: string | null;
   packageRemainingSlots?: number | null;
 }

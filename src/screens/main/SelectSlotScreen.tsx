@@ -13,6 +13,7 @@ import {
   Platform,
   Dimensions,
   Modal,
+  Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -351,70 +352,89 @@ const SelectSlotScreen: React.FC = () => {
     [selectedSubscriptionId]
   );
 
-  const fetchSlots = useCallback(
-    async ({ page = 1, append = false, silent = false }: { page?: number; append?: boolean; silent?: boolean } = {}) => {
+  // Get week range for display
+  const getWeekRange = useCallback((): { startDate: Date; endDate: Date; displayText: string } => {
+    const monday = getWeekDate(weekOffset, 1);
+    const sunday = getWeekDate(weekOffset, 0);
+    return {
+      startDate: monday,
+      endDate: sunday,
+      displayText: `${formatDateDisplay(monday)} - ${formatDateDisplay(sunday)}`,
+    };
+  }, [weekOffset]);
+
+  const fetchSlotsForWeek = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
       if (!selectedStudentId || !selectedDate) {
         return;
       }
 
-      if (!append && !silent) {
+      if (!silent) {
         setSlotsLoading(true);
       }
       setSlotsError(null);
 
       try {
-        // Load all slots for the selected date (similar to web's getAllAvailableSlotsForStudent)
+        // Load all slots for the current week
+        const weekRange = getWeekRange();
+        const startDate = weekRange.startDate;
+        const endDate = weekRange.endDate;
+
+        // Load slots from start to end of week
         const allItems = await branchSlotService.getAllAvailableSlotsForStudent(
           selectedStudentId,
           {
-            date: selectedDate,
-            pageSize: 100,
+            startDate: startDate,
+            endDate: endDate,
+            pageSize: 500, // Tăng để load đủ slots trong tuần
           }
         );
 
-        // API đã filter theo date rồi => dùng trực tiếp để tránh filter thừa làm sai số lượng
-        const validSlots = allItems;
-
-        setSlots(validSlots);
+        setSlots(allItems);
         setPagination({
           pageIndex: 1,
           totalPages: 1,
-          totalCount: validSlots.length,
-          pageSize: validSlots.length,
+          totalCount: allItems.length,
+          pageSize: allItems.length,
           hasNextPage: false,
         });
 
-        // Update badge count ngay khi nhận data (để thanh lịch tự hiện số, không cần bấm từng ngày)
-        const dateStr = formatDateToYYYYMMDD(selectedDate);
+        // Update slot counts for all dates in the week
+        const dateCounts = new Map<string, number>();
+        allItems.forEach((slot) => {
+          const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+          const dateStr = formatDateToYYYYMMDD(slotDate);
+          dateCounts.set(dateStr, (dateCounts.get(dateStr) || 0) + 1);
+        });
+
         setDatesWithSlots((prev) => {
           const updated = new Map(prev);
-          updated.set(dateStr, validSlots.length);
+          dateCounts.forEach((count, dateStr) => {
+            updated.set(dateStr, count);
+          });
           return updated;
         });
+
+        const allDateStrings = Array.from(dateCounts.keys());
         setCheckedDates((prev) => {
           const updated = new Set(prev);
-          updated.add(dateStr);
+          allDateStrings.forEach(dateStr => updated.add(dateStr));
           return updated;
         });
       } catch (error: any) {
         const message =
           error?.message ||
           error?.response?.data?.message ||
-          'Không thể tải danh sách slot phù hợp. Vui lòng thử lại.';
+          'Không thể tải danh sách slot trong tuần. Vui lòng thử lại.';
         setSlotsError(message);
-
-        if (!append) {
-          setSlots([]);
-          setPagination(null);
-        }
+        setSlots([]);
+        setPagination(null);
       } finally {
-        if (!append) {
-          setSlotsLoading(false);
-          setSlotsRefreshing(false);
-        }
+        setSlotsLoading(false);
+        setSlotsRefreshing(false);
       }
     },
-    [selectedStudentId, selectedDate]
+    [selectedStudentId, selectedDate, weekOffset, getWeekRange]
   );
 
   // Fetch booked slots cho ngày được chọn
@@ -451,11 +471,10 @@ const SelectSlotScreen: React.FC = () => {
 
   useEffect(() => {
     if (selectedStudentId && selectedDate) {
-      fetchSlots({ page: 1 });
-      // Fetch booked slots cho ngày được chọn
-      fetchBookedSlotsForSelectedDate(selectedStudentId, selectedDate);
+      fetchSlotsForWeek();
+      // Không cần fetch booked slots cho ngày cụ thể nữa vì đã dùng toàn bộ bookedSlots
     }
-  }, [selectedStudentId, selectedDate, fetchSlots, fetchBookedSlotsForSelectedDate]);
+  }, [selectedStudentId, selectedDate, fetchSlotsForWeek]);
 
   // Format date to YYYY-MM-DD string
   const formatDateToYYYYMMDD = useCallback((date: Date): string => {
@@ -586,13 +605,13 @@ const SelectSlotScreen: React.FC = () => {
           fetchBookedSlotsForSelectedDate(selectedStudentId, selectedDate);
         }
         fetchSubscriptions(selectedStudentId);
-        fetchSlots({ page: 1, silent: true });
+        fetchSlotsForWeek({ silent: true });
       }
 
       return () => {
         // Optional cleanup
       };
-    }, [selectedStudentId, selectedDate, navigation, fetchBookedSlots, fetchBookedSlotsForSelectedDate, fetchSubscriptions, fetchSlots])
+    }, [selectedStudentId, selectedDate, navigation, fetchBookedSlots, fetchBookedSlotsForSelectedDate, fetchSubscriptions, fetchSlotsForWeek])
   );
 
   // Get available dates for date selector: tất cả các ngày trong tháng của selectedDate
@@ -679,8 +698,7 @@ const SelectSlotScreen: React.FC = () => {
                 slotCount: Array.isArray(allItems) ? allItems.length : 0,
               };
             } catch (err) {
-              // Ignore errors for individual date checks
-              console.debug('Error checking date:', date, err);
+              // Ignore errors for individual date checks (e.g., no active package)
               return {
                 dateStr: formatDateToYYYYMMDD(date),
                 slotCount: 0,
@@ -817,7 +835,10 @@ const SelectSlotScreen: React.FC = () => {
 
         const status = (booked.status || '').toLowerCase();
 
-        return booked.branchSlotId === slot.id &&
+        // For booked slots, compare with originalBranchSlotId, for available slots compare with id
+        const slotBranchSlotId = (slot as any).originalBranchSlotId || slot.id;
+
+        return booked.branchSlotId === slotBranchSlotId &&
                bookedDateStr === slotDateStr &&
                (status === 'booked' || status === 'confirmed' || status === 'active');
       }) || null;
@@ -846,7 +867,10 @@ const SelectSlotScreen: React.FC = () => {
 
         const status = (booked.status || '').toLowerCase();
 
-        return booked.branchSlotId === slot.id &&
+        // For booked slots, compare with originalBranchSlotId, for available slots compare with id
+        const slotBranchSlotId = (slot as any).originalBranchSlotId || slot.id;
+
+        return booked.branchSlotId === slotBranchSlotId &&
                bookedDateStr === slotDateStr &&
                status === 'cancelled';
       }) || null;
@@ -854,24 +878,23 @@ const SelectSlotScreen: React.FC = () => {
     [selectedStudentId, bookedSlots, selectedDate]
   );
 
-  // Get slots for selected date - merge available slots và booked slots
-  const getSlotsForSelectedDate = useMemo(() => {
+  // Get slots for the current week - chỉ hiển thị booked slots cho staff
+  const getSlotsForCurrentWeek = useMemo(() => {
     if (!selectedDate) return [];
 
-    // Bắt đầu với available slots
-    let allSlots: BranchSlotResponse[] = [...slots];
-
-    // Thêm booked slots vào danh sách (chuyển đổi từ StudentSlotResponse sang BranchSlotResponse format)
-    const bookedSlotItems = bookedSlotsForSelectedDate
+    // Chỉ lấy booked slots trong tuần (staff chỉ xem lịch làm việc của mình)
+    const bookedSlotItems = bookedSlots
       .filter((booked) => {
-        // Chỉ hiển thị slots có status "Booked"
+        // Chỉ hiển thị slots có status "Booked", "Confirmed", "Active"
         const status = (booked.status || '').toLowerCase();
-        return status === 'booked';
+        return status === 'booked' || status === 'confirmed' || status === 'active';
       })
       .map((booked): BranchSlotResponse => {
+
         // Tạo BranchSlotResponse từ StudentSlotResponse
         return {
-          id: booked.branchSlotId || '',
+          id: `booked-${booked.id}`, // Unique ID for booked slots
+          originalBranchSlotId: booked.branchSlotId || '', // Keep original for reference
           weekDate: new Date(booked.date || '').getDay(),
           timeframe: booked.timeframe,
           // Lấy slotType từ branchSlot nếu có
@@ -898,12 +921,16 @@ const SelectSlotScreen: React.FC = () => {
         } as any;
       });
 
-    // Merge: loại bỏ các available slots mà đã có trong booked slots
-    const bookedBranchSlotIds = new Set(bookedSlotItems.map(b => b.id));
-    allSlots = allSlots.filter((slot) => !bookedBranchSlotIds.has(slot.id));
-    
-    // Thêm booked slots vào
-    allSlots = [...allSlots, ...bookedSlotItems];
+    // **Deduplication: loại bỏ slots trùng lặp dựa trên studentSlotId**
+    const seenStudentSlotIds = new Set<string>();
+    let allSlots = bookedSlotItems.filter((slot) => {
+      const studentSlotId = (slot as any).studentSlotId;
+      if (seenStudentSlotIds.has(studentSlotId)) {
+        return false;
+      }
+      seenStudentSlotIds.add(studentSlotId);
+      return true;
+    });
 
     // Lọc theo timeframe nếu có
     if (selectedTimeframe) {
@@ -914,15 +941,23 @@ const SelectSlotScreen: React.FC = () => {
       });
     }
 
-    // Sort theo thời gian
+    // Sort theo ngày trong tuần trước, rồi theo thời gian
     allSlots.sort((a, b) => {
+      // Sắp xếp theo ngày trong tuần trước
+      const aWeekDate = a.weekDate || 0;
+      const bWeekDate = b.weekDate || 0;
+      if (aWeekDate !== bWeekDate) {
+        return aWeekDate - bWeekDate;
+      }
+
+      // Nếu cùng ngày thì sắp xếp theo thời gian
       const aTime = a.timeframe?.startTime || '';
       const bTime = b.timeframe?.startTime || '';
       return aTime.localeCompare(bTime);
     });
 
     return allSlots;
-  }, [selectedDate, slots, bookedSlotsForSelectedDate, selectedTimeframe]);
+  }, [selectedDate, bookedSlots, selectedTimeframe]);
 
   const handleToggleRooms = useCallback((slotId: string) => {
     setSlotRoomsState((prev) => {
@@ -1068,7 +1103,9 @@ const SelectSlotScreen: React.FC = () => {
                     const matched = slotsResponse.items.find((s) => {
                       if (!s) return false;
                       const dateOnly = (s.date || '').split('T')[0];
-                      return s.branchSlotId === slot.id && dateOnly === targetDateOnly;
+                      // For booked slots, compare with originalBranchSlotId, for available slots compare with id
+                      const slotBranchSlotId = (slot as any).originalBranchSlotId || slot.id;
+                      return s.branchSlotId === slotBranchSlotId && dateOnly === targetDateOnly;
                     });
 
                     if (matched) {
@@ -1133,21 +1170,10 @@ const SelectSlotScreen: React.FC = () => {
         ]
       );
     },
-    [selectedStudentId, slotRoomsState, resolvePackageSubscriptionId, fetchSubscriptions, fetchSlots, fetchBookedSlots, weekOffset, isSlotBooked, getCancelledSlot]
+    [selectedStudentId, slotRoomsState, resolvePackageSubscriptionId, fetchSubscriptions, fetchSlotsForWeek, fetchBookedSlots, weekOffset, isSlotBooked, getCancelledSlot]
   );
 
-  // Get branch name
-  const getBranchName = useMemo(() => {
-    if (!slots.length) return 'Chưa có thông tin';
-    const firstSlot = slots[0];
-    return firstSlot.branch?.branchName || 'Chưa có thông tin';
-  }, [slots]);
-
-  // Get school name
-  const getSchoolName = useMemo(() => {
-    if (!selectedStudent) return 'Chưa có thông tin';
-    return selectedStudent.schoolName || 'Chưa có thông tin';
-  }, [selectedStudent]);
+  // Removed branch and school chips for cleaner UI
 
   // Get package name
   const getPackageName = useMemo(() => {
@@ -1177,29 +1203,14 @@ const SelectSlotScreen: React.FC = () => {
     if (selectedStudentId) {
       // Load booked slots trước để có data khi filter slots
       await fetchBookedSlots(selectedStudentId);
-      // Fetch booked slots cho ngày hiện tại
-      if (selectedDate) {
-        await fetchBookedSlotsForSelectedDate(selectedStudentId, selectedDate);
-      }
-      // Sau đó load slots và subscriptions
+      // Load slots cho tuần và subscriptions
       await Promise.all([
-        fetchSlots({ page: 1, silent: true }),
+        fetchSlotsForWeek({ silent: true }),
         fetchSubscriptions(selectedStudentId),
       ]);
     }
     setSlotsRefreshing(false);
-  }, [selectedStudentId, selectedDate, fetchSlots, fetchSubscriptions, fetchBookedSlots, fetchBookedSlotsForSelectedDate]);
-
-  // Get week range for display
-  const getWeekRange = useCallback((): { startDate: Date; endDate: Date; displayText: string } => {
-    const monday = getWeekDate(weekOffset, 1);
-    const sunday = getWeekDate(weekOffset, 0);
-    return {
-      startDate: monday,
-      endDate: sunday,
-      displayText: `${formatDateDisplay(monday)} - ${formatDateDisplay(sunday)}`,
-    };
-  }, [weekOffset]);
+  }, [selectedStudentId, fetchSlotsForWeek, fetchSubscriptions, fetchBookedSlots]);
 
   const handlePreviousWeek = useCallback(() => {
     setWeekOffset((prev) => prev - 1);
@@ -1227,7 +1238,7 @@ const SelectSlotScreen: React.FC = () => {
         >
           <MaterialIcons name="child-care" size={20} color={COLORS.SURFACE} />
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {selectedStudent?.name || 'Chọn con'} • {getBranchName}
+            {selectedStudent?.name || 'Chọn con'}
           </Text>
           <MaterialIcons name="arrow-drop-down" size={20} color={COLORS.SURFACE} />
         </TouchableOpacity>
@@ -1261,74 +1272,54 @@ const SelectSlotScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Day Selector */}
-        <View style={styles.daySelectorSection}>
-          <ScrollView
-            ref={dateScrollViewRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.dayScrollContainer}
-            style={styles.dayScrollView}
-            nestedScrollEnabled={true}
-            scrollEnabled={true}
-            bounces={false}
-          >
-            {getAvailableDates.map((date, index) => {
-              const isSelected = date.toDateString() === selectedDate.toDateString();
-              const hasSlots = dateHasSlots(date);
-              const dayName = WEEKDAY_LABELS[date.getDay() === 0 ? 0 : date.getDay() as WeekdayKey]?.subtitle || '';
-              
-              return (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.dayItem,
-                    isSelected && styles.dayItemActive,
-                    !hasSlots && styles.dayItemNoSlots,
-                  ]}
-                  onPress={() => handleDateSelect(date)}
-                >
-                  <Text style={[styles.dayItemDay, isSelected && styles.dayItemDayActive]}>
-                    {dayName}
-                  </Text>
-                  <Text style={[styles.dayItemDate, isSelected && styles.dayItemDateActive]}>
-                    {formatDateDisplay(date).split('/')[0]}/{formatDateDisplay(date).split('/')[1]}
-                  </Text>
-                  {hasSlots && (
-                    <View style={styles.dayItemBadge}>
-                      <Text style={styles.dayItemBadgeText}>
-                        {getSlotCountForDate(date)}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-          <TouchableOpacity
-            style={styles.calendarButton}
-            onPress={() => setShowDatePicker(true)}
-            activeOpacity={0.7}
-          >
-            <MaterialIcons name="calendar-today" size={20} color={COLORS.SURFACE} />
-          </TouchableOpacity>
-        </View>
+        {/* Student Info Section */}
+        {selectedStudent && (
+          <View style={styles.selectedStudentInfoCard}>
+            <View style={styles.selectedStudentHeaderRow}>
+              <View style={styles.selectedStudentAvatarContainer}>
+                {selectedStudent.image ? (
+                  <Image
+                    source={{ uri: selectedStudent.image }}
+                    style={styles.selectedStudentAvatar}
+                  />
+                ) : (
+                  <View style={styles.selectedStudentAvatarPlaceholder}>
+                    <MaterialIcons name="person" size={24} color={COLORS.PRIMARY} />
+                  </View>
+                )}
+              </View>
+              <View style={styles.selectedStudentInfoContent}>
+                <Text style={styles.selectedStudentName}>{selectedStudent.name}</Text>
+              </View>
+            </View>
+            <View style={styles.selectedStudentMetaRow}>
+              <MaterialIcons name="school" size={16} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.selectedStudentMeta}>{selectedStudent.schoolName}</Text>
+            </View>
+            <View style={styles.selectedStudentMetaRow}>
+              <MaterialIcons name="location-on" size={16} color={COLORS.TEXT_SECONDARY} />
+              <Text style={styles.selectedStudentMeta}>{selectedStudent.branchName}</Text>
+            </View>
+          </View>
+        )}
+
 
         {/* Slots List */}
         <View style={styles.slotsContainer}>
           <View style={styles.slotsHeader}>
-            <Text style={styles.slotsTitle}>Chọn slot</Text>
+            <Text style={styles.slotsTitle}>Lịch làm việc trong tuần</Text>
+            <Text style={styles.weekRangeText}>{getWeekRange().displayText}</Text>
           </View>
-          
+
           {slotsLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={COLORS.PRIMARY} />
               <Text style={styles.loadingText}>Đang tải...</Text>
             </View>
-          ) : getSlotsForSelectedDate.length === 0 ? (
+          ) : getSlotsForCurrentWeek.length === 0 ? (
             <View style={styles.emptyContainer}>
               <MaterialIcons name="event-busy" size={48} color={COLORS.TEXT_SECONDARY} />
-              <Text style={styles.emptyText}>Không có slot nào vào ngày này</Text>
+              <Text style={styles.emptyText}>Không có slot nào trong tuần này</Text>
               <TouchableOpacity
                 style={styles.emptyButton}
                 onPress={() => navigation.goBack()}
@@ -1338,34 +1329,39 @@ const SelectSlotScreen: React.FC = () => {
             </View>
           ) : (
             <View style={styles.slotsList}>
-              {getSlotsForSelectedDate.map((slot) => {
-                // Sử dụng selectedDate để kiểm tra slot đã đặt, đảm bảo khớp với ngày đang xem
-                const bookedSlot = isSlotBooked(slot, selectedDate);
-                const cancelledSlot = getCancelledSlot(slot, selectedDate);
-                const slotDate = selectedDate || getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
-                const slotDateDisplay = formatDateDisplay(slotDate);
+              {getSlotsForCurrentWeek.map((slot) => {
+                // Tính ngày thực tế của slot để kiểm tra đã đặt chưa và hiển thị
+                const slotDate = getWeekDate(weekOffset, normalizeWeekDate(slot.weekDate));
+                const bookedSlot = isSlotBooked(slot, slotDate);
+                const cancelledSlot = getCancelledSlot(slot, slotDate);
                 const roomState = slotRoomsState[slot.id];
                 const roomsFromSlot = slot.rooms || [];
                 const isExpanded = roomState?.expanded ?? false;
                 const selectedRoomId = roomState?.selectedRoomId;
-                
+
+                // Tính thông tin hiển thị ngày
+                const slotDateDisplay = formatDateDisplay(slotDate);
+                const slotWeekdayLabel = WEEKDAY_LABELS[normalizeWeekDate(slot.weekDate)]?.title || 'Chủ nhật';
+
                 return (
                   <View key={slot.id} style={styles.slotCard}>
-                    {/* Booked Notice */}
-                    {bookedSlot && !cancelledSlot && (
-                      <View style={styles.slotBookedNotice}>
-                        <MaterialIcons name="info" size={18} color={COLORS.SUCCESS} />
-                        <Text style={styles.slotBookedNoticeText}>Bạn đã đặt ca này rồi</Text>
-                      </View>
-                    )}
-                    
+                    {/* Date Header */}
+                    <View style={styles.slotDateHeader}>
+                      <Text style={styles.slotDateText}>{slotWeekdayLabel}, {slotDateDisplay}</Text>
+                      {slot.isBookedSlot && (
+                        <View style={styles.slotBookedBadge}>
+                          <MaterialIcons name="check-circle" size={16} color={COLORS.SUCCESS} />
+                          <Text style={styles.slotBookedText}>Đã đặt</Text>
+                        </View>
+                      )}
+                    </View>
+
                     {/* Time Section */}
                     <View style={styles.slotTimeSection}>
                       <View style={styles.slotTimeLeft}>
                         <Text style={styles.slotTime}>{formatTime(slot.timeframe?.startTime)}</Text>
-                        <Text style={styles.slotLocation}>{slot.branch?.branchName || 'Chưa có'}</Text>
                       </View>
-                      
+
                       <View style={styles.slotDuration}>
                         <View style={styles.slotDurationLine} />
                         <Text style={styles.slotDurationText}>
@@ -1378,12 +1374,12 @@ const SelectSlotScreen: React.FC = () => {
                               const startMins = parseInt(startParts[1] || '0', 10);
                               const endHours = parseInt(endParts[0] || '0', 10);
                               const endMins = parseInt(endParts[1] || '0', 10);
-                              
+
                               const startTotal = startHours * 60 + startMins;
                               const endTotal = endHours * 60 + endMins;
                               const diffMinutes = endTotal - startTotal;
                               const hours = Math.floor(diffMinutes / 60);
-                              
+
                               return `${hours}h`;
                             } catch {
                               return '--';
@@ -1392,7 +1388,7 @@ const SelectSlotScreen: React.FC = () => {
                         </Text>
                         <View style={styles.slotDurationLine} />
                       </View>
-                      
+
                       <View style={styles.slotTimeRight}>
                         <Text style={styles.slotTime}>{formatTime(slot.timeframe?.endTime)}</Text>
                       </View>
@@ -1400,10 +1396,6 @@ const SelectSlotScreen: React.FC = () => {
 
                     {/* Info Section */}
                     <View style={styles.slotInfoSection}>
-                      <View style={styles.slotInfoRow}>
-                        <MaterialIcons name="location-on" size={16} color={COLORS.TEXT_SECONDARY} />
-                        <Text style={styles.slotInfoText}>{slot.branch?.branchName || 'Chưa có'}</Text>
-                      </View>
                       {slot.slotType?.name && (
                         <View style={styles.slotInfoRow}>
                           <MaterialIcons name="category" size={16} color={COLORS.TEXT_SECONDARY} />
@@ -1417,26 +1409,26 @@ const SelectSlotScreen: React.FC = () => {
                     </View>
 
                     {/* Status and Action */}
-                    {bookedSlot && !cancelledSlot ? (
-                      <TouchableOpacity
-                        style={styles.slotActionSection}
-                        onPress={() => {
-                          // Navigate to ClassDetail khi slot đã đặt
-                          if (bookedSlot && selectedStudentId) {
-                            navigation.navigate('ClassDetail', {
-                              slotId: bookedSlot.id,
-                              studentId: selectedStudentId,
-                            });
-                          }
-                        }}
-                        activeOpacity={0.7}
-                      >
+                    {(bookedSlot && !cancelledSlot) || slot.isBookedSlot ? (
+                      <View style={styles.slotActionSection}>
                         <View style={styles.slotBookedBadge}>
                           <MaterialIcons name="check-circle" size={16} color={COLORS.SUCCESS} />
                           <Text style={styles.slotBookedText}>Đã đặt</Text>
                         </View>
-                        <MaterialIcons name="chevron-right" size={20} color={COLORS.TEXT_SECONDARY} />
-                      </TouchableOpacity>
+                        {bookedSlot && selectedStudentId && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              navigation.navigate('ClassDetail', {
+                                slotId: bookedSlot.id,
+                                studentId: selectedStudentId,
+                              });
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <MaterialIcons name="chevron-right" size={20} color={COLORS.TEXT_SECONDARY} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     ) : (
                       <>
                         <TouchableOpacity
@@ -1642,7 +1634,7 @@ const SelectSlotScreen: React.FC = () => {
                     onPress={() => {
                       setSelectedStudentId(student.id);
                       setShowStudentPicker(false);
-                      fetchSlots({ page: 1 });
+                      fetchSlotsForWeek();
                       fetchBookedSlots(student.id);
                     }}
                     activeOpacity={0.7}
@@ -1664,11 +1656,9 @@ const SelectSlotScreen: React.FC = () => {
                         >
                           {student.name}
                         </Text>
-                        {student.branchName && (
-                          <Text style={styles.studentPickerItemBranch}>
-                            {student.branchName}
-                          </Text>
-                        )}
+                        <Text style={styles.studentPickerItemBranch}>
+                          {student.branchName}
+                        </Text>
                       </View>
                       {isSelected && (
                         <MaterialIcons name="check-circle" size={24} color={COLORS.PRIMARY} />
@@ -1693,29 +1683,6 @@ const SelectSlotScreen: React.FC = () => {
         />
       )}
 
-      {/* Bulk booking FAB */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fabButton}
-          onPress={() => {
-            if (!selectedStudentId) {
-              Alert.alert('Thông báo', 'Vui lòng chọn con trước khi đặt lịch hàng loạt.');
-              return;
-            }
-
-            navigation.navigate('BulkBook', {
-              studentId: selectedStudentId,
-              branchSlotId: slots.length > 0 ? slots[0].id : undefined,
-              packageSubscriptionId: selectedSubscriptionId || undefined,
-              roomId: undefined, // Để user chọn trong BulkBookScreen
-            });
-          }}
-          activeOpacity={0.8}
-        >
-          <MaterialIcons name="event" size={24} color={COLORS.SURFACE} />
-          <Text style={styles.fabButtonText}>Đặt lịch hàng loạt</Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 };
@@ -1774,6 +1741,57 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.LG,
     fontWeight: '600',
     color: COLORS.SURFACE,
+  },
+  selectedStudentInfoCard: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 12,
+    marginBottom: SPACING.MD,
+    padding: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  selectedStudentHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+  },
+  selectedStudentAvatarContainer: {
+    marginRight: SPACING.MD,
+  },
+  selectedStudentAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  selectedStudentAvatarPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedStudentInfoContent: {
+    flex: 1,
+  },
+  selectedStudentNameRow: {
+    marginBottom: SPACING.SM,
+  },
+  selectedStudentName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+  },
+  selectedStudentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+    gap: SPACING.SM,
+  },
+  selectedStudentMeta: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    flex: 1,
   },
   daySelectorSection: {
     backgroundColor: COLORS.PRIMARY,
@@ -1861,6 +1879,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.TEXT_PRIMARY,
   },
+  weekRangeText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+    marginTop: SPACING.XS,
+  },
   selectAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1939,6 +1962,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.SUCCESS,
     flex: 1,
+  },
+  slotDateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+    paddingBottom: SPACING.SM,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  slotDateText: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '600',
+    color: COLORS.PRIMARY,
   },
   slotTimeSection: {
     flexDirection: 'row',
@@ -2274,6 +2311,91 @@ const styles = StyleSheet.create({
     fontSize: FONTS.SIZES.MD,
     fontWeight: '700',
     color: COLORS.SURFACE,
+  },
+  studentInfoSection: {
+    backgroundColor: COLORS.SURFACE,
+    borderRadius: 12,
+    padding: SPACING.MD,
+    marginBottom: SPACING.MD,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+    shadowColor: COLORS.SHADOW,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  studentInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.MD,
+    paddingBottom: SPACING.MD,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  studentInfoAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.PRIMARY_LIGHT + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.MD,
+  },
+  studentInfoContent: {
+    flex: 1,
+  },
+  studentInfoName: {
+    fontSize: FONTS.SIZES.MD,
+    fontWeight: '700',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS / 2,
+  },
+  studentInfoSchool: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  studentInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.MD,
+    gap: SPACING.SM,
+  },
+  studentInfoText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  studentInfoPackageCard: {
+    backgroundColor: COLORS.BACKGROUND,
+    borderRadius: 8,
+    padding: SPACING.MD,
+    marginTop: SPACING.SM,
+    borderWidth: 1,
+    borderColor: COLORS.BORDER,
+  },
+  studentInfoPackageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.SM,
+    gap: SPACING.SM,
+  },
+  studentInfoPackageName: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    flex: 1,
+  },
+  studentInfoPackageSlots: {
+    marginTop: SPACING.SM,
+  },
+  studentInfoSlotsText: {
+    fontSize: FONTS.SIZES.SM,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  studentInfoSlotsValue: {
+    fontWeight: '700',
+    color: COLORS.PRIMARY,
   },
 });
 

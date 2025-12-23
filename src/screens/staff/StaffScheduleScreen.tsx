@@ -215,13 +215,18 @@ const StaffScheduleScreen: React.FC = () => {
           } as StudentSlotResponse & { _rawData?: any };
         });
         
-        // Deduplicate: Mỗi branchSlot (id + roomId + date) chỉ nên xuất hiện 1 lần
-        // Vì 1 slot = 1 branchSlotId + 1 roomId + 1 date
+        // Deduplicate: Mỗi branchSlot (id + roomId + date + timeframe) chỉ nên xuất hiện 1 lần
+        // Vì 1 slot = 1 branchSlotId + 1 roomId + 1 date + 1 timeframe
         const uniqueSlots = new Map<string, StudentSlotResponse>();
         mappedItems.forEach((slot) => {
-          // Key là branchSlotId + roomId + date để đảm bảo mỗi slot (branchSlot + room + date) chỉ có 1 instance
+          // Key: roomId + date + startTime (vì staff chỉ quan tâm room + time, không cần branchSlotId)
+          // Nhiều branchSlot khác nhau có thể share cùng 1 room + time
           const dateStr = slot.date ? new Date(slot.date).toISOString().split('T')[0] : '';
-          const uniqueKey = `${slot.branchSlotId}_${slot.roomId}_${dateStr}`;
+          const timeStartKey = slot.timeframe?.startTime || '';
+          const roomIdKey = slot.roomId || 'NO_ROOM';
+          // Use room + date + time (vì đây là cái staff thực tế sử dụng)
+          const uniqueKey = `${roomIdKey}_${dateStr}_${timeStartKey}`;
+          
           if (!uniqueSlots.has(uniqueKey)) {
             uniqueSlots.set(uniqueKey, slot);
           } else {
@@ -558,7 +563,7 @@ const StaffScheduleScreen: React.FC = () => {
             </View>
           ) : (
             <View style={styles.resultsSlotsList}>
-              {getSlotsForSelectedDate.map((slot) => {
+              {getSlotsForSelectedDate.map((slot, index) => {
                 const rawData = (slot as any)?._rawData;
                 // Get room info from slot
                 const roomName = slot.room?.roomName || rawData?.roomName;
@@ -566,9 +571,14 @@ const StaffScheduleScreen: React.FC = () => {
                 const studentSlotsCount = rawData?.studentSlots?.length || 0;
                 const hasStudents = studentSlotsCount > 0;
                 
+                // Use compound key để avoid duplicate keys
+                const dateStr = slot.date ? new Date(slot.date).toISOString().split('T')[0] : '';
+                const timeKey = slot.timeframe?.id || (slot.timeframe?.startTime || '');
+                const slotKey = `${slot.branchSlotId}_${slot.roomId}_${dateStr}_${timeKey}_${index}`;
+                
                 return (
                   <TouchableOpacity
-                    key={slot.id}
+                    key={slotKey}
                     style={styles.resultsSlotCard}
                     activeOpacity={0.9}
                     onPress={() => handleSlotPress(slot)}

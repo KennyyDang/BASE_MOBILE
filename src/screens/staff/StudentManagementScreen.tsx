@@ -410,6 +410,34 @@ const StudentManagementScreen: React.FC = () => {
               <Text style={styles.slotInfoActivity}>{slotInfo.slotType.name}</Text>
             </View>
           )}
+          {slotServices.length > 0 && (
+            <View>
+              <View style={styles.servicesHeader}>
+                <MaterialIcons name="shopping-cart" size={16} color={COLORS.PRIMARY} />
+                <Text style={styles.servicesTitle}>Dịch vụ trong khóa học ({slotServices.length})</Text>
+              </View>
+              <View style={styles.servicesList}>
+                {slotServices.map((service, index) => (
+                  <View key={`${service.serviceId}_${index}`} style={styles.serviceItem}>
+                    <View style={styles.serviceInfo}>
+                      <Text style={styles.serviceName}>{service.serviceName}</Text>
+                      <View style={styles.serviceDetails}>
+                        <Text style={styles.serviceQuantity}>Số lượng: {service.quantity}</Text>
+                        <Text style={styles.servicePrice}>
+                          {(service.unitPrice || 0).toLocaleString('vi-VN')} đ/cái
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.serviceTotalPrice}>
+                      <Text style={styles.totalPrice}>
+                        {(service.totalPrice || 0).toLocaleString('vi-VN')} đ
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
           {students.length > 0 && (
             <View style={styles.slotInfoRow}>
               <MaterialIcons name="people" size={16} color={COLORS.PRIMARY} />
@@ -689,6 +717,63 @@ const styles = StyleSheet.create({
     color: COLORS.PRIMARY,
     fontWeight: '600',
     flex: 1,
+  },
+  servicesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.SM,
+    marginTop: SPACING.MD,
+    paddingTop: SPACING.MD,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.BORDER,
+  },
+  servicesTitle: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.PRIMARY,
+  },
+  servicesList: {
+    marginTop: SPACING.SM,
+    gap: SPACING.SM,
+  },
+  serviceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.BACKGROUND,
+    padding: SPACING.MD,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.PRIMARY,
+  },
+  serviceInfo: {
+    flex: 1,
+  },
+  serviceName: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '600',
+    color: COLORS.TEXT_PRIMARY,
+    marginBottom: SPACING.XS,
+  },
+  serviceDetails: {
+    flexDirection: 'row',
+    gap: SPACING.MD,
+  },
+  serviceQuantity: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  servicePrice: {
+    fontSize: FONTS.SIZES.XS,
+    color: COLORS.TEXT_SECONDARY,
+  },
+  serviceTotalPrice: {
+    alignItems: 'flex-end',
+  },
+  totalPrice: {
+    fontSize: FONTS.SIZES.SM,
+    fontWeight: '700',
+    color: COLORS.PRIMARY,
   },
   actionButtonsContainer: {
     paddingHorizontal: SPACING.MD,

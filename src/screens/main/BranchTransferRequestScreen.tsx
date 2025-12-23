@@ -149,12 +149,7 @@ const BranchTransferRequestScreen: React.FC = () => {
   }, [formData, branches]);
 
   const handleStep3Complete = useCallback(async () => {
-    // Validate document if changing school/level
-    if ((formData.changeSchool || formData.changeLevel) && !formData.documentFile) {
-      Alert.alert('Lỗi', 'Vui lòng tải lên tài liệu hỗ trợ khi thay đổi trường học hoặc cấp độ');
-      return false;
-    }
-
+    // Không bắt buộc tài liệu theo BE API
     return true;
   }, [formData]);
 
