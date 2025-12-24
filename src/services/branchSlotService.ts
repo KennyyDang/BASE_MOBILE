@@ -253,6 +253,72 @@ class BranchSlotService {
       throw error.response?.data || error.message || 'Failed to fetch branch slot details';
     }
   }
+
+  /**
+   * Get branch slots assigned to current staff member
+   * Endpoint: GET /api/BranchSlot/my-slots
+   * @param params Query parameters for filtering and pagination
+   * @returns Paginated response with branch slots for staff
+   */
+  async getMySlots(params?: {
+    pageIndex?: number;
+    pageSize?: number;
+    timeframeId?: string;
+    slotTypeId?: string;
+    weekDate?: number;
+    date?: string;
+    startDate?: string;
+    endDate?: string;
+    status?: string;
+  }): Promise<PaginatedResponse<BranchSlotResponse>> {
+    try {
+      const response = await axiosInstance.get<PaginatedResponse<BranchSlotResponse>>(
+        '/api/BranchSlot/my-slots',
+        { params }
+      );
+      return response.data;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch staff branch slots';
+    }
+  }
+
+  /**
+   * Get all branch slots for staff (loads all pages)
+   * Similar to getAllAvailableSlotsForStudent but for staff
+   * @param params Query parameters for filtering
+   * @returns Array of all branch slots for staff
+   */
+  async getAllMySlots(params?: {
+    timeframeId?: string;
+    slotTypeId?: string;
+    weekDate?: number;
+    date?: string;
+    startDate?: string;
+    endDate?: string;
+    status?: string;
+  }): Promise<BranchSlotResponse[]> {
+    try {
+      let allSlots: BranchSlotResponse[] = [];
+      let pageIndex = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await this.getMySlots({
+          pageIndex,
+          pageSize: 100,
+          ...params,
+        });
+
+        allSlots = [...allSlots, ...(response.items || [])];
+        hasMore = response.hasNextPage || false;
+        pageIndex++;
+      }
+
+      return allSlots;
+    } catch (error: any) {
+      throw error.response?.data || error.message || 'Failed to fetch all staff branch slots';
+    }
+  }
 }
 
 export const branchSlotService = new BranchSlotService();

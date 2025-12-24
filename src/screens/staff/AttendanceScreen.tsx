@@ -37,7 +37,8 @@ type AttendanceRouteParams = {
   branchSlotId: string;
   date: string;
   roomId?: string;
-  slotTimeframe?: string;
+  slotTimeframeStartTime?: string;
+  slotTimeframeEndTime?: string;
   branchName?: string;
   roomName?: string;
 };
@@ -85,7 +86,7 @@ const AttendanceScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<{ params: AttendanceRouteParams }, 'params'>>();
   const { user } = useAuth();
-  const { branchSlotId, date, roomId, slotTimeframe, branchName, roomName } = route.params || {};
+  const { branchSlotId, date, roomId, slotTimeframeStartTime, slotTimeframeEndTime, branchName, roomName } = route.params || {};
 
   const [students, setStudents] = useState<SlotStudent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -588,7 +589,7 @@ const AttendanceScreen: React.FC = () => {
         <View style={styles.slotInfoRow}>
           <MaterialIcons name="access-time" size={18} color={COLORS.PRIMARY} />
           <Text style={styles.slotInfoText}>
-            {slotTimeframe || 'Chưa có thông tin'} - {date ? formatDateDisplay(date) : ''}
+            {slotTimeframeStartTime && slotTimeframeEndTime ? `${slotTimeframeStartTime} - ${slotTimeframeEndTime}` : 'Chưa có thông tin'} - {date ? formatDateDisplay(date) : ''}
           </Text>
         </View>
         {roomName && (

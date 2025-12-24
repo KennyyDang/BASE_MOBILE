@@ -27,7 +27,8 @@ type StudentManagementRouteParams = {
   branchSlotId: string;
   date: string;
   roomId?: string;
-  slotTimeframe?: string;
+  slotTimeframeStartTime?: string;
+  slotTimeframeEndTime?: string;
   branchName?: string;
   roomName?: string;
 };
@@ -85,12 +86,13 @@ const StudentManagementScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<{ params: StudentManagementRouteParams }, 'params'>>();
   const { user } = useAuth();
-  const { branchSlotId, date, roomId, slotTimeframe, branchName, roomName } = route.params || {};
+  const { branchSlotId, date, roomId, slotTimeframeStartTime, slotTimeframeEndTime, branchName, roomName } = route.params || {};
 
   const [students, setStudents] = useState<SlotStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [slotInfo, setSlotInfo] = useState<any>(null);
+  const [slotServices, setSlotServices] = useState<any[]>([]);
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [expandedStudents, setExpandedStudents] = useState<Set<string>>(new Set());
@@ -183,16 +185,17 @@ const StudentManagementScreen: React.FC = () => {
       if (!matchingSlots || matchingSlots.length === 0) {
         setStudents([]);
         setSlotInfo(null);
+        setSlotServices([]);
         return;
       }
 
-      // Lấy thông tin slot từ item đầu tiên
-      const firstSlot = matchingSlots[0];
+      // Lấy thông tin slot từ route params vì StudentSlotResponse không có thông tin slot
       setSlotInfo({
-        timeframe: firstSlot.timeframe || null,
-        slotType: firstSlot.slotType || null,
-        branch: firstSlot.branch?.branchName || null,
+        timeframe: slotTimeframeStartTime && slotTimeframeEndTime ? { startTime: slotTimeframeStartTime, endTime: slotTimeframeEndTime } : null,
+        slotType: null,
+        branch: branchName || null,
       });
+      setSlotServices([]);
 
       // Lấy tất cả studentSlots từ tất cả các slots phù hợp và merge lại
       const allStudentSlots: any[] = [];
@@ -229,7 +232,7 @@ const StudentManagementScreen: React.FC = () => {
             studentId: studentId,
             studentName: studentName,
             parentName: parentName,
-            status: studentSlot.status || firstSlot.status || 'Booked',
+            status: studentSlot.status || 'Booked',
             parentNote: studentSlot.parentNote || undefined,
             studentImage: studentSlot?.student?.image || undefined,
           };
@@ -249,6 +252,7 @@ const StudentManagementScreen: React.FC = () => {
       Alert.alert('Lỗi', message);
       setStudents([]);
       setSlotInfo(null);
+      setSlotServices([]);
     } finally {
       setLoading(false);
     }
@@ -278,7 +282,8 @@ const StudentManagementScreen: React.FC = () => {
       studentId: student.studentId,
       studentName: student.studentName,
       slotDate: date ? formatDateDisplay(date) : undefined,
-      slotTimeframe: slotTimeframe,
+      slotTimeframeStartTime: slotTimeframeStartTime,
+      slotTimeframeEndTime: slotTimeframeEndTime,
     });
   };
 
@@ -287,7 +292,8 @@ const StudentManagementScreen: React.FC = () => {
       branchSlotId,
       date,
       roomId,
-      slotTimeframe,
+      slotTimeframeStartTime: slotTimeframeStartTime,
+      slotTimeframeEndTime: slotTimeframeEndTime,
       branchName,
       roomName,
     });

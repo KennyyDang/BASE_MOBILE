@@ -132,6 +132,7 @@ export interface BranchSlotResponse {
     remainingSlots?: number | null;
   } | null;
   packageName?: string | null;
+  studentCount?: number;
   // Extended properties for UI
   isBookedSlot?: boolean;
   studentSlotId?: string;

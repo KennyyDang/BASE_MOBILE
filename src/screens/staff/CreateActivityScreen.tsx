@@ -38,14 +38,15 @@ type CreateActivityRouteParams = {
   studentId: string;
   studentName: string;
   slotDate?: string;
-  slotTimeframe?: string;
+  slotTimeframeStartTime?: string;
+  slotTimeframeEndTime?: string;
 };
 
 const CreateActivityScreen: React.FC = () => {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<{ params: CreateActivityRouteParams }, 'params'>>();
   const { user } = useAuth();
-  const { studentSlotId, studentId, studentName, slotDate, slotTimeframe } = route.params || {};
+  const { studentSlotId, studentId, studentName, slotDate, slotTimeframeStartTime, slotTimeframeEndTime } = route.params || {};
 
   // Kiểm tra quyền truy cập - chỉ dành cho staff, không phải manager
   useEffect(() => {
@@ -454,7 +455,7 @@ const CreateActivityScreen: React.FC = () => {
               <Text style={styles.headerInfoTitle}>Học sinh: {studentName}</Text>
               {slotDate && (
                 <Text style={styles.headerInfoSubtitle}>
-                  {slotDate} {slotTimeframe ? `- ${slotTimeframe}` : ''}
+                  {slotDate} {slotTimeframeStartTime && slotTimeframeEndTime ? `- ${slotTimeframeStartTime} - ${slotTimeframeEndTime}` : ''}
                 </Text>
               )}
             </View>
