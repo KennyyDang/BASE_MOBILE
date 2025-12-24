@@ -20,7 +20,8 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StaffTabParamList } from '../../types';
 
 import studentSlotService from '../../services/studentSlotService';
-import { StudentSlotResponse } from '../../types/api';
+import branchSlotService from '../../services/branchSlotService';
+import { StudentSlotResponse, BranchSlotResponse } from '../../types/api';
 import { COLORS } from '../../constants';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -171,77 +172,77 @@ const StaffScheduleScreen: React.FC = () => {
       }
 
       try {
-        const response = await studentSlotService.getStaffSlots({
+        // Step 1: Fetch staff's branch slots (lịch làm việc chuẩn - mỗi slot chỉ xuất hiện 1 lần)
+        const branchSlotsResponse = await branchSlotService.getMySlots({
           pageIndex: 1,
           pageSize: PAGE_SIZE,
-          upcomingOnly: false,
         });
-        const rawItems = response?.items ?? [];
-        
-        // Map response từ API sang format StudentSlotResponse
-        // API trả về structure khác: có branch (không phải branchSlot), roomId/roomName trực tiếp, studentSlots array
-        const mappedItems: StudentSlotResponse[] = rawItems.map((item: any) => {
-          // Lấy student đầu tiên từ studentSlots array (nếu có)
-          const firstStudentSlot = item.studentSlots?.[0];
-          
+        const branchSlots = branchSlotsResponse?.items ?? [];
+
+        // Step 2: Get student count for each slot by fetching student slots
+        const slotsWithStudentCount = await Promise.all(
+          branchSlots.map(async (branchSlot) => {
+            try {
+              // Fetch student slots for this branch slot to count students
+              const studentSlotsResponse = await studentSlotService.getStudentSlots({
+                branchSlotId: branchSlot.id,
+                pageSize: 1000, // Get all students for this slot
+              });
+
+              const studentCount = studentSlotsResponse.items?.length || 0;
+
+              return {
+                ...branchSlot,
+                studentCount: studentCount,
+              };
+            } catch (error) {
+              // If fetch fails, set studentCount to 0
+              return {
+                ...branchSlot,
+                studentCount: 0,
+              };
+            }
+          })
+        );
+
+        // Step 3: Convert BranchSlotResponse to StudentSlotResponse format for display
+        const convertedSlots: StudentSlotResponse[] = slotsWithStudentCount.map((branchSlot: BranchSlotResponse & { studentCount: number }) => {
           return {
-            id: item.id, // branchSlotId
-            branchSlotId: item.id,
-            branchSlot: item.branch ? {
-              id: item.branch.id,
-              branchName: item.branch.branchName,
+            id: branchSlot.id,
+            branchSlotId: branchSlot.id,
+            branchSlot: branchSlot.branch ? {
+              id: branchSlot.branch.id,
+              branchName: branchSlot.branch.branchName,
             } : null,
-            packageSubscriptionId: '', // Không có trong response
-            date: item.date,
-            status: item.status,
-            parentNote: firstStudentSlot?.parentNote || null,
-            roomId: item.roomId || '',
-            room: item.roomName ? {
-              id: item.roomId || '',
-              roomName: item.roomName,
+            packageSubscriptionId: '',
+            date: branchSlot.date,
+            status: branchSlot.status,
+            parentNote: null,
+            roomId: branchSlot.roomId || '',
+            room: branchSlot.roomName ? {
+              id: branchSlot.roomId || '',
+              roomName: branchSlot.roomName,
             } : null,
-            studentId: firstStudentSlot?.student?.id || '',
-            studentName: firstStudentSlot?.student?.name || '',
-            parentId: firstStudentSlot?.parent?.id || '',
-            parentName: firstStudentSlot?.parent?.name || '',
-            timeframe: item.timeframe ? {
-              id: item.timeframe.id,
-              name: item.timeframe.name,
-              startTime: item.timeframe.startTime,
-              endTime: item.timeframe.endTime,
+            studentId: '',
+            studentName: '',
+            parentId: '',
+            parentName: '',
+            timeframe: branchSlot.timeframe ? {
+              id: branchSlot.timeframe.id,
+              name: branchSlot.timeframe.name,
+              startTime: branchSlot.timeframe.startTime,
+              endTime: branchSlot.timeframe.endTime,
             } : null,
-            // Lưu thêm thông tin gốc để dùng sau
-            _rawData: item,
+            // Lưu thêm thông tin gốc từ BranchSlot
+            _rawData: branchSlot,
           } as StudentSlotResponse & { _rawData?: any };
         });
-        
-        // Deduplicate: Mỗi branchSlot (id + roomId + date + timeframe) chỉ nên xuất hiện 1 lần
-        // Vì 1 slot = 1 branchSlotId + 1 roomId + 1 date + 1 timeframe
-        const uniqueSlots = new Map<string, StudentSlotResponse>();
-        mappedItems.forEach((slot) => {
-          // Key: roomId + date + startTime (vì staff chỉ quan tâm room + time, không cần branchSlotId)
-          // Nhiều branchSlot khác nhau có thể share cùng 1 room + time
-          const dateStr = slot.date ? new Date(slot.date).toISOString().split('T')[0] : '';
-          const timeStartKey = slot.timeframe?.startTime || '';
-          const roomIdKey = slot.roomId || 'NO_ROOM';
-          // Use room + date + time (vì đây là cái staff thực tế sử dụng)
-          const uniqueKey = `${roomIdKey}_${dateStr}_${timeStartKey}`;
-          
-          if (!uniqueSlots.has(uniqueKey)) {
-            uniqueSlots.set(uniqueKey, slot);
-          } else {
-            // Nếu đã có slot với key này, kiểm tra xem slot mới có nhiều studentSlots hơn không
-            const existingSlot = uniqueSlots.get(uniqueKey)!;
-            const existingCount = (existingSlot as any)?._rawData?.studentSlots?.length || 0;
-            const newCount = (slot as any)?._rawData?.studentSlots?.length || 0;
-            // Giữ slot có nhiều studentSlots hơn (đầy đủ thông tin hơn)
-            if (newCount > existingCount) {
-              uniqueSlots.set(uniqueKey, slot);
-            }
-          }
-        });
-        
-        setSlots(Array.from(uniqueSlots.values()));
+
+        setSlots(convertedSlots);
+
+        // Step 3 (Optional): Nếu cần chi tiết sinh viên cho từng branch slot, fetch thêm
+        // Hiện tại không fetch vì branchSlot đã đủ thông tin để display lịch làm việc
+        // Khi click vào chi tiết slot, có thể fetch StudentSlots của slot đó
       } catch (error: any) {
         const message =
           error?.message ||
@@ -409,7 +410,8 @@ const StaffScheduleScreen: React.FC = () => {
         branchSlotId: slot.branchSlotId,
         date: slot.date,
         roomId: slot.roomId,
-        slotTimeframe: slot.timeframe?.name,
+        slotTimeframeStartTime: slot.timeframe?.startTime,
+        slotTimeframeEndTime: slot.timeframe?.endTime,
         branchName: slot.branchSlot?.branchName,
         roomName: slot.room?.roomName,
       });
@@ -568,7 +570,7 @@ const StaffScheduleScreen: React.FC = () => {
                 // Get room info from slot
                 const roomName = slot.room?.roomName || rawData?.roomName;
                 const slotTypeName = rawData?.slotType?.name;
-                const studentSlotsCount = rawData?.studentSlots?.length || 0;
+                const studentSlotsCount = rawData?.studentCount || 0;
                 const hasStudents = studentSlotsCount > 0;
                 
                 // Use compound key để avoid duplicate keys
@@ -755,7 +757,8 @@ const StaffScheduleScreen: React.FC = () => {
                     branchSlotId: selectedSlot.branchSlotId,
                     date: selectedSlot.date,
                     roomId: selectedSlot.roomId,
-                    slotTimeframe: selectedSlot.timeframe?.name,
+                    slotTimeframeStartTime: selectedSlot.timeframe?.startTime,
+                    slotTimeframeEndTime: selectedSlot.timeframe?.endTime,
                     branchName: selectedSlot.branchSlot?.branchName,
                     roomName: selectedSlot.room?.roomName,
                   });
