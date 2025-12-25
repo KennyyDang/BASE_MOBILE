@@ -230,6 +230,11 @@ const SelectSlotScreen: React.FC = () => {
   const [datesWithSlots, setDatesWithSlots] = useState<Map<string, number>>(new Map());
   const [checkedDates, setCheckedDates] = useState<Set<string>>(new Set());
   const [loadingSlotCounts, setLoadingSlotCounts] = useState(false);
+  // Fallback: if weekly slots not loaded but we know a date has slots (badge),
+  // fetch slots for that specific date so list can show them.
+  const [perDateSlots, setPerDateSlots] = useState<BranchSlotResponse[]>([]);
+  const [perDateLoading, setPerDateLoading] = useState(false);
+  const [perDateLoadedDate, setPerDateLoadedDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (students.length && !selectedStudentId) {
@@ -457,6 +462,38 @@ const SelectSlotScreen: React.FC = () => {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }, []);
+
+  // If weekly slots array is empty but we know (badge) this date has slots,
+  // fetch slots for that specific date as a fallback so the list will show items.
+  useEffect(() => {
+    const tryLoadPerDate = async () => {
+      if (!selectedStudentId || !selectedDate) return;
+      const dateStr = formatDateToYYYYMMDD(selectedDate);
+
+      // If we already loaded per-date for this date, skip
+      if (perDateLoadedDate === dateStr) return;
+
+      // Only attempt when weekly `slots` is empty but badge indicates slots
+      const badgeCount = datesWithSlots.get(dateStr);
+      if (slots.length === 0 && badgeCount !== undefined && badgeCount > 0) {
+        setPerDateLoading(true);
+        try {
+          const items = await branchSlotService.getAllAvailableSlotsForStudent(selectedStudentId, {
+            date: selectedDate,
+            pageSize: 200,
+          });
+          setPerDateSlots(Array.isArray(items) ? items : []);
+          setPerDateLoadedDate(dateStr);
+        } catch (err) {
+          setPerDateSlots([]);
+        } finally {
+          setPerDateLoading(false);
+        }
+      }
+    };
+
+    tryLoadPerDate();
+  }, [selectedStudentId, selectedDate, slots.length, perDateLoadedDate, datesWithSlots, formatDateToYYYYMMDD]);
 
   // Get booked slots for selected date only
   const bookedSlotsForSelectedDate = useMemo(() => {
@@ -894,14 +931,19 @@ const SelectSlotScreen: React.FC = () => {
 
   // Get available slots for selected date only
   const getSlotsForSelectedDate = useMemo(() => {
-    if (!selectedDate || slots.length === 0) return [];
+    if (!selectedDate || (slots.length === 0 && perDateSlots.length === 0)) return [];
 
     // Lấy ngày trong tuần của selectedDate
     const selectedDay = selectedDate.getDay();
     const normalizedDay = selectedDay === 0 ? 0 : selectedDay;
     
-    // Lấy slots của ngày đó từ groupedSlots
-    let daySlots = groupedSlots[normalizedDay as WeekdayKey] || [];
+    // Lấy slots của ngày đó từ groupedSlots (tuần) hoặc fallback từ perDateSlots
+    let daySlots: BranchSlotResponse[] = [];
+    if (slots.length > 0) {
+      daySlots = groupedSlots[normalizedDay as WeekdayKey] || [];
+    } else if (perDateSlots.length > 0) {
+      daySlots = perDateSlots.slice();
+    }
     
     // Filter by exact date match
     const selectedDateStr = selectedDate.toISOString().split('T')[0];
@@ -982,7 +1024,7 @@ const SelectSlotScreen: React.FC = () => {
     });
 
     return merged;
-  }, [selectedDate, slots, groupedSlots, weekOffset, bookedSlots, isSlotBooked, getCancelledSlot]);
+  }, [selectedDate, slots, groupedSlots, weekOffset, bookedSlots, isSlotBooked, getCancelledSlot, perDateSlots]);
 
   const handleToggleRooms = useCallback((slotId: string) => {
     setSlotRoomsState((prev) => {

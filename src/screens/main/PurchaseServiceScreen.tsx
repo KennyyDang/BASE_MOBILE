@@ -106,7 +106,6 @@ const PurchaseServiceScreen: React.FC = () => {
         studentId,
         pageIndex: 1,
         pageSize: 100,
-        status: 'Booked',
       });
       const slot = response.items.find(s => s.id === studentSlotId);
       if (slot) {
@@ -548,31 +547,6 @@ const PurchaseServiceScreen: React.FC = () => {
                     </View>
                     <Text style={styles.walletTypeDescription}>
                       Phụ huynh mua cho con
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[
-                      styles.walletTypeCard,
-                      walletType === 'Student' && styles.walletTypeCardSelected,
-                    ]}
-                    onPress={() => setWalletType('Student')}
-                  >
-                    <View style={styles.walletTypeHeader}>
-                      <MaterialIcons
-                        name={walletType === 'Student' ? 'radio-button-checked' : 'radio-button-unchecked'}
-                        size={20}
-                        color={walletType === 'Student' ? COLORS.PRIMARY : COLORS.TEXT_SECONDARY}
-                      />
-                      <Text style={[
-                        styles.walletTypeName,
-                        walletType === 'Student' && styles.walletTypeNameSelected,
-                      ]}>
-                        Ví học sinh
-                      </Text>
-                    </View>
-                    <Text style={styles.walletTypeDescription}>
-                      Học sinh tự mua trong slot
                     </Text>
                   </TouchableOpacity>
                 </View>
