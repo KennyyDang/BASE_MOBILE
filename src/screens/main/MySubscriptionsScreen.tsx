@@ -211,50 +211,111 @@ const MySubscriptionsScreen: React.FC = () => {
   }, []);
 
   const handleRenew = useCallback((subscription: StudentPackageSubscription) => {
-    // Bỏ check canRenew để cho phép gọi API, BE sẽ validate và trả lỗi nếu không được phép gia hạn
-    
-    Alert.alert(
-      'Xác nhận gia hạn',
-      `Bạn có chắc chắn muốn gia hạn gói "${subscription.packageName}" cho ${subscription.studentName}?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xác nhận',
-          style: 'default',
-          onPress: async () => {
-            try {
-              setRenewingId(subscription.id);
-              await packageService.renewSubscription(subscription.studentId);
-              
-              Alert.alert(
-                'Thành công',
-                'Đã gia hạn gói đăng ký thành công.',
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      // Refresh list
-                      fetchAllSubscriptions();
-                    },
-                  },
-                ]
-              );
-            } catch (err: any) {
-              const message =
-                err?.response?.data?.message ||
-                err?.response?.data?.error ||
-                err?.message ||
-                'Không thể gia hạn. Vui lòng thử lại.';
-              
-              Alert.alert('Lỗi', message);
-            } finally {
-              setRenewingId(null);
-            }
-          },
-        },
-      ]
-    );
-  }, [canRenew, fetchAllSubscriptions]);
+    // Fetch API và hiển thị popup chi tiết điều kiện gia hạn
+    const fetchAndShowRenewalDetails = async () => {
+      try {
+        setRenewingId(subscription.id);
+
+        // Fetch renewal settings từ API
+        const renewalSettings = await packageService.getPackageRenewalSettings();
+        const minSlotsPercentage = renewalSettings?.minSlotsPercentage || 0;
+        const renewalDeadlineDays = renewalSettings?.renewalDeadlineDays || 0;
+
+        // Tính toán dữ liệu hiện tại
+        const totalSlots = getTotalSlots(subscription);
+        
+        if (!totalSlots) {
+          Alert.alert('Lỗi', 'Không thể xác định tổng số slot của gói. Vui lòng thử lại.');
+          setRenewingId(null);
+          return;
+        }
+
+        const usedSlots = subscription.usedSlot || 0;
+        const usedPercentage = Math.round((usedSlots / totalSlots) * 100);
+
+        // Tính ngày còn lại
+        const endDate = new Date(subscription.endDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        endDate.setHours(0, 0, 0, 0);
+        const daysRemaining = Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+        // Kiểm tra điều kiện gia hạn
+        const meetsSlotRequirement = usedPercentage >= minSlotsPercentage;
+        const withinDeadline = daysRemaining <= renewalDeadlineDays;
+        const canRenewNow = meetsSlotRequirement || withinDeadline;
+
+        // Hiển thị popup chi tiết điều kiện gia hạn
+        const detailsMessage = `Chính sách gia hạn:\n- Phần trăm slot tối thiểu: ${minSlotsPercentage}%\n- Hạn gia hạn (ngày): ${renewalDeadlineDays}\n\nTrạng thái hiện tại:\n- Đã dùng: ${usedPercentage}% (${usedSlots}/${totalSlots} slot)\n- Yêu cầu: ${minSlotsPercentage}% → ${meetsSlotRequirement ? 'ĐẠT' : 'CHƯA ĐẠT'}\n- Còn lại: ${daysRemaining} ngày\n- Yêu cầu: ≤ ${renewalDeadlineDays} ngày → ${withinDeadline ? 'ĐẠT' : 'CHƯA ĐẠT'}`;
+
+        if (canRenewNow) {
+          Alert.alert(
+            'Xác nhận gia hạn gói',
+            detailsMessage,
+            [
+              { text: 'Hủy', style: 'cancel', onPress: () => setRenewingId(null) },
+              {
+                text: 'Gia hạn',
+                style: 'default',
+                onPress: async () => {
+                  try {
+                    await packageService.renewSubscription(subscription.studentId);
+
+                    Alert.alert(
+                      'Thành công',
+                      'Đã gia hạn gói đăng ký thành công.',
+                      [
+                        {
+                          text: 'OK',
+                          onPress: () => {
+                            fetchAllSubscriptions();
+                          },
+                        },
+                      ]
+                    );
+                  } catch (err: any) {
+                    const message =
+                      err?.response?.data?.message ||
+                      err?.response?.data?.error ||
+                      err?.message ||
+                      'Không thể gia hạn. Vui lòng thử lại.';
+
+                    Alert.alert('Lỗi', message);
+                  } finally {
+                    setRenewingId(null);
+                  }
+                },
+              },
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Không thể gia hạn gói',
+            detailsMessage,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  setRenewingId(null);
+                },
+              },
+            ]
+          );
+        }
+      } catch (err: any) {
+        const message =
+          err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          'Không thể tải điều kiện gia hạn. Vui lòng thử lại.';
+
+        Alert.alert('Lỗi', message);
+        setRenewingId(null);
+      }
+    };
+
+    fetchAndShowRenewalDetails();
+  }, [fetchAllSubscriptions, getTotalSlots]);
 
   const handleRefund = useCallback((subscription: StudentPackageSubscription) => {
     // Bỏ check canRefund ở đây, để BE validate và trả lỗi phù hợp

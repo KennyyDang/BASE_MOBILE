@@ -82,6 +82,27 @@ class PackageService {
   }
 
   /**
+   * Get package renewal settings
+   * Endpoint: GET /api/Admin/package-renewal-settings
+   * @returns Renewal settings (minSlotsPercentage, renewalDeadlineDays, description)
+   */
+  async getPackageRenewalSettings(): Promise<any> {
+    try {
+      const endpoint = `/api/Admin/package-renewal-settings`;
+      const response = await axiosInstance.get(endpoint);
+      return response.data;
+    } catch (error: any) {
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.response?.data?.title ||
+        error?.message ||
+        'Không thể tải điều kiện gia hạn gói';
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
    * Renew student's current active subscription
    * Endpoint: POST /api/PackageSubscription/renew/{studentId}
    * @param studentId Student ID (UUID)
